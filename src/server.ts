@@ -24,7 +24,12 @@ async function startServer() {
 	await server.start();
 	await connectDb();
 
-	app.use(cookieParser(), express.json(), expressMiddleware(server));
+	app.use(
+		'/graphql',
+		cookieParser(),
+		express.json(),
+		expressMiddleware(server)
+	);
 
 	app.listen(port, () => {
 		console.log(`Server is up and runnin @ http://localhost:${port}/graphql`);
