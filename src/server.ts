@@ -4,6 +4,7 @@ import express from 'express';
 import connectDb from './database/connectDb.js';
 import cookieParser from 'cookie-parser';
 import schema from './graphql/schema.js';
+import authContext from './context/auth-context.js';
 
 const port = process.env.PORT ?? 8080;
 
@@ -18,7 +19,9 @@ async function startServer() {
 		'/graphql',
 		cookieParser(),
 		express.json(),
-		expressMiddleware(server)
+		expressMiddleware(server, {
+			context: ({ req, res }) => authContext({ req, res }),
+		})
 	);
 
 	app.listen(port, () => {

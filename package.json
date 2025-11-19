@@ -30,7 +30,8 @@
 		"graphql-import-node": "^0.0.5",
 		"jsonwebtoken": "^9.0.2",
 		"mongoose": "^8.19.4",
-		"tsx": "^4.20.6"
+		"tsx": "^4.20.6",
+		"zod": "^4.1.12"
 	},
 	"devDependencies": {
 		"@graphql-codegen/cli": "^6.0.2",

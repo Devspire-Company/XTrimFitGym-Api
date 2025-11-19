@@ -6,6 +6,7 @@ const config: CodegenConfig = {
 		'./src/types/types.ts': {
 			plugins: ['typescript', 'typescript-resolvers'],
 			config: {
+				contextType: './src/context/auth-context.ts#IAuthContext',
 				defaultMapper: 'Partial<{T}>',
 			},
 		},
