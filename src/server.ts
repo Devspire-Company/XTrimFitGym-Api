@@ -3,21 +3,22 @@ import { expressMiddleware } from '@as-integrations/express5';
 import express from 'express';
 import connectDb from './database/connectDb';
 import cookieParser from 'cookie-parser';
+import schema from './graphql/schema';
 
-const typeDefs = `
-type Kita {
-  message: String
-  author: String
-}
+// const typeDefs = `
+// type Kita {
+//   message: String
+//   author: String
+// }
 
-type Query {
-  msg: Kita
-}
-`;
+// type Query {
+//   msg: Kita
+// }
+// `;
 const resolvers = {};
 const port = process.env.PORT ?? 8080;
 
-const server = new ApolloServer({ typeDefs, resolvers });
+const server = new ApolloServer({ schema });
 const app = express();
 
 async function startServer() {
