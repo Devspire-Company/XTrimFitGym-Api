@@ -1,21 +1,10 @@
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@as-integrations/express5';
 import express from 'express';
-import connectDb from './database/connectDb';
+import connectDb from './database/connectDb.js';
 import cookieParser from 'cookie-parser';
-import schema from './graphql/schema';
+import schema from './graphql/schema.js';
 
-// const typeDefs = `
-// type Kita {
-//   message: String
-//   author: String
-// }
-
-// type Query {
-//   msg: Kita
-// }
-// `;
-const resolvers = {};
 const port = process.env.PORT ?? 8080;
 
 const server = new ApolloServer({ schema });

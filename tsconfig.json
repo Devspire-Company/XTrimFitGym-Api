@@ -51,8 +51,8 @@
 		"strict": true,
 		"lib": ["es2023"],
 		"target": "es2023",
-		"module": "esnext",
-		"moduleResolution": "node",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
 		"esModuleInterop": true,
 		"types": ["node"]
 	},

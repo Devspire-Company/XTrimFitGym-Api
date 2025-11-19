@@ -40,14 +40,6 @@ const memberSchema = new Schema({
 	coaches_ids: {
 		type: [mongoose.SchemaTypes.ObjectId],
 		ref: 'User',
-		validate: {
-			validator: (arr: unknown[]) => Array.isArray(arr) && arr.length <= 6,
-			message: 'too many coaches, chill',
-		},
-	},
-	sessions_ids: {
-		type: [mongoose.SchemaTypes.ObjectId],
-		ref: 'Session',
 	},
 });
 
@@ -55,10 +47,10 @@ const coachSchema = new Schema({
 	clients_ids: {
 		type: [mongoose.SchemaTypes.ObjectId],
 		ref: 'User',
-		validate: {
-			validator: (arr: unknown[]) => Array.isArray(arr) && arr.length <= 3,
-			message: 'exceeded the limit of 3 clients',
-		},
+	},
+	sessions_ids: {
+		type: [mongoose.SchemaTypes.ObjectId],
+		ref: 'Session',
 	},
 	specialization: {
 		type: [String],
@@ -76,6 +68,7 @@ const coachSchema = new Schema({
 	},
 	yearsOfExperience: Number,
 	moreDetails: String,
+	teachingDate: [String],
 	teachingTime: [String],
 });
 
