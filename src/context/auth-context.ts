@@ -45,7 +45,7 @@ const authContext = async ({
 		auth: {
 			user,
 			logIn: (args: { id: string; role: RoleType }) => {
-				const token = jwt.sign('token', process.env.JWT_SIKRIT!);
+				const token = jwt.sign(args, process.env.JWT_SIKRIT!);
 				res.cookie('token', token, {
 					domain: 'localhost',
 					httpOnly: true,

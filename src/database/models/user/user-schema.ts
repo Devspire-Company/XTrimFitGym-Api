@@ -10,11 +10,38 @@ export type FitnessGoalType =
 	| 'Strength training'
 	| 'Endurance';
 export interface IUser {
+	_id?: mongoose.Types.ObjectId;
+	firstName: string;
+	lastName: string;
+	email: string;
+	password: string;
 	role: RoleType;
-	gender: GenderType;
-	physiqueGoalType: PhysiqueType;
-	fitnessGoal: FitnessGoalType;
-	specialization: FitnessGoalType;
+	phoneNumber?: number;
+	dateOfBirth?: Date;
+	gender?: GenderType;
+	heardFrom?: string[];
+	agreedToTermsAndConditions?: boolean;
+	agreedToPrivacyPolicy?: boolean;
+	agreedToLiabilityWaiver?: boolean;
+	membershipDetails?: {
+		membership_id?: mongoose.Types.ObjectId;
+		physiqueGoalType?: PhysiqueType;
+		fitnessGoal?: FitnessGoalType[];
+		workOutTime?: string[];
+		coaches_ids?: mongoose.Types.ObjectId[];
+	};
+	coachDetails?: {
+		clients_ids?: mongoose.Types.ObjectId[];
+		sessions_ids?: mongoose.Types.ObjectId[];
+		specialization?: FitnessGoalType[];
+		ratings?: number;
+		yearsOfExperience?: number;
+		moreDetails?: string;
+		teachingDate?: string[];
+		teachingTime?: string[];
+	};
+	createdAt?: Date;
+	updatedAt?: Date;
 }
 
 const memberSchema = new Schema({

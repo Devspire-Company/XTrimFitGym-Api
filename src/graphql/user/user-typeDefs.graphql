@@ -86,9 +86,22 @@ type Query {
 	getUsers(role: RoleType): [User]
 }
 
+# Login input
+input LoginInput {
+	email: String!
+	password: String!
+}
+
+# Auth response
+type AuthResponse {
+	user: User!
+	token: String!
+}
+
 # Mutations
 type Mutation {
-	createUser(input: CreateUserInput!): User
+	login(input: LoginInput!): AuthResponse!
+	createUser(input: CreateUserInput!): AuthResponse!
 	updateUser(id: ID!, input: CreateUserInput!): User
 	deleteUser(id: ID!): Boolean
 }
