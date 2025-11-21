@@ -53,6 +53,7 @@ const mapUserToGraphQL = (
 					moreDetails: user.coachDetails.moreDetails,
 					teachingDate: user.coachDetails.teachingDate || [],
 					teachingTime: user.coachDetails.teachingTime || [],
+					clientLimit: user.coachDetails.clientLimit || 999,
 			  }
 			: null,
 		createdAt: user.createdAt?.toISOString(),
@@ -160,6 +161,7 @@ const userResolvers: Resolvers = {
 							moreDetails: coachDetails.moreDetails,
 							teachingDate: coachDetails.teachingDate,
 							teachingTime: coachDetails.teachingTime,
+							clientLimit: coachDetails.clientLimit || 999,
 					  }
 					: undefined,
 			});
@@ -233,6 +235,7 @@ const userResolvers: Resolvers = {
 					moreDetails: input.coachDetails.moreDetails,
 					teachingDate: input.coachDetails.teachingDate,
 					teachingTime: input.coachDetails.teachingTime,
+					clientLimit: input.coachDetails.clientLimit || 999,
 				};
 			}
 

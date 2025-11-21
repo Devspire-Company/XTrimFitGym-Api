@@ -21,6 +21,7 @@ type CoachDetails {
 	moreDetails: String
 	teachingDate: [String]
 	teachingTime: [String]
+	clientLimit: Int
 }
 
 # Main User type
@@ -61,6 +62,7 @@ input CoachDetailsInput {
 	moreDetails: String
 	teachingDate: [String]
 	teachingTime: [String]
+	clientLimit: Int
 }
 
 input CreateUserInput {

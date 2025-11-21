@@ -39,6 +39,7 @@ export interface IUser {
 		moreDetails?: string;
 		teachingDate?: string[];
 		teachingTime?: string[];
+		clientLimit?: number;
 	};
 	createdAt?: Date;
 	updatedAt?: Date;
@@ -97,6 +98,10 @@ const coachSchema = new Schema({
 	moreDetails: String,
 	teachingDate: [String],
 	teachingTime: [String],
+	clientLimit: {
+		type: Number,
+		default: 999, // Default to high number (unlimited)
+	},
 });
 
 const userSchema = new Schema(

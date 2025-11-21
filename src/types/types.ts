@@ -25,6 +25,7 @@ export type AuthResponse = {
 
 export type CoachDetails = {
   __typename?: 'CoachDetails';
+  clientLimit?: Maybe<Scalars['Int']['output']>;
   clientsIds?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
   moreDetails?: Maybe<Scalars['String']['output']>;
   ratings?: Maybe<Scalars['Float']['output']>;
@@ -36,6 +37,7 @@ export type CoachDetails = {
 };
 
 export type CoachDetailsInput = {
+  clientLimit?: InputMaybe<Scalars['Int']['input']>;
   clientsIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
   moreDetails?: InputMaybe<Scalars['String']['input']>;
   ratings?: InputMaybe<Scalars['Float']['input']>;
@@ -652,6 +654,7 @@ export type AuthResponseResolvers<ContextType = IAuthContext, ParentType extends
 };
 
 export type CoachDetailsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['CoachDetails'] = ResolversParentTypes['CoachDetails']> = {
+  clientLimit?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   clientsIds?: Resolver<Maybe<Array<Maybe<ResolversTypes['ID']>>>, ParentType, ContextType>;
   moreDetails?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   ratings?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
