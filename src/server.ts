@@ -26,10 +26,12 @@ async function startServer() {
 	await server.start();
 	await connectDb();
 
+	// Middleware order matters! cookieParser must come before expressMiddleware
+	app.use(cookieParser()); // Global cookie parser
+	app.use(express.json()); // Global JSON parser
+	
 	app.use(
 		'/graphql',
-		cookieParser(),
-		express.json(),
 		expressMiddleware(server, {
 			context: ({ req, res }) => authContext({ req, res }),
 		})

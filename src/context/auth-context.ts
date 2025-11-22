@@ -38,7 +38,24 @@ const authContext = async ({
 	req: Request;
 	res: Response;
 }): Promise<IAuthContext> => {
-	const user = parseToken(req.cookies?.token);
+	// Get token from cookie or Authorization header
+	const tokenFromCookie = req.cookies?.token;
+	const authHeader = req.headers.authorization || req.headers.Authorization;
+	const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
+	const token = tokenFromCookie || tokenFromHeader;
+
+	const user = parseToken(token);
+
+	// Debug: Log authentication status only in development
+	if (!user && process.env.NODE_ENV !== 'production') {
+		console.log('🔒 No authenticated user found');
+		console.log('  - Cookie token:', tokenFromCookie ? 'Present' : 'Missing');
+		console.log('  - Header token:', tokenFromHeader ? 'Present' : 'Missing');
+		console.log('  - Auth header:', authHeader ? 'Present' : 'Missing');
+		if (tokenFromHeader) {
+			console.log('  - Token length:', tokenFromHeader.length);
+		}
+	}
 
 	return {
 		db: mongoose,
@@ -46,13 +63,16 @@ const authContext = async ({
 			user,
 			logIn: (args: { id: string; role: RoleType }) => {
 				const token = jwt.sign(args, process.env.JWT_SIKRIT!);
+				// Remove domain restriction to work with IP addresses and different origins
 				res.cookie('token', token, {
-					domain: 'localhost',
 					httpOnly: true,
+					secure: false, // Set to true in production with HTTPS
+					sameSite: 'lax', // Helps with cross-origin requests
 					expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+					path: '/',
 				});
 			},
-			logOut: () => res.clearCookie('token'),
+			logOut: () => res.clearCookie('token', { path: '/' }),
 		},
 	};
 };

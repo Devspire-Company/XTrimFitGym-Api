@@ -1,12 +1,10 @@
 import Session from '../../database/models/session/session-schema.js';
 import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import User from '../../database/models/user/user-schema.js';
+import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
-interface Context {
-	userId?: string;
-	userRole?: string;
-}
+type Context = IAuthContext;
 
 const mapSessionToGraphQL = (session: any) => {
 	return {
@@ -58,7 +56,9 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only coach can view their own sessions
-			if (context.userId !== coachId && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== coachId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only view your own sessions');
 			}
 
@@ -82,7 +82,9 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only client can view their own sessions
-			if (context.userId !== clientId && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== clientId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only view your own sessions');
 			}
 
@@ -103,7 +105,9 @@ export default {
 		},
 
 		getUpcomingSessions: async (_: any, __: any, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -114,10 +118,10 @@ export default {
 			};
 
 			// Get sessions where user is either coach or client
-			if (context.userRole === 'coach') {
-				query.coach_id = new mongoose.Types.ObjectId(context.userId);
+			if (userRole === 'coach') {
+				query.coach_id = new mongoose.Types.ObjectId(userId);
 			} else {
-				query.clients_ids = new mongoose.Types.ObjectId(context.userId);
+				query.clients_ids = new mongoose.Types.ObjectId(userId);
 			}
 
 			const sessions = await Session.find(query)
@@ -131,7 +135,9 @@ export default {
 		},
 
 		getSession: async (_: any, { id }: { id: string }, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -145,12 +151,12 @@ export default {
 			}
 
 			// Authorization: Only coach, clients, or admin can view
-			const isCoach = session.coach_id.toString() === context.userId;
+			const isCoach = session.coach_id.toString() === userId;
 			const isClient = session.clients_ids?.some(
 				(clientId: mongoose.Types.ObjectId) =>
-					clientId.toString() === context.userId
+					clientId.toString() === userId
 			);
-			const isAdmin = context.userRole === 'admin';
+			const isAdmin = userRole === 'admin';
 
 			if (!isCoach && !isClient && !isAdmin) {
 				throw new Error('Unauthorized: You cannot view this session');
@@ -165,7 +171,9 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only client or admin can view session logs
-			if (context.userId !== clientId && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== clientId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only view your own session logs');
 			}
 
@@ -187,7 +195,9 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only client or admin can view weight progress
-			if (context.userId !== clientId && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== clientId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only view your own progress');
 			}
 
@@ -218,16 +228,18 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only coaches can create sessions
-			if (context.userRole !== 'coach' && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'coach' && userRole !== 'admin') {
 				throw new Error('Unauthorized: Only coaches can create sessions');
 			}
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
 			const session = new Session({
-				coach_id: new mongoose.Types.ObjectId(context.userId),
+				coach_id: new mongoose.Types.ObjectId(userId),
 				clients_ids: input.clientsIds.map(
 					(id: string) => new mongoose.Types.ObjectId(id)
 				),
@@ -247,7 +259,7 @@ export default {
 			await session.save();
 
 			// Update coach's sessions_ids
-			await User.findByIdAndUpdate(context.userId, {
+			await User.findByIdAndUpdate(userId, {
 				$push: {
 					'coachDetails.sessions_ids': session._id,
 				},
@@ -272,7 +284,9 @@ export default {
 			{ id, input }: { id: string; input: any },
 			context: Context
 		) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -282,9 +296,8 @@ export default {
 			}
 
 			// Authorization: Only coach who created the session or admin can update
-			const isCoach =
-				session.coach_id.toString() === context.userId;
-			const isAdmin = context.userRole === 'admin';
+			const isCoach = session.coach_id.toString() === userId;
+			const isAdmin = userRole === 'admin';
 
 			if (!isCoach && !isAdmin) {
 				throw new Error('Unauthorized: You cannot update this session');
@@ -321,7 +334,9 @@ export default {
 		},
 
 		cancelSession: async (_: any, { id }: { id: string }, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -331,8 +346,8 @@ export default {
 			}
 
 			// Authorization: Only coach who created the session or admin can cancel
-			const isCoach = session.coach_id.toString() === context.userId;
-			const isAdmin = context.userRole === 'admin';
+			const isCoach = session.coach_id.toString() === userId;
+			const isAdmin = userRole === 'admin';
 
 			if (!isCoach && !isAdmin) {
 				throw new Error('Unauthorized: You cannot cancel this session');
@@ -351,11 +366,13 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only members/clients can complete sessions (enter weight)
-			if (context.userRole !== 'member' && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'member' && userRole !== 'admin') {
 				throw new Error('Unauthorized: Only clients can complete sessions');
 			}
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -367,17 +384,17 @@ export default {
 			// Check if client is part of this session
 			const isClient = session.clients_ids?.some(
 				(clientId: mongoose.Types.ObjectId) =>
-					clientId.toString() === context.userId
+					clientId.toString() === userId
 			);
 
-			if (!isClient && context.userRole !== 'admin') {
+			if (!isClient && userRole !== 'admin') {
 				throw new Error('Unauthorized: You are not part of this session');
 			}
 
 			// Check if session log already exists
 			let sessionLog = await SessionLog.findOne({
 				session_id: new mongoose.Types.ObjectId(input.sessionId),
-				client_id: new mongoose.Types.ObjectId(context.userId),
+				client_id: new mongoose.Types.ObjectId(userId),
 			});
 
 			if (sessionLog) {
@@ -390,7 +407,7 @@ export default {
 				// Create new log
 				sessionLog = new SessionLog({
 					session_id: new mongoose.Types.ObjectId(input.sessionId),
-					client_id: new mongoose.Types.ObjectId(context.userId),
+					client_id: new mongoose.Types.ObjectId(userId),
 					coach_id: session.coach_id,
 					weight: input.weight,
 					clientConfirmed: true,
@@ -415,13 +432,15 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only coaches can confirm session completion
-			if (context.userRole !== 'coach' && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'coach' && userRole !== 'admin') {
 				throw new Error(
 					'Unauthorized: Only coaches can confirm session completion'
 				);
 			}
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -436,8 +455,8 @@ export default {
 				throw new Error('Session not found');
 			}
 
-			const isCoach = session.coach_id.toString() === context.userId;
-			if (!isCoach && context.userRole !== 'admin') {
+			const isCoach = session.coach_id.toString() === userId;
+			if (!isCoach && userRole !== 'admin') {
 				throw new Error(
 					'Unauthorized: You cannot confirm completion for this session'
 				);
@@ -475,11 +494,13 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only members/clients can confirm their weight
-			if (context.userRole !== 'member' && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'member' && userRole !== 'admin') {
 				throw new Error('Unauthorized: Only clients can confirm their weight');
 			}
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -489,10 +510,7 @@ export default {
 			}
 
 			// Check if this is the client's own session log
-			if (
-				sessionLog.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (sessionLog.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: This is not your session log');
 			}
 

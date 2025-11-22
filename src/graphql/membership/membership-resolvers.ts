@@ -1,12 +1,10 @@
 import Membership from '../../database/models/membership/membership-shema.js';
 import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
 import User from '../../database/models/user/user-schema.js';
+import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
-interface Context {
-	userId?: string;
-	userRole?: string;
-}
+type Context = IAuthContext;
 
 const mapMembershipToGraphQL = (membership: any) => {
 	return {
@@ -68,12 +66,13 @@ export default {
 		},
 
 		getCurrentMembership: async (_: any, __: any, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
 			const transaction = await MembershipTransaction.findOne({
-				client_id: new mongoose.Types.ObjectId(context.userId),
+				client_id: new mongoose.Types.ObjectId(userId),
 				status: 'Active',
 			})
 				.populate('membership_id')
@@ -101,7 +100,9 @@ export default {
 			{ id }: { id: string },
 			context: Context
 		) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -115,10 +116,7 @@ export default {
 			}
 
 			// Authorization: Only client or admin can view transaction
-			if (
-				transaction.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (transaction.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You cannot view this transaction');
 			}
 
@@ -133,7 +131,8 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only admin can create memberships
-			if (context.userRole !== 'admin') {
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'admin') {
 				throw new Error('Unauthorized: Only admins can create memberships');
 			}
 
@@ -160,11 +159,13 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only members can purchase memberships
-			if (context.userRole !== 'member' && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'member' && userRole !== 'admin') {
 				throw new Error('Unauthorized: Only members can purchase memberships');
 			}
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -180,7 +181,7 @@ export default {
 			// Cancel any existing active memberships
 			await MembershipTransaction.updateMany(
 				{
-					client_id: new mongoose.Types.ObjectId(context.userId),
+					client_id: new mongoose.Types.ObjectId(userId),
 					status: 'Active',
 				},
 				{
@@ -205,7 +206,7 @@ export default {
 			}
 
 			const transaction = new MembershipTransaction({
-				client_id: new mongoose.Types.ObjectId(context.userId),
+				client_id: new mongoose.Types.ObjectId(userId),
 				membership_id: new mongoose.Types.ObjectId(input.membershipId),
 				priceAtPurchase: membership.monthlyPrice,
 				startedAt: now,
@@ -216,7 +217,7 @@ export default {
 			await transaction.save();
 
 			// Update user's membership details
-			await User.findByIdAndUpdate(context.userId, {
+			await User.findByIdAndUpdate(userId, {
 				'membershipDetails.membership_id': new mongoose.Types.ObjectId(
 					input.membershipId
 				),
@@ -240,7 +241,9 @@ export default {
 			{ transactionId }: { transactionId: string },
 			context: Context
 		) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -253,10 +256,7 @@ export default {
 			}
 
 			// Authorization: Only client or admin can cancel
-			if (
-				transaction.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (transaction.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You cannot cancel this membership');
 			}
 

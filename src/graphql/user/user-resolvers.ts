@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../../database/models/user/user-schema.js';
 import { Resolvers } from '../../types/types.js';
@@ -90,6 +91,15 @@ const userResolvers: Resolvers = {
 				throw new Error('Invalid email or password');
 			}
 
+			// Generate token
+			const token = jwt.sign(
+				{
+					id: user._id!.toString(),
+					role: user.role,
+				},
+				process.env.JWT_SIKRIT!
+			);
+
 			// Login user (sets cookie)
 			context.auth.logIn({
 				id: user._id!.toString(),
@@ -98,7 +108,7 @@ const userResolvers: Resolvers = {
 
 			return {
 				user: mapUserToGraphQL(user as any),
-				token: '', // Token is set in cookie, not returned
+				token, // Return token for React Native (cookies may not work)
 			};
 		},
 		createUser: async (_, { input }, context) => {
@@ -168,6 +178,15 @@ const userResolvers: Resolvers = {
 
 			await user.save();
 
+			// Generate token
+			const token = jwt.sign(
+				{
+					id: user._id!.toString(),
+					role: user.role,
+				},
+				process.env.JWT_SIKRIT!
+			);
+
 			// Login user (sets cookie)
 			context.auth.logIn({
 				id: user._id!.toString(),
@@ -177,90 +196,114 @@ const userResolvers: Resolvers = {
 			const userObj = user.toObject();
 			return {
 				user: mapUserToGraphQL(userObj as any),
-				token: '', // Token is set in cookie, not returned
+				token, // Return token for React Native (cookies may not work)
 			};
 		},
-		updateUser: async (_, { id, input }, context) => {
-			// Check if user is authenticated and can update this user
-			if (!context.auth.user) {
-				throw new Error('Unauthorized');
-			}
+	updateUser: async (_, { id, input }, context) => {
+		// Check if user is authenticated and can update this user
+		const userId = context.auth.user?.id;
+		const userRole = context.auth.user?.role;
 
-			if (context.auth.user.id !== id && context.auth.user.role !== 'admin') {
-				throw new Error('Unauthorized to update this user');
-			}
+		if (!userId) {
+			throw new Error('Unauthorized: Please log in');
+		}
 
-			const updateData: any = {};
+		if (userId !== id && userRole !== 'admin') {
+			throw new Error('Unauthorized: You can only update your own profile');
+		}
 
-			if (input.firstName) updateData.firstName = input.firstName;
-			if (input.lastName) updateData.lastName = input.lastName;
-			if (input.email) updateData.email = input.email;
-			if (input.password) {
-				updateData.password = await bcrypt.hash(input.password, 10);
-			}
-			if (input.role) updateData.role = input.role;
-			if (input.phoneNumber !== undefined)
-				updateData.phoneNumber = input.phoneNumber
-					? parseInt(input.phoneNumber)
-					: undefined;
-			if (input.dateOfBirth)
-				updateData.dateOfBirth = new Date(input.dateOfBirth);
-			if (input.gender) updateData.gender = input.gender;
-			if (input.heardFrom) updateData.heardFrom = input.heardFrom;
-			if (input.agreedToTermsAndConditions !== undefined)
-				updateData.agreedToTermsAndConditions =
-					input.agreedToTermsAndConditions;
-			if (input.agreedToPrivacyPolicy !== undefined)
-				updateData.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
-			if (input.agreedToLiabilityWaiver !== undefined)
-				updateData.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
+		// Prevent role changes - role cannot be updated
+		if (input.role) {
+			throw new Error('Role cannot be changed');
+		}
 
-			if (input.membershipDetails) {
-				updateData.membershipDetails = {
-					membership_id: input.membershipDetails.membershipId,
-					physiqueGoalType: input.membershipDetails.physiqueGoalType,
-					fitnessGoal: input.membershipDetails.fitnessGoal,
-					workOutTime: input.membershipDetails.workOutTime,
-					coaches_ids: input.membershipDetails.coachesIds,
-				};
-			}
+		const updateData: any = {};
 
-			if (input.coachDetails) {
-				updateData.coachDetails = {
-					clients_ids: input.coachDetails.clientsIds,
-					sessions_ids: input.coachDetails.sessionsIds,
-					specialization: input.coachDetails.specialization,
-					ratings: input.coachDetails.ratings,
-					yearsOfExperience: input.coachDetails.yearsOfExperience,
-					moreDetails: input.coachDetails.moreDetails,
-					teachingDate: input.coachDetails.teachingDate,
-					teachingTime: input.coachDetails.teachingTime,
-					clientLimit: input.coachDetails.clientLimit || 999,
-				};
-			}
+		if (input.firstName !== undefined) updateData.firstName = input.firstName;
+		if (input.lastName !== undefined) updateData.lastName = input.lastName;
+		if (input.email !== undefined) updateData.email = input.email;
+		if (input.password) {
+			updateData.password = await bcrypt.hash(input.password, 10);
+		}
+		if (input.phoneNumber !== undefined)
+			updateData.phoneNumber = input.phoneNumber
+				? parseInt(input.phoneNumber)
+				: undefined;
+		if (input.dateOfBirth !== undefined)
+			updateData.dateOfBirth = input.dateOfBirth
+				? new Date(input.dateOfBirth)
+				: undefined;
+		if (input.gender !== undefined) updateData.gender = input.gender;
+		if (input.heardFrom !== undefined) updateData.heardFrom = input.heardFrom;
+		if (input.agreedToTermsAndConditions !== undefined)
+			updateData.agreedToTermsAndConditions =
+				input.agreedToTermsAndConditions;
+		if (input.agreedToPrivacyPolicy !== undefined)
+			updateData.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
+		if (input.agreedToLiabilityWaiver !== undefined)
+			updateData.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
 
-			const user = await User.findByIdAndUpdate(id, updateData, {
-				new: true,
-			}).lean();
-			if (!user) {
-				throw new Error('User not found');
-			}
+		if (input.membershipDetails !== undefined) {
+			updateData.membershipDetails = {};
+			if (input.membershipDetails.membershipId !== undefined)
+				updateData.membershipDetails.membership_id = input.membershipDetails.membershipId;
+			if (input.membershipDetails.physiqueGoalType !== undefined)
+				updateData.membershipDetails.physiqueGoalType = input.membershipDetails.physiqueGoalType;
+			if (input.membershipDetails.fitnessGoal !== undefined)
+				updateData.membershipDetails.fitnessGoal = input.membershipDetails.fitnessGoal;
+			if (input.membershipDetails.workOutTime !== undefined)
+				updateData.membershipDetails.workOutTime = input.membershipDetails.workOutTime;
+			if (input.membershipDetails.coachesIds !== undefined)
+				updateData.membershipDetails.coaches_ids = input.membershipDetails.coachesIds;
+		}
 
-			return mapUserToGraphQL(user as any);
-		},
-		deleteUser: async (_, { id }, context) => {
-			// Check if user is authenticated and can delete this user
-			if (!context.auth.user) {
-				throw new Error('Unauthorized');
-			}
+		if (input.coachDetails !== undefined) {
+			updateData.coachDetails = {};
+			if (input.coachDetails.clientsIds !== undefined)
+				updateData.coachDetails.clients_ids = input.coachDetails.clientsIds;
+			if (input.coachDetails.sessionsIds !== undefined)
+				updateData.coachDetails.sessions_ids = input.coachDetails.sessionsIds;
+			if (input.coachDetails.specialization !== undefined)
+				updateData.coachDetails.specialization = input.coachDetails.specialization;
+			if (input.coachDetails.ratings !== undefined)
+				updateData.coachDetails.ratings = input.coachDetails.ratings;
+			if (input.coachDetails.yearsOfExperience !== undefined)
+				updateData.coachDetails.yearsOfExperience = input.coachDetails.yearsOfExperience;
+			if (input.coachDetails.moreDetails !== undefined)
+				updateData.coachDetails.moreDetails = input.coachDetails.moreDetails;
+			if (input.coachDetails.teachingDate !== undefined)
+				updateData.coachDetails.teachingDate = input.coachDetails.teachingDate;
+			if (input.coachDetails.teachingTime !== undefined)
+				updateData.coachDetails.teachingTime = input.coachDetails.teachingTime;
+			if (input.coachDetails.clientLimit !== undefined)
+				updateData.coachDetails.clientLimit = input.coachDetails.clientLimit;
+		}
 
-			if (context.auth.user.id !== id && context.auth.user.role !== 'admin') {
-				throw new Error('Unauthorized to delete this user');
-			}
+		const user = await User.findByIdAndUpdate(id, updateData, {
+			new: true,
+		}).lean();
+		if (!user) {
+			throw new Error('User not found');
+		}
 
-			const user = await User.findByIdAndDelete(id);
-			return !!user;
-		},
+		return mapUserToGraphQL(user as any);
+	},
+	deleteUser: async (_, { id }, context) => {
+		// Check if user is authenticated and can delete this user
+		const userId = context.auth.user?.id;
+		const userRole = context.auth.user?.role;
+
+		if (!userId) {
+			throw new Error('Unauthorized: Please log in');
+		}
+
+		if (userId !== id && userRole !== 'admin') {
+			throw new Error('Unauthorized: You can only delete your own account');
+		}
+
+		const user = await User.findByIdAndDelete(id);
+		return !!user;
+	},
 	},
 };
 

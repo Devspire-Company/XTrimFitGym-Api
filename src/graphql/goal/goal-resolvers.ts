@@ -1,13 +1,10 @@
 import Goal from '../../database/models/goal/goal-schema.js';
 import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import User from '../../database/models/user/user-schema.js';
-import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
+import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
-interface Context {
-	userId?: string;
-	userRole?: string;
-}
+type Context = IAuthContext;
 
 const mapGoalToGraphQL = (goal: any) => {
 	return {
@@ -26,15 +23,32 @@ const mapGoalToGraphQL = (goal: any) => {
 	};
 };
 
+// Map GraphQL enum values (MUSCLE_BUILDING) to Mongoose schema enum values ('Muscle building')
 const normalizeGoalType = (goalType: string): string => {
-	return goalType.replace(/_/g, ' ').replace(/\b\w/g, (l) => {
-		const first = l.toUpperCase();
-		const rest = goalType
-			.replace(/_/g, ' ')
-			.substring(1)
-			.toLowerCase();
-		return first + rest;
-	});
+	const mapping: Record<string, string> = {
+		WEIGHT_LOSS: 'Weight loss',
+		MUSCLE_BUILDING: 'Muscle building',
+		GENERAL_FITNESS: 'General fitness',
+		STRENGTH_TRAINING: 'Strength training',
+		ENDURANCE: 'Endurance',
+		FLEXIBILITY: 'Flexibility',
+		ATHLETIC_PERFORMANCE: 'Athletic performance',
+		REHABILITATION: 'Rehabilitation',
+	};
+
+	// If it's already in the correct format, return it
+	if (mapping[goalType]) {
+		return mapping[goalType];
+	}
+
+	// Fallback: try to convert from snake_case to Title Case
+	// MUSCLE_BUILDING -> Muscle building
+	const words = goalType.toLowerCase().split('_');
+	const titleCase = words
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ');
+
+	return titleCase;
 };
 
 export default {
@@ -45,7 +59,9 @@ export default {
 			context: Context
 		) => {
 			// Authorization: Only client or admin can view goals
-			if (context.userId !== clientId && context.userRole !== 'admin') {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== clientId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only view your own goals');
 			}
 
@@ -65,7 +81,9 @@ export default {
 		},
 
 		getGoal: async (_: any, { id }: { id: string }, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -78,10 +96,7 @@ export default {
 			}
 
 			// Authorization: Only client or admin can view goal
-			if (
-				goal.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (goal.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You cannot view this goal');
 			}
 
@@ -93,9 +108,24 @@ export default {
 			{ clientId, goalId }: { clientId: string; goalId?: string },
 			context: Context
 		) => {
-			// Authorization: Only client or admin can view weight progress
-			if (context.userId !== clientId && context.userRole !== 'admin') {
-				throw new Error('Unauthorized: You can only view your own progress');
+			// Authorization: Client, their coach, or admin can view weight progress
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== clientId && userRole !== 'admin') {
+				// Check if the requester is a coach and the client is their client
+				if (userRole === 'coach') {
+					const coach = await User.findById(userId).lean();
+					const isClientOfCoach = coach?.coachDetails?.clients_ids?.some(
+						(id: mongoose.Types.ObjectId) => id.toString() === clientId
+					);
+					if (!isClientOfCoach) {
+						throw new Error(
+							'Unauthorized: You can only view progress of your clients'
+						);
+					}
+				} else {
+					throw new Error('Unauthorized: You can only view your own progress');
+				}
 			}
 
 			const query: any = {
@@ -119,37 +149,27 @@ export default {
 	},
 
 	Mutation: {
-		createGoal: async (
-			_: any,
-			{ input }: { input: any },
-			context: Context
-		) => {
+		createGoal: async (_: any, { input }: { input: any }, context: Context) => {
 			// Authorization: Only members/clients can create goals
-			if (context.userRole !== 'member' && context.userRole !== 'admin') {
-				throw new Error('Unauthorized: Only members can create goals');
-			}
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
 
-			if (!context.userId) {
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			// Check if user has active membership
-			if (context.userRole !== 'admin') {
-				const activeMembership = await MembershipTransaction.findOne({
-					client_id: new mongoose.Types.ObjectId(context.userId),
-					status: 'Active',
-					expiresAt: { $gt: new Date() },
-				}).lean();
-
-				if (!activeMembership) {
-					throw new Error(
-						'Active membership required: You must have an active membership to create goals'
-					);
-				}
-			}
+			// Check if user has membership (has membership_id in membershipDetails)
+			// if (userRole !== 'admin') {
+			// 	const user = await User.findById(userId).lean();
+			// 	if (!user?.membershipDetails?.membership_id) {
+			// 		throw new Error(
+			// 			'Active membership required: You must have an active membership to create goals'
+			// 		);
+			// 	}
+			// }
 
 			const goal = new Goal({
-				client_id: new mongoose.Types.ObjectId(context.userId),
+				client_id: new mongoose.Types.ObjectId(userId),
 				goalType: normalizeGoalType(input.goalType),
 				title: input.title,
 				description: input.description || null,
@@ -173,7 +193,9 @@ export default {
 			{ id, input }: { id: string; input: any },
 			context: Context
 		) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -183,10 +205,7 @@ export default {
 			}
 
 			// Authorization: Only client or admin can update goal
-			if (
-				goal.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (goal.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You cannot update this goal');
 			}
 
@@ -201,7 +220,9 @@ export default {
 			if (input.currentWeight !== undefined)
 				updateData.currentWeight = input.currentWeight;
 			if (input.targetDate !== undefined)
-				updateData.targetDate = input.targetDate ? new Date(input.targetDate) : null;
+				updateData.targetDate = input.targetDate
+					? new Date(input.targetDate)
+					: null;
 			if (input.status !== undefined) updateData.status = input.status;
 
 			const updatedGoal = await Goal.findByIdAndUpdate(id, updateData, {
@@ -214,7 +235,9 @@ export default {
 		},
 
 		deleteGoal: async (_: any, { id }: { id: string }, context: Context) => {
-			if (!context.userId) {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
@@ -224,10 +247,7 @@ export default {
 			}
 
 			// Authorization: Only client or admin can delete goal
-			if (
-				goal.client_id.toString() !== context.userId &&
-				context.userRole !== 'admin'
-			) {
+			if (goal.client_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You cannot delete this goal');
 			}
 
@@ -255,4 +275,3 @@ export default {
 		},
 	},
 };
-

@@ -82,6 +82,22 @@ input CreateUserInput {
 	coachDetails: CoachDetailsInput
 }
 
+input UpdateUserInput {
+	firstName: String
+	lastName: String
+	email: String
+	password: String
+	phoneNumber: String
+	dateOfBirth: String
+	gender: String
+	heardFrom: [String]
+	agreedToTermsAndConditions: Boolean
+	agreedToPrivacyPolicy: Boolean
+	agreedToLiabilityWaiver: Boolean
+	membershipDetails: MemberDetailsInput
+	coachDetails: CoachDetailsInput
+}
+
 # Queries
 type Query {
 	getUser(id: ID!): User
@@ -104,6 +120,6 @@ type AuthResponse {
 type Mutation {
 	login(input: LoginInput!): AuthResponse!
 	createUser(input: CreateUserInput!): AuthResponse!
-	updateUser(id: ID!, input: CreateUserInput!): User
+	updateUser(id: ID!, input: UpdateUserInput!): User
 	deleteUser(id: ID!): Boolean
 }
