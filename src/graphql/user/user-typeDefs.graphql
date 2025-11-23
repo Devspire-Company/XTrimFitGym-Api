@@ -10,6 +10,7 @@ type MemberDetails {
 	fitnessGoal: [String!]
 	workOutTime: [String]
 	coachesIds: [ID]
+	hasEnteredDetails: Boolean
 }
 
 type CoachDetails {
@@ -52,6 +53,7 @@ input MemberDetailsInput {
 	fitnessGoal: [String!]
 	workOutTime: [String]
 	coachesIds: [ID]
+	hasEnteredDetails: Boolean
 }
 
 input CoachDetailsInput {
@@ -90,6 +92,7 @@ input UpdateUserInput {
 	lastName: String
 	email: String
 	password: String
+	currentPassword: String
 	phoneNumber: String
 	dateOfBirth: String
 	gender: String

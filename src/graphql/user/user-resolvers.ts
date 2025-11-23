@@ -37,6 +37,7 @@ const mapUserToGraphQL = (
 						user.membershipDetails.coaches_ids?.map(
 							(id: mongoose.Types.ObjectId) => id.toString()
 						) || [],
+					hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
 			  }
 			: null,
 		coachDetails: user.coachDetails
@@ -162,6 +163,7 @@ const userResolvers: Resolvers = {
 							fitnessGoal: membershipDetails.fitnessGoal,
 							workOutTime: membershipDetails.workOutTime,
 							coaches_ids: membershipDetails.coachesIds,
+							hasEnteredDetails: membershipDetails.hasEnteredDetails ?? false,
 					  }
 					: undefined,
 				coachDetails: coachDetails
@@ -202,112 +204,175 @@ const userResolvers: Resolvers = {
 				token, // Return token for React Native (cookies may not work)
 			};
 		},
-	updateUser: async (_, { id, input }, context) => {
-		// Check if user is authenticated and can update this user
-		const userId = context.auth.user?.id;
-		const userRole = context.auth.user?.role;
+		updateUser: async (_, { id, input }, context) => {
+			// Check if user is authenticated and can update this user
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
 
-		if (!userId) {
-			throw new Error('Unauthorized: Please log in');
-		}
+			if (!userId) {
+				throw new Error('Unauthorized: Please log in');
+			}
 
-		if (userId !== id && userRole !== 'admin') {
-			throw new Error('Unauthorized: You can only update your own profile');
-		}
+			if (userId !== id && userRole !== 'admin') {
+				throw new Error('Unauthorized: You can only update your own profile');
+			}
 
-		// Prevent role changes - role cannot be updated
-		if (input.role) {
-			throw new Error('Role cannot be changed');
-		}
+			// Note: Role cannot be updated (not in UpdateUserInput)
 
-		const updateData: any = {};
+			// Get the current user to verify password and check email uniqueness
+			const currentUser = await User.findById(id);
+			if (!currentUser) {
+				throw new Error('User not found');
+			}
 
-		if (input.firstName !== undefined) updateData.firstName = input.firstName;
-		if (input.middleName !== undefined) updateData.middleName = input.middleName;
-		if (input.lastName !== undefined) updateData.lastName = input.lastName;
-		if (input.email !== undefined) updateData.email = input.email;
-		if (input.password) {
-			updateData.password = await bcrypt.hash(input.password, 10);
-		}
-		if (input.phoneNumber !== undefined)
-			updateData.phoneNumber = input.phoneNumber
-				? parseInt(input.phoneNumber)
-				: undefined;
-		if (input.dateOfBirth !== undefined)
-			updateData.dateOfBirth = input.dateOfBirth
-				? new Date(input.dateOfBirth)
-				: undefined;
-		if (input.gender !== undefined) updateData.gender = input.gender;
-		if (input.heardFrom !== undefined) updateData.heardFrom = input.heardFrom;
-		if (input.agreedToTermsAndConditions !== undefined)
-			updateData.agreedToTermsAndConditions =
-				input.agreedToTermsAndConditions;
-		if (input.agreedToPrivacyPolicy !== undefined)
-			updateData.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
-		if (input.agreedToLiabilityWaiver !== undefined)
-			updateData.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
+			// Check email uniqueness if email is being changed
+			if (input.email !== undefined && input.email !== currentUser.email) {
+				const existingUser = await User.findOne({ email: input.email });
+				if (existingUser && existingUser._id.toString() !== id) {
+					throw new Error('Email is already in use');
+				}
+			}
 
-		if (input.membershipDetails !== undefined) {
-			updateData.membershipDetails = {};
-			if (input.membershipDetails.membershipId !== undefined)
-				updateData.membershipDetails.membership_id = input.membershipDetails.membershipId;
-			if (input.membershipDetails.physiqueGoalType !== undefined)
-				updateData.membershipDetails.physiqueGoalType = input.membershipDetails.physiqueGoalType;
-			if (input.membershipDetails.fitnessGoal !== undefined)
-				updateData.membershipDetails.fitnessGoal = input.membershipDetails.fitnessGoal;
-			if (input.membershipDetails.workOutTime !== undefined)
-				updateData.membershipDetails.workOutTime = input.membershipDetails.workOutTime;
-			if (input.membershipDetails.coachesIds !== undefined)
-				updateData.membershipDetails.coaches_ids = input.membershipDetails.coachesIds;
-		}
+			// Verify current password if password is being changed
+			if (input.password) {
+				if (!input.currentPassword) {
+					throw new Error('Current password is required to change password');
+				}
+				const isPasswordValid = await bcrypt.compare(
+					input.currentPassword,
+					currentUser.password
+				);
+				if (!isPasswordValid) {
+					throw new Error('Current password is incorrect');
+				}
+			}
 
-		if (input.coachDetails !== undefined) {
-			updateData.coachDetails = {};
-			if (input.coachDetails.clientsIds !== undefined)
-				updateData.coachDetails.clients_ids = input.coachDetails.clientsIds;
-			if (input.coachDetails.sessionsIds !== undefined)
-				updateData.coachDetails.sessions_ids = input.coachDetails.sessionsIds;
-			if (input.coachDetails.specialization !== undefined)
-				updateData.coachDetails.specialization = input.coachDetails.specialization;
-			if (input.coachDetails.ratings !== undefined)
-				updateData.coachDetails.ratings = input.coachDetails.ratings;
-			if (input.coachDetails.yearsOfExperience !== undefined)
-				updateData.coachDetails.yearsOfExperience = input.coachDetails.yearsOfExperience;
-			if (input.coachDetails.moreDetails !== undefined)
-				updateData.coachDetails.moreDetails = input.coachDetails.moreDetails;
-			if (input.coachDetails.teachingDate !== undefined)
-				updateData.coachDetails.teachingDate = input.coachDetails.teachingDate;
-			if (input.coachDetails.teachingTime !== undefined)
-				updateData.coachDetails.teachingTime = input.coachDetails.teachingTime;
-			if (input.coachDetails.clientLimit !== undefined)
-				updateData.coachDetails.clientLimit = input.coachDetails.clientLimit;
-		}
+			const updateData: any = {};
 
-		const user = await User.findByIdAndUpdate(id, updateData, {
-			new: true,
-		}).lean();
-		if (!user) {
-			throw new Error('User not found');
-		}
+			if (input.firstName !== undefined) updateData.firstName = input.firstName;
+			if (input.middleName !== undefined)
+				updateData.middleName = input.middleName;
+			if (input.lastName !== undefined) updateData.lastName = input.lastName;
+			if (input.email !== undefined) updateData.email = input.email;
+			if (input.password) {
+				updateData.password = await bcrypt.hash(input.password, 10);
+			}
+			if (input.phoneNumber !== undefined)
+				updateData.phoneNumber = input.phoneNumber
+					? parseInt(input.phoneNumber)
+					: undefined;
+			if (input.dateOfBirth !== undefined)
+				updateData.dateOfBirth = input.dateOfBirth
+					? new Date(input.dateOfBirth)
+					: undefined;
+			if (input.gender !== undefined) updateData.gender = input.gender;
+			if (input.heardFrom !== undefined) updateData.heardFrom = input.heardFrom;
+			if (input.agreedToTermsAndConditions !== undefined)
+				updateData.agreedToTermsAndConditions =
+					input.agreedToTermsAndConditions;
+			if (input.agreedToPrivacyPolicy !== undefined)
+				updateData.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
+			if (input.agreedToLiabilityWaiver !== undefined)
+				updateData.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
 
-		return mapUserToGraphQL(user as any);
-	},
-	deleteUser: async (_, { id }, context) => {
-		// Check if user is authenticated and can delete this user
-		const userId = context.auth.user?.id;
-		const userRole = context.auth.user?.role;
+			if (
+				input.membershipDetails !== undefined &&
+				input.membershipDetails !== null
+			) {
+				// Preserve existing membershipDetails fields from current user
+				const currentMembershipDetails = currentUser.membershipDetails || {};
 
-		if (!userId) {
-			throw new Error('Unauthorized: Please log in');
-		}
+				updateData.membershipDetails = {
+					...currentMembershipDetails, // Preserve existing fields
+				};
 
-		if (userId !== id && userRole !== 'admin') {
-			throw new Error('Unauthorized: You can only delete your own account');
-		}
+				if (input.membershipDetails.membershipId !== undefined)
+					updateData.membershipDetails.membership_id =
+						input.membershipDetails.membershipId;
+				if (input.membershipDetails.physiqueGoalType !== undefined)
+					updateData.membershipDetails.physiqueGoalType =
+						input.membershipDetails.physiqueGoalType;
+				if (input.membershipDetails.fitnessGoal !== undefined)
+					updateData.membershipDetails.fitnessGoal =
+						input.membershipDetails.fitnessGoal;
+				if (input.membershipDetails.workOutTime !== undefined)
+					updateData.membershipDetails.workOutTime =
+						input.membershipDetails.workOutTime;
+				if (input.membershipDetails.coachesIds !== undefined)
+					updateData.membershipDetails.coaches_ids =
+						input.membershipDetails.coachesIds;
+				if (input.membershipDetails.hasEnteredDetails !== undefined)
+					updateData.membershipDetails.hasEnteredDetails =
+						input.membershipDetails.hasEnteredDetails;
+				// Ensure hasEnteredDetails is preserved if not explicitly set
+				if (input.membershipDetails.hasEnteredDetails === undefined) {
+					updateData.membershipDetails.hasEnteredDetails =
+						currentMembershipDetails.hasEnteredDetails ?? false;
+				}
+			}
 
-		const user = await User.findByIdAndDelete(id);
-		return !!user;
-	},
+			if (input.coachDetails !== undefined && input.coachDetails !== null) {
+				// Preserve existing coachDetails fields from current user
+				const currentCoachDetails = currentUser.coachDetails || {};
+
+				// Start with existing coachDetails to preserve all fields
+				updateData.coachDetails = {
+					...currentCoachDetails, // Preserve existing fields including clientsIds, sessionsIds, ratings
+				};
+
+				// Only update fields that are explicitly provided in the input
+				// System-managed fields (clientsIds, sessionsIds, ratings) should not be updated via profile edit
+				if (input.coachDetails.specialization !== undefined)
+					updateData.coachDetails.specialization =
+						input.coachDetails.specialization;
+				if (input.coachDetails.yearsOfExperience !== undefined)
+					updateData.coachDetails.yearsOfExperience =
+						input.coachDetails.yearsOfExperience;
+				// Allow clearing moreDetails by accepting null or empty string
+				if (input.coachDetails.moreDetails !== undefined) {
+					updateData.coachDetails.moreDetails = 
+						input.coachDetails.moreDetails === null || input.coachDetails.moreDetails === ''
+							? undefined 
+							: input.coachDetails.moreDetails;
+				}
+				if (input.coachDetails.teachingDate !== undefined)
+					updateData.coachDetails.teachingDate =
+						input.coachDetails.teachingDate;
+				if (input.coachDetails.teachingTime !== undefined)
+					updateData.coachDetails.teachingTime =
+						input.coachDetails.teachingTime;
+				if (input.coachDetails.clientLimit !== undefined)
+					updateData.coachDetails.clientLimit = input.coachDetails.clientLimit;
+				
+				// Note: clientsIds, sessionsIds, and ratings are system-managed
+				// and should not be updated through profile edits
+			}
+
+			const user = await User.findByIdAndUpdate(id, updateData, {
+				new: true,
+			}).lean();
+			if (!user) {
+				throw new Error('User not found');
+			}
+
+			return mapUserToGraphQL(user as any);
+		},
+		deleteUser: async (_, { id }, context) => {
+			// Check if user is authenticated and can delete this user
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+
+			if (!userId) {
+				throw new Error('Unauthorized: Please log in');
+			}
+
+			if (userId !== id && userRole !== 'admin') {
+				throw new Error('Unauthorized: You can only delete your own account');
+			}
+
+			const user = await User.findByIdAndDelete(id);
+			return !!user;
+		},
 	},
 };
 

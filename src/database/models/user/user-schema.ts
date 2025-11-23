@@ -30,6 +30,7 @@ export interface IUser {
 		fitnessGoal?: FitnessGoalType[];
 		workOutTime?: string[];
 		coaches_ids?: mongoose.Types.ObjectId[];
+		hasEnteredDetails?: boolean;
 	};
 	coachDetails?: {
 		clients_ids?: mongoose.Types.ObjectId[];
@@ -69,6 +70,10 @@ const memberSchema = new Schema({
 	coaches_ids: {
 		type: [mongoose.SchemaTypes.ObjectId],
 		ref: 'User',
+	},
+	hasEnteredDetails: {
+		type: Boolean,
+		default: false,
 	},
 });
 

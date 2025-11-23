@@ -179,6 +179,7 @@ export type MemberDetails = {
   __typename?: 'MemberDetails';
   coachesIds?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
   fitnessGoal?: Maybe<Array<Scalars['String']['output']>>;
+  hasEnteredDetails?: Maybe<Scalars['Boolean']['output']>;
   membershipId?: Maybe<Scalars['ID']['output']>;
   membershipTransaction?: Maybe<MembershipTransaction>;
   physiqueGoalType: Scalars['String']['output'];
@@ -188,6 +189,7 @@ export type MemberDetails = {
 export type MemberDetailsInput = {
   coachesIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
   fitnessGoal?: InputMaybe<Array<Scalars['String']['input']>>;
+  hasEnteredDetails?: InputMaybe<Scalars['Boolean']['input']>;
   membershipId?: InputMaybe<Scalars['ID']['input']>;
   physiqueGoalType: Scalars['String']['input'];
   workOutTime?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
@@ -543,6 +545,7 @@ export type UpdateUserInput = {
   agreedToPrivacyPolicy?: InputMaybe<Scalars['Boolean']['input']>;
   agreedToTermsAndConditions?: InputMaybe<Scalars['Boolean']['input']>;
   coachDetails?: InputMaybe<CoachDetailsInput>;
+  currentPassword?: InputMaybe<Scalars['String']['input']>;
   dateOfBirth?: InputMaybe<Scalars['String']['input']>;
   email?: InputMaybe<Scalars['String']['input']>;
   firstName?: InputMaybe<Scalars['String']['input']>;
@@ -785,6 +788,7 @@ export type GoalResolvers<ContextType = IAuthContext, ParentType extends Resolve
 export type MemberDetailsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['MemberDetails'] = ResolversParentTypes['MemberDetails']> = {
   coachesIds?: Resolver<Maybe<Array<Maybe<ResolversTypes['ID']>>>, ParentType, ContextType>;
   fitnessGoal?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
+  hasEnteredDetails?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   membershipId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   membershipTransaction?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType>;
   physiqueGoalType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
