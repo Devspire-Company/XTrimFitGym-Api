@@ -124,6 +124,7 @@ export type CreateUserInput = {
   heardFrom?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
   lastName: Scalars['String']['input'];
   membershipDetails?: InputMaybe<MemberDetailsInput>;
+  middleName?: InputMaybe<Scalars['String']['input']>;
   password: Scalars['String']['input'];
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
   role: RoleType;
@@ -549,6 +550,7 @@ export type UpdateUserInput = {
   heardFrom?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
   lastName?: InputMaybe<Scalars['String']['input']>;
   membershipDetails?: InputMaybe<MemberDetailsInput>;
+  middleName?: InputMaybe<Scalars['String']['input']>;
   password?: InputMaybe<Scalars['String']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
 };
@@ -569,6 +571,7 @@ export type User = {
   id: Scalars['ID']['output'];
   lastName: Scalars['String']['output'];
   membershipDetails?: Maybe<MemberDetails>;
+  middleName?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
   role: RoleType;
   updatedAt?: Maybe<Scalars['String']['output']>;
@@ -908,6 +911,7 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   membershipDetails?: Resolver<Maybe<ResolversTypes['MemberDetails']>, ParentType, ContextType>;
+  middleName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   role?: Resolver<ResolversTypes['RoleType'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

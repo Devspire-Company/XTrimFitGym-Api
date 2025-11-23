@@ -16,6 +16,7 @@ const mapUserToGraphQL = (
 	return {
 		id: user._id.toString(),
 		firstName: user.firstName,
+		middleName: user.middleName || null,
 		lastName: user.lastName,
 		email: user.email,
 		role: user.role as any, // Type assertion needed due to enum mismatch
@@ -114,6 +115,7 @@ const userResolvers: Resolvers = {
 		createUser: async (_, { input }, context) => {
 			const {
 				firstName,
+				middleName,
 				lastName,
 				email,
 				password,
@@ -141,6 +143,7 @@ const userResolvers: Resolvers = {
 			// Create user
 			const user = new User({
 				firstName,
+				middleName,
 				lastName,
 				email,
 				password: hashedPassword,
@@ -220,6 +223,7 @@ const userResolvers: Resolvers = {
 		const updateData: any = {};
 
 		if (input.firstName !== undefined) updateData.firstName = input.firstName;
+		if (input.middleName !== undefined) updateData.middleName = input.middleName;
 		if (input.lastName !== undefined) updateData.lastName = input.lastName;
 		if (input.email !== undefined) updateData.email = input.email;
 		if (input.password) {

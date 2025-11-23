@@ -12,6 +12,7 @@ export type FitnessGoalType =
 export interface IUser {
 	_id?: mongoose.Types.ObjectId;
 	firstName: string;
+	middleName?: string;
 	lastName: string;
 	email: string;
 	password: string;
@@ -109,6 +110,9 @@ const userSchema = new Schema(
 		firstName: {
 			type: String,
 			required: true,
+		},
+		middleName: {
+			type: String,
 		},
 		lastName: {
 			type: String,
