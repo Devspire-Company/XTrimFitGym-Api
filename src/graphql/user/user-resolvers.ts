@@ -213,7 +213,7 @@ const userResolvers: Resolvers = {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			if (userId !== id && userRole !== 'admin') {
+			if (userId !== id) {
 				throw new Error('Unauthorized: You can only update your own profile');
 			}
 
@@ -330,9 +330,10 @@ const userResolvers: Resolvers = {
 						input.coachDetails.yearsOfExperience;
 				// Allow clearing moreDetails by accepting null or empty string
 				if (input.coachDetails.moreDetails !== undefined) {
-					updateData.coachDetails.moreDetails = 
-						input.coachDetails.moreDetails === null || input.coachDetails.moreDetails === ''
-							? undefined 
+					updateData.coachDetails.moreDetails =
+						input.coachDetails.moreDetails === null ||
+						input.coachDetails.moreDetails === ''
+							? undefined
 							: input.coachDetails.moreDetails;
 				}
 				if (input.coachDetails.teachingDate !== undefined)
@@ -343,7 +344,7 @@ const userResolvers: Resolvers = {
 						input.coachDetails.teachingTime;
 				if (input.coachDetails.clientLimit !== undefined)
 					updateData.coachDetails.clientLimit = input.coachDetails.clientLimit;
-				
+
 				// Note: clientsIds, sessionsIds, and ratings are system-managed
 				// and should not be updated through profile edits
 			}
