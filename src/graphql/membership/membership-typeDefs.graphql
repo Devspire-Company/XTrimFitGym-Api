@@ -67,6 +67,15 @@ input PurchaseMembershipInput {
 	membershipId: ID!
 }
 
+input UpdateMembershipInput {
+	name: String
+	monthlyPrice: Float
+	description: String
+	features: [String!]
+	status: MembershipStatus
+	durationType: DurationType
+}
+
 # Extend Query type
 extend type Query {
 	# Get all available memberships
@@ -83,6 +92,10 @@ extend type Query {
 extend type Mutation {
 	# Create a new membership plan (admin only)
 	createMembership(input: CreateMembershipInput!): Membership!
+	# Update a membership plan (admin only)
+	updateMembership(id: ID!, input: UpdateMembershipInput!): Membership!
+	# Delete a membership plan (admin only)
+	deleteMembership(id: ID!): Boolean!
 	# Purchase/upgrade membership
 	purchaseMembership(input: PurchaseMembershipInput!): MembershipTransaction!
 	# Cancel membership

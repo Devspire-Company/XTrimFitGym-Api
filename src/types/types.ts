@@ -243,11 +243,13 @@ export type Mutation = {
   createSession: Session;
   createUser: AuthResponse;
   deleteGoal: Scalars['Boolean']['output'];
+  deleteMembership: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
   updateCoachRequest: CoachRequest;
   updateGoal: Goal;
+  updateMembership: Membership;
   updateSession: Session;
   updateUser?: Maybe<User>;
 };
@@ -313,6 +315,11 @@ export type MutationDeleteGoalArgs = {
 };
 
 
+export type MutationDeleteMembershipArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteUserArgs = {
   id: Scalars['ID']['input'];
 };
@@ -337,6 +344,12 @@ export type MutationUpdateCoachRequestArgs = {
 export type MutationUpdateGoalArgs = {
   id: Scalars['ID']['input'];
   input: UpdateGoalInput;
+};
+
+
+export type MutationUpdateMembershipArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateMembershipInput;
 };
 
 
@@ -529,6 +542,15 @@ export type UpdateGoalInput = {
   title?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type UpdateMembershipInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  durationType?: InputMaybe<DurationType>;
+  features?: InputMaybe<Array<Scalars['String']['input']>>;
+  monthlyPrice?: InputMaybe<Scalars['Float']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<MembershipStatus>;
+};
+
 export type UpdateSessionInput = {
   date?: InputMaybe<Scalars['String']['input']>;
   endTime?: InputMaybe<Scalars['String']['input']>;
@@ -698,6 +720,7 @@ export type ResolversTypes = {
   TransactionStatus: ResolverTypeWrapper<Partial<TransactionStatus>>;
   UpdateCoachRequestInput: ResolverTypeWrapper<Partial<UpdateCoachRequestInput>>;
   UpdateGoalInput: ResolverTypeWrapper<Partial<UpdateGoalInput>>;
+  UpdateMembershipInput: ResolverTypeWrapper<Partial<UpdateMembershipInput>>;
   UpdateSessionInput: ResolverTypeWrapper<Partial<UpdateSessionInput>>;
   UpdateUserInput: ResolverTypeWrapper<Partial<UpdateUserInput>>;
   User: ResolverTypeWrapper<Partial<User>>;
@@ -735,6 +758,7 @@ export type ResolversParentTypes = {
   String: Partial<Scalars['String']['output']>;
   UpdateCoachRequestInput: Partial<UpdateCoachRequestInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
+  UpdateMembershipInput: Partial<UpdateMembershipInput>;
   UpdateSessionInput: Partial<UpdateSessionInput>;
   UpdateUserInput: Partial<UpdateUserInput>;
   User: Partial<User>;
@@ -834,11 +858,13 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   createSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionArgs, 'input'>>;
   createUser?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationCreateUserArgs, 'input'>>;
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
+  deleteMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteMembershipArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   updateCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationUpdateCoachRequestArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
+  updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;
   updateSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationUpdateSessionArgs, 'id' | 'input'>>;
   updateUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationUpdateUserArgs, 'id' | 'input'>>;
 };

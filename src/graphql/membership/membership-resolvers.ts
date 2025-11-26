@@ -153,6 +153,70 @@ export default {
 			return mapMembershipToGraphQL(membership);
 		},
 
+		updateMembership: async (
+			_: any,
+			{ id, input }: { id: string; input: any },
+			context: Context
+		) => {
+			// Authorization: Only admin can update memberships
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'admin') {
+				throw new Error('Unauthorized: Only admins can update memberships');
+			}
+
+			const updateData: any = {};
+			if (input.name !== undefined) updateData.name = input.name;
+			if (input.monthlyPrice !== undefined)
+				updateData.monthlyPrice = input.monthlyPrice;
+			if (input.description !== undefined)
+				updateData.description = input.description;
+			if (input.features !== undefined) updateData.features = input.features;
+			if (input.status !== undefined)
+				updateData.status =
+					input.status.charAt(0) + input.status.slice(1).toLowerCase();
+			if (input.durationType !== undefined)
+				updateData.durationType =
+					input.durationType.charAt(0) + input.durationType.slice(1).toLowerCase();
+
+			const membership = await Membership.findByIdAndUpdate(id, updateData, {
+				new: true,
+			}).lean();
+
+			if (!membership) {
+				throw new Error('Membership not found');
+			}
+
+			return mapMembershipToGraphQL(membership);
+		},
+
+		deleteMembership: async (_: any, { id }: { id: string }, context: Context) => {
+			// Authorization: Only admin can delete memberships
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'admin') {
+				throw new Error('Unauthorized: Only admins can delete memberships');
+			}
+
+			// Check if any active transactions use this membership
+			const activeTransactions = await MembershipTransaction.countDocuments({
+				membership_id: new mongoose.Types.ObjectId(id),
+				status: 'Active',
+			});
+
+			if (activeTransactions > 0) {
+				throw new Error(
+					'Cannot delete membership plan with active subscriptions. Please set it to Inactive instead.'
+				);
+			}
+
+			const deleted = await Membership.findByIdAndDelete(id);
+
+			if (!deleted) {
+				throw new Error('Membership not found');
+			}
+
+			return true;
+		},
+
 		purchaseMembership: async (
 			_: any,
 			{ input }: { input: any },
