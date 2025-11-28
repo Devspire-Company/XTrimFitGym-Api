@@ -1,1 +1,352 @@
-export default {};
+import Membership from '../../database/models/membership/membership-shema.js';
+import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
+import User from '../../database/models/user/user-schema.js';
+import mongoose from 'mongoose';
+const mapMembershipToGraphQL = (membership) => {
+    return {
+        id: membership._id.toString(),
+        name: membership.name,
+        monthlyPrice: membership.monthlyPrice,
+        description: membership.description || null,
+        features: membership.features || [],
+        status: membership.status?.toUpperCase() || 'INACTIVE',
+        durationType: membership.durationType?.toUpperCase() || 'MONTHLY',
+        createdAt: membership.createdAt?.toISOString(),
+        updatedAt: membership.updatedAt?.toISOString(),
+    };
+};
+const mapTransactionToGraphQL = (transaction) => {
+    return {
+        id: transaction._id.toString(),
+        clientId: transaction.client_id.toString(),
+        client: transaction.client_id,
+        membershipId: transaction.membership_id.toString(),
+        membership: transaction.membership_id,
+        priceAtPurchase: transaction.priceAtPurchase,
+        startedAt: transaction.startedAt?.toISOString(),
+        expiresAt: transaction.expiresAt?.toISOString(),
+        status: transaction.status?.toUpperCase() || 'ACTIVE',
+        createdAt: transaction.createdAt?.toISOString(),
+        updatedAt: transaction.updatedAt?.toISOString(),
+    };
+};
+export default {
+    Query: {
+        getMemberships: async (_, { status }, context) => {
+            const query = {};
+            if (status) {
+                query.status = status.charAt(0) + status.slice(1).toLowerCase();
+            }
+            const memberships = await Membership.find(query)
+                .sort({ monthlyPrice: 1 })
+                .lean();
+            return memberships.map(mapMembershipToGraphQL);
+        },
+        getMembership: async (_, { id }, context) => {
+            const membership = await Membership.findById(id).lean();
+            if (!membership) {
+                throw new Error('Membership not found');
+            }
+            return mapMembershipToGraphQL(membership);
+        },
+        getCurrentMembership: async (_, __, context) => {
+            const userId = context.auth.user?.id;
+            if (!userId) {
+                throw new Error('Unauthorized: Please log in');
+            }
+            const transaction = await MembershipTransaction.findOne({
+                client_id: new mongoose.Types.ObjectId(userId),
+                status: 'Active',
+            })
+                .populate('membership_id')
+                .populate('client_id', 'firstName lastName email')
+                .sort({ createdAt: -1 })
+                .lean();
+            if (!transaction) {
+                return null;
+            }
+            // Check if expired
+            if (new Date(transaction.expiresAt) < new Date()) {
+                await MembershipTransaction.findByIdAndUpdate(transaction._id, {
+                    status: 'Expired',
+                });
+                return null;
+            }
+            return mapTransactionToGraphQL(transaction);
+        },
+        getMembershipTransaction: async (_, { id }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId) {
+                throw new Error('Unauthorized: Please log in');
+            }
+            const transaction = await MembershipTransaction.findById(id)
+                .populate('membership_id')
+                .populate('client_id', 'firstName lastName email')
+                .lean();
+            if (!transaction) {
+                throw new Error('Membership transaction not found');
+            }
+            // Authorization: Only client or admin can view transaction
+            if (transaction.client_id.toString() !== userId && userRole !== 'admin') {
+                throw new Error('Unauthorized: You cannot view this transaction');
+            }
+            return mapTransactionToGraphQL(transaction);
+        },
+    },
+    Mutation: {
+        createMembership: async (_, { input }, context) => {
+            // Authorization: Only admin can create memberships
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can create memberships');
+            }
+            const membership = new Membership({
+                name: input.name,
+                monthlyPrice: input.monthlyPrice,
+                description: input.description || null,
+                features: input.features || [],
+                status: input.status.charAt(0) + input.status.slice(1).toLowerCase() || 'Active',
+                durationType: input.durationType.charAt(0) +
+                    input.durationType.slice(1).toLowerCase() || 'Monthly',
+            });
+            await membership.save();
+            return mapMembershipToGraphQL(membership);
+        },
+        updateMembership: async (_, { id, input }, context) => {
+            // Authorization: Only admin can update memberships
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can update memberships');
+            }
+            const updateData = {};
+            if (input.name !== undefined)
+                updateData.name = input.name;
+            if (input.monthlyPrice !== undefined)
+                updateData.monthlyPrice = input.monthlyPrice;
+            if (input.description !== undefined)
+                updateData.description = input.description;
+            if (input.features !== undefined)
+                updateData.features = input.features;
+            if (input.status !== undefined)
+                updateData.status =
+                    input.status.charAt(0) + input.status.slice(1).toLowerCase();
+            if (input.durationType !== undefined)
+                updateData.durationType =
+                    input.durationType.charAt(0) + input.durationType.slice(1).toLowerCase();
+            const membership = await Membership.findByIdAndUpdate(id, updateData, {
+                new: true,
+            }).lean();
+            if (!membership) {
+                throw new Error('Membership not found');
+            }
+            return mapMembershipToGraphQL(membership);
+        },
+        deleteMembership: async (_, { id }, context) => {
+            // Authorization: Only admin can delete memberships
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can delete memberships');
+            }
+            // Check if any active transactions use this membership
+            const activeTransactions = await MembershipTransaction.countDocuments({
+                membership_id: new mongoose.Types.ObjectId(id),
+                status: 'Active',
+            });
+            if (activeTransactions > 0) {
+                throw new Error('Cannot delete membership plan with active subscriptions. Please set it to Inactive instead.');
+            }
+            const deleted = await Membership.findByIdAndDelete(id);
+            if (!deleted) {
+                throw new Error('Membership not found');
+            }
+            return true;
+        },
+        purchaseMembership: async (_, { input }, context) => {
+            // Authorization: Only members can purchase memberships
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'member' && userRole !== 'admin') {
+                throw new Error('Unauthorized: Only members can purchase memberships');
+            }
+            if (!userId) {
+                throw new Error('Unauthorized: Please log in');
+            }
+            const membership = await Membership.findById(input.membershipId).lean();
+            if (!membership) {
+                throw new Error('Membership not found');
+            }
+            if (membership.status !== 'Active') {
+                throw new Error('This membership plan is not available');
+            }
+            // Cancel any existing active memberships
+            await MembershipTransaction.updateMany({
+                client_id: new mongoose.Types.ObjectId(userId),
+                status: 'Active',
+            }, {
+                status: 'Canceled',
+            });
+            // Calculate expiry date based on duration type
+            const now = new Date();
+            let expiresAt = new Date(now);
+            switch (membership.durationType) {
+                case 'Monthly':
+                    expiresAt.setMonth(expiresAt.getMonth() + 1);
+                    break;
+                case 'Quarterly':
+                    expiresAt.setMonth(expiresAt.getMonth() + 3);
+                    break;
+                case 'Yearly':
+                    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+                    break;
+            }
+            const transaction = new MembershipTransaction({
+                client_id: new mongoose.Types.ObjectId(userId),
+                membership_id: new mongoose.Types.ObjectId(input.membershipId),
+                priceAtPurchase: membership.monthlyPrice,
+                startedAt: now,
+                expiresAt,
+                status: 'Active',
+            });
+            await transaction.save();
+            // Update user's membership details
+            await User.findByIdAndUpdate(userId, {
+                'membershipDetails.membership_id': new mongoose.Types.ObjectId(input.membershipId),
+            });
+            // TODO: Send push notification for payment reminder
+            // Schedule notification for a few days before expiry
+            const populatedTransaction = await MembershipTransaction.findById(transaction._id)
+                .populate('membership_id')
+                .populate('client_id', 'firstName lastName email')
+                .lean();
+            return mapTransactionToGraphQL(populatedTransaction);
+        },
+        cancelMembership: async (_, { transactionId }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId) {
+                throw new Error('Unauthorized: Please log in');
+            }
+            const transaction = await MembershipTransaction.findById(transactionId).lean();
+            if (!transaction) {
+                throw new Error('Membership transaction not found');
+            }
+            // Authorization: Only client or admin can cancel
+            if (transaction.client_id.toString() !== userId && userRole !== 'admin') {
+                throw new Error('Unauthorized: You cannot cancel this membership');
+            }
+            await MembershipTransaction.findByIdAndUpdate(transactionId, {
+                status: 'Canceled',
+            });
+            return true;
+        },
+    },
+    MembershipTransaction: {
+        client: async (parent) => {
+            if (typeof parent.client === 'string') {
+                const user = await User.findById(parent.client)
+                    .select('firstName lastName email')
+                    .lean();
+                return user
+                    ? {
+                        id: user._id.toString(),
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        email: user.email,
+                    }
+                    : null;
+            }
+            return parent.client;
+        },
+        membership: async (parent) => {
+            // Handle string ID
+            if (typeof parent.membership === 'string') {
+                const membership = await Membership.findById(parent.membership).lean();
+                return membership ? mapMembershipToGraphQL(membership) : null;
+            }
+            // Handle populated membership object (from mongoose populate)
+            if (parent.membership && typeof parent.membership === 'object') {
+                // Check if it's already a GraphQL-formatted object (has id field)
+                if (parent.membership.id) {
+                    return parent.membership;
+                }
+                // If it's a mongoose document/object, map it
+                if (parent.membership._id) {
+                    return mapMembershipToGraphQL(parent.membership);
+                }
+            }
+            // Fallback: try to fetch by membershipId if available
+            if (parent.membershipId) {
+                const membership = await Membership.findById(parent.membershipId).lean();
+                return membership ? mapMembershipToGraphQL(membership) : null;
+            }
+            return null;
+        },
+    },
+    User: {
+        currentMembership: async (parent) => {
+            const userId = typeof parent === 'string' ? parent : parent.id;
+            const transaction = await MembershipTransaction.findOne({
+                client_id: new mongoose.Types.ObjectId(userId),
+                status: 'Active',
+            })
+                .populate('membership_id')
+                .sort({ createdAt: -1 })
+                .lean();
+            if (!transaction) {
+                return null;
+            }
+            // Check if expired
+            if (new Date(transaction.expiresAt) < new Date()) {
+                await MembershipTransaction.findByIdAndUpdate(transaction._id, {
+                    status: 'Expired',
+                });
+                return null;
+            }
+            return mapTransactionToGraphQL(transaction);
+        },
+    },
+    MemberDetails: {
+        membershipTransaction: async (parent, _, context, info) => {
+            // Get user ID from parent MemberDetails (which has _userId stored from User resolver)
+            // or find user by membershipId
+            let userId = null;
+            // Try to get user ID from parent (stored by User resolver)
+            if (parent?._userId) {
+                userId = parent._userId;
+            }
+            // Fallback: find user by membershipId
+            if (!userId && parent?.membershipId) {
+                const user = await User.findOne({
+                    'membershipDetails.membership_id': new mongoose.Types.ObjectId(parent.membershipId),
+                }).lean();
+                if (user) {
+                    userId = user._id.toString();
+                }
+            }
+            if (!userId) {
+                return null;
+            }
+            // Only return ACTIVE transactions (exclude cancelled, expired, or replaced subscriptions)
+            // This ensures cancelled/replaced subscriptions are not included in revenue calculations
+            const transaction = await MembershipTransaction.findOne({
+                client_id: new mongoose.Types.ObjectId(userId),
+                status: 'Active',
+            })
+                .populate('membership_id')
+                .sort({ createdAt: -1 })
+                .lean();
+            if (!transaction) {
+                return null;
+            }
+            // Check if expired
+            if (new Date(transaction.expiresAt) < new Date()) {
+                await MembershipTransaction.findByIdAndUpdate(transaction._id, {
+                    status: 'Expired',
+                });
+                return null;
+            }
+            return mapTransactionToGraphQL(transaction);
+        },
+    },
+};

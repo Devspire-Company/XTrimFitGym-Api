@@ -23,6 +23,10 @@ const memberSchema = new Schema({
         type: [mongoose.SchemaTypes.ObjectId],
         ref: 'User',
     },
+    hasEnteredDetails: {
+        type: Boolean,
+        default: false,
+    },
 });
 const coachSchema = new Schema({
     clients_ids: {
@@ -51,11 +55,18 @@ const coachSchema = new Schema({
     moreDetails: String,
     teachingDate: [String],
     teachingTime: [String],
+    clientLimit: {
+        type: Number,
+        default: 999, // Default to high number (unlimited)
+    },
 });
 const userSchema = new Schema({
     firstName: {
         type: String,
         required: true,
+    },
+    middleName: {
+        type: String,
     },
     lastName: {
         type: String,
