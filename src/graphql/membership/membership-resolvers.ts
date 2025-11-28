@@ -350,11 +350,28 @@ export default {
 			return parent.client;
 		},
 		membership: async (parent: any) => {
+			// Handle string ID
 			if (typeof parent.membership === 'string') {
 				const membership = await Membership.findById(parent.membership).lean();
 				return membership ? mapMembershipToGraphQL(membership) : null;
 			}
-			return parent.membership;
+			// Handle populated membership object (from mongoose populate)
+			if (parent.membership && typeof parent.membership === 'object') {
+				// Check if it's already a GraphQL-formatted object (has id field)
+				if (parent.membership.id) {
+					return parent.membership;
+				}
+				// If it's a mongoose document/object, map it
+				if (parent.membership._id) {
+					return mapMembershipToGraphQL(parent.membership);
+				}
+			}
+			// Fallback: try to fetch by membershipId if available
+			if (parent.membershipId) {
+				const membership = await Membership.findById(parent.membershipId).lean();
+				return membership ? mapMembershipToGraphQL(membership) : null;
+			}
+			return null;
 		},
 	},
 

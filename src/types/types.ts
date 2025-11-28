@@ -17,6 +17,10 @@ export type Scalars = {
   Float: { input: number; output: number; }
 };
 
+export type ApproveSubscriptionRequestInput = {
+  requestId: Scalars['ID']['input'];
+};
+
 export type AuthResponse = {
   __typename?: 'AuthResponse';
   token: Scalars['String']['output'];
@@ -112,6 +116,10 @@ export type CreateSessionLogInput = {
   weight: Scalars['Float']['input'];
 };
 
+export type CreateSubscriptionRequestInput = {
+  membershipId: Scalars['ID']['input'];
+};
+
 export type CreateUserInput = {
   agreedToLiabilityWaiver?: InputMaybe<Scalars['Boolean']['input']>;
   agreedToPrivacyPolicy?: InputMaybe<Scalars['Boolean']['input']>;
@@ -128,6 +136,11 @@ export type CreateUserInput = {
   password: Scalars['String']['input'];
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
   role: RoleType;
+};
+
+export type DirectSubscribeInput = {
+  memberId: Scalars['ID']['input'];
+  membershipId: Scalars['ID']['input'];
 };
 
 export enum DurationType {
@@ -231,6 +244,7 @@ export type MembershipTransaction = {
 
 export type Mutation = {
   __typename?: 'Mutation';
+  approveSubscriptionRequest: MembershipTransaction;
   cancelCoachRequest: Scalars['Boolean']['output'];
   cancelMembership: Scalars['Boolean']['output'];
   cancelSession: Scalars['Boolean']['output'];
@@ -241,17 +255,25 @@ export type Mutation = {
   createGoal: Goal;
   createMembership: Membership;
   createSession: Session;
+  createSubscriptionRequest: SubscriptionRequest;
   createUser: AuthResponse;
   deleteGoal: Scalars['Boolean']['output'];
   deleteMembership: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
+  directSubscribeMember: MembershipTransaction;
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
+  rejectSubscriptionRequest: Scalars['Boolean']['output'];
   updateCoachRequest: CoachRequest;
   updateGoal: Goal;
   updateMembership: Membership;
   updateSession: Session;
   updateUser?: Maybe<User>;
+};
+
+
+export type MutationApproveSubscriptionRequestArgs = {
+  input: ApproveSubscriptionRequestInput;
 };
 
 
@@ -305,6 +327,11 @@ export type MutationCreateSessionArgs = {
 };
 
 
+export type MutationCreateSubscriptionRequestArgs = {
+  input: CreateSubscriptionRequestInput;
+};
+
+
 export type MutationCreateUserArgs = {
   input: CreateUserInput;
 };
@@ -325,6 +352,11 @@ export type MutationDeleteUserArgs = {
 };
 
 
+export type MutationDirectSubscribeMemberArgs = {
+  input: DirectSubscribeInput;
+};
+
+
 export type MutationLoginArgs = {
   input: LoginInput;
 };
@@ -332,6 +364,11 @@ export type MutationLoginArgs = {
 
 export type MutationPurchaseMembershipArgs = {
   input: PurchaseMembershipInput;
+};
+
+
+export type MutationRejectSubscriptionRequestArgs = {
+  input: RejectSubscriptionRequestInput;
 };
 
 
@@ -380,9 +417,12 @@ export type Query = {
   getMembership?: Maybe<Membership>;
   getMembershipTransaction?: Maybe<MembershipTransaction>;
   getMemberships: Array<Membership>;
+  getMySubscriptionRequests: Array<SubscriptionRequest>;
   getPendingCoachRequests: Array<CoachRequest>;
+  getPendingSubscriptionRequests: Array<SubscriptionRequest>;
   getSession?: Maybe<Session>;
   getSessionLogs: Array<SessionLog>;
+  getSubscriptionRequest?: Maybe<SubscriptionRequest>;
   getUpcomingSessions: Array<Session>;
   getUser?: Maybe<User>;
   getUsers?: Maybe<Array<Maybe<User>>>;
@@ -451,6 +491,11 @@ export type QueryGetSessionLogsArgs = {
 };
 
 
+export type QueryGetSubscriptionRequestArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type QueryGetUserArgs = {
   id: Scalars['ID']['input'];
 };
@@ -470,6 +515,10 @@ export type QueryGetWeightProgressArgs = {
 export type QueryGetWeightProgressChartArgs = {
   clientId: Scalars['ID']['input'];
   goalId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+export type RejectSubscriptionRequestInput = {
+  requestId: Scalars['ID']['input'];
 };
 
 export enum RoleType {
@@ -520,6 +569,31 @@ export enum SessionStatus {
   Cancelled = 'cancelled',
   Completed = 'completed',
   Scheduled = 'scheduled'
+}
+
+export type SubscriptionRequest = {
+  __typename?: 'SubscriptionRequest';
+  approvedAt?: Maybe<Scalars['String']['output']>;
+  approvedBy?: Maybe<User>;
+  createdAt?: Maybe<Scalars['String']['output']>;
+  expiresAt: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  member?: Maybe<User>;
+  memberId: Scalars['ID']['output'];
+  membership?: Maybe<Membership>;
+  membershipId: Scalars['ID']['output'];
+  rejectedAt?: Maybe<Scalars['String']['output']>;
+  rejectedBy?: Maybe<User>;
+  requestedAt: Scalars['String']['output'];
+  status: SubscriptionRequestStatus;
+  updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
+export enum SubscriptionRequestStatus {
+  Approved = 'APPROVED',
+  Expired = 'EXPIRED',
+  Pending = 'PENDING',
+  Rejected = 'REJECTED'
 }
 
 export enum TransactionStatus {
@@ -683,6 +757,7 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
+  ApproveSubscriptionRequestInput: ResolverTypeWrapper<Partial<ApproveSubscriptionRequestInput>>;
   AuthResponse: ResolverTypeWrapper<Partial<AuthResponse>>;
   Boolean: ResolverTypeWrapper<Partial<Scalars['Boolean']['output']>>;
   CoachDetails: ResolverTypeWrapper<Partial<CoachDetails>>;
@@ -695,7 +770,9 @@ export type ResolversTypes = {
   CreateMembershipInput: ResolverTypeWrapper<Partial<CreateMembershipInput>>;
   CreateSessionInput: ResolverTypeWrapper<Partial<CreateSessionInput>>;
   CreateSessionLogInput: ResolverTypeWrapper<Partial<CreateSessionLogInput>>;
+  CreateSubscriptionRequestInput: ResolverTypeWrapper<Partial<CreateSubscriptionRequestInput>>;
   CreateUserInput: ResolverTypeWrapper<Partial<CreateUserInput>>;
+  DirectSubscribeInput: ResolverTypeWrapper<Partial<DirectSubscribeInput>>;
   DurationType: ResolverTypeWrapper<Partial<DurationType>>;
   FitnessGoalType: ResolverTypeWrapper<Partial<FitnessGoalType>>;
   Float: ResolverTypeWrapper<Partial<Scalars['Float']['output']>>;
@@ -712,11 +789,14 @@ export type ResolversTypes = {
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
   PurchaseMembershipInput: ResolverTypeWrapper<Partial<PurchaseMembershipInput>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  RejectSubscriptionRequestInput: ResolverTypeWrapper<Partial<RejectSubscriptionRequestInput>>;
   RoleType: ResolverTypeWrapper<Partial<RoleType>>;
   Session: ResolverTypeWrapper<Partial<Session>>;
   SessionLog: ResolverTypeWrapper<Partial<SessionLog>>;
   SessionStatus: ResolverTypeWrapper<Partial<SessionStatus>>;
   String: ResolverTypeWrapper<Partial<Scalars['String']['output']>>;
+  SubscriptionRequest: ResolverTypeWrapper<Partial<SubscriptionRequest>>;
+  SubscriptionRequestStatus: ResolverTypeWrapper<Partial<SubscriptionRequestStatus>>;
   TransactionStatus: ResolverTypeWrapper<Partial<TransactionStatus>>;
   UpdateCoachRequestInput: ResolverTypeWrapper<Partial<UpdateCoachRequestInput>>;
   UpdateGoalInput: ResolverTypeWrapper<Partial<UpdateGoalInput>>;
@@ -729,6 +809,7 @@ export type ResolversTypes = {
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
+  ApproveSubscriptionRequestInput: Partial<ApproveSubscriptionRequestInput>;
   AuthResponse: Partial<AuthResponse>;
   Boolean: Partial<Scalars['Boolean']['output']>;
   CoachDetails: Partial<CoachDetails>;
@@ -740,7 +821,9 @@ export type ResolversParentTypes = {
   CreateMembershipInput: Partial<CreateMembershipInput>;
   CreateSessionInput: Partial<CreateSessionInput>;
   CreateSessionLogInput: Partial<CreateSessionLogInput>;
+  CreateSubscriptionRequestInput: Partial<CreateSubscriptionRequestInput>;
   CreateUserInput: Partial<CreateUserInput>;
+  DirectSubscribeInput: Partial<DirectSubscribeInput>;
   Float: Partial<Scalars['Float']['output']>;
   Goal: Partial<Goal>;
   ID: Partial<Scalars['ID']['output']>;
@@ -753,9 +836,11 @@ export type ResolversParentTypes = {
   Mutation: Record<PropertyKey, never>;
   PurchaseMembershipInput: Partial<PurchaseMembershipInput>;
   Query: Record<PropertyKey, never>;
+  RejectSubscriptionRequestInput: Partial<RejectSubscriptionRequestInput>;
   Session: Partial<Session>;
   SessionLog: Partial<SessionLog>;
   String: Partial<Scalars['String']['output']>;
+  SubscriptionRequest: Partial<SubscriptionRequest>;
   UpdateCoachRequestInput: Partial<UpdateCoachRequestInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
   UpdateMembershipInput: Partial<UpdateMembershipInput>;
@@ -846,6 +931,7 @@ export type MembershipTransactionResolvers<ContextType = IAuthContext, ParentTyp
 };
 
 export type MutationResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
+  approveSubscriptionRequest?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationApproveSubscriptionRequestArgs, 'input'>>;
   cancelCoachRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelCoachRequestArgs, 'id'>>;
   cancelMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelMembershipArgs, 'transactionId'>>;
   cancelSession?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelSessionArgs, 'id'>>;
@@ -856,12 +942,15 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   createGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationCreateGoalArgs, 'input'>>;
   createMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationCreateMembershipArgs, 'input'>>;
   createSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionArgs, 'input'>>;
+  createSubscriptionRequest?: Resolver<ResolversTypes['SubscriptionRequest'], ParentType, ContextType, RequireFields<MutationCreateSubscriptionRequestArgs, 'input'>>;
   createUser?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationCreateUserArgs, 'input'>>;
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
   deleteMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteMembershipArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
+  directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
+  rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   updateCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationUpdateCoachRequestArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
   updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;
@@ -880,9 +969,12 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getMembership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType, RequireFields<QueryGetMembershipArgs, 'id'>>;
   getMembershipTransaction?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType, RequireFields<QueryGetMembershipTransactionArgs, 'id'>>;
   getMemberships?: Resolver<Array<ResolversTypes['Membership']>, ParentType, ContextType, Partial<QueryGetMembershipsArgs>>;
+  getMySubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
   getPendingCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType>;
+  getPendingSubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
   getSession?: Resolver<Maybe<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionArgs, 'id'>>;
   getSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogsArgs, 'clientId'>>;
+  getSubscriptionRequest?: Resolver<Maybe<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType, RequireFields<QueryGetSubscriptionRequestArgs, 'id'>>;
   getUpcomingSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType>;
   getUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<QueryGetUserArgs, 'id'>>;
   getUsers?: Resolver<Maybe<Array<Maybe<ResolversTypes['User']>>>, ParentType, ContextType, Partial<QueryGetUsersArgs>>;
@@ -926,6 +1018,23 @@ export type SessionLogResolvers<ContextType = IAuthContext, ParentType extends R
   weight?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
+export type SubscriptionRequestResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['SubscriptionRequest'] = ResolversParentTypes['SubscriptionRequest']> = {
+  approvedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  approvedBy?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  expiresAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  member?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  memberId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  membership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType>;
+  membershipId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  rejectedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  rejectedBy?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  requestedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['SubscriptionRequestStatus'], ParentType, ContextType>;
+  updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
 export type UserResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['User'] = ResolversParentTypes['User']> = {
   agreedToLiabilityWaiver?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   agreedToPrivacyPolicy?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
@@ -966,6 +1075,7 @@ export type Resolvers<ContextType = IAuthContext> = {
   Query?: QueryResolvers<ContextType>;
   Session?: SessionResolvers<ContextType>;
   SessionLog?: SessionLogResolvers<ContextType>;
+  SubscriptionRequest?: SubscriptionRequestResolvers<ContextType>;
   User?: UserResolvers<ContextType>;
   WeightProgress?: WeightProgressResolvers<ContextType>;
 };

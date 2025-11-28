@@ -30,6 +30,7 @@
 		"copyfiles": "^2.4.1",
 		"cors": "^2.8.5",
 		"express": "^5.1.0",
+		"google-auth-library": "^10.5.0",
 		"graphql": "^16.12.0",
 		"graphql-import-node": "^0.0.5",
 		"jsonwebtoken": "^9.0.2",
@@ -43,6 +44,7 @@
 		"@graphql-codegen/typescript-resolvers": "^5.1.2",
 		"@types/cors": "^2.8.19",
 		"@types/node": "^24.10.1",
+		"ngrok": "^5.0.0-beta.2",
 		"typescript": "^5.9.3"
 	}
 }

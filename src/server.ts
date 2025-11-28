@@ -29,7 +29,7 @@ async function startServer() {
 	// Middleware order matters! cookieParser must come before expressMiddleware
 	app.use(cookieParser()); // Global cookie parser
 	app.use(express.json()); // Global JSON parser
-	
+
 	app.use(
 		'/graphql',
 		expressMiddleware(server, {
@@ -47,9 +47,6 @@ async function startServer() {
 		console.log('  - Android Emulator: http://10.0.2.2:8080/graphql');
 		console.log('  - iOS Simulator: http://localhost:8080/graphql');
 		console.log('  - Physical devices: http://YOUR_LOCAL_IP:8080/graphql');
-		console.log(
-			'    (Find your IP with: ipconfig on Windows, ifconfig on Mac/Linux)\n'
-		);
 	});
 }
 
