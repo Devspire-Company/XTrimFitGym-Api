@@ -8,7 +8,10 @@ export type FitnessGoalType =
 	| 'Muscle building'
 	| 'General fitness'
 	| 'Strength training'
-	| 'Endurance';
+	| 'Endurance'
+	| 'Flexibility'
+	| 'Rehabilitation'
+	| 'Athletic Performance';
 export interface IUser {
 	_id?: mongoose.Types.ObjectId;
 	firstName: string;
@@ -64,6 +67,9 @@ const memberSchema = new Schema({
 			'General fitness',
 			'Strength training',
 			'Endurance',
+			'Flexibility',
+			'Rehabilitation',
+			'Athletic Performance',
 		],
 	},
 	workOutTime: [String],
@@ -94,6 +100,9 @@ const coachSchema = new Schema({
 			'General fitness',
 			'Strength training',
 			'Endurance',
+			'Flexibility',
+			'Rehabilitation',
+			'Athletic Performance',
 		],
 	},
 	ratings: {
