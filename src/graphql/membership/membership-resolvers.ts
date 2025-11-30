@@ -3,6 +3,11 @@ import MembershipTransaction from '../../database/models/membership/membershipTr
 import User from '../../database/models/user/user-schema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
+import {
+	onSubscriptionCreated,
+	onSubscriptionCanceled,
+	onSubscriptionSwitched,
+} from '../../database/models/analytics/analytics-helper.js';
 
 type Context = IAuthContext;
 
@@ -89,6 +94,8 @@ export default {
 				await MembershipTransaction.findByIdAndUpdate(transaction._id, {
 					status: 'Expired',
 				});
+				// Update analytics when transaction expires (revenue is NOT deducted)
+				await onSubscriptionCanceled(transaction._id.toString());
 				return null;
 			}
 
@@ -242,7 +249,13 @@ export default {
 				throw new Error('This membership plan is not available');
 			}
 
-			// Cancel any existing active memberships
+			// Check if user has an existing active membership (switching plans)
+			const hasExistingActive = await MembershipTransaction.findOne({
+				client_id: new mongoose.Types.ObjectId(userId),
+				status: 'Active',
+			}).lean();
+
+			// Cancel any existing active memberships (when switching plans)
 			await MembershipTransaction.updateMany(
 				{
 					client_id: new mongoose.Types.ObjectId(userId),
@@ -287,6 +300,13 @@ export default {
 				),
 			});
 
+			// Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
+			if (hasExistingActive) {
+				await onSubscriptionSwitched(transaction._id.toString());
+			} else {
+				await onSubscriptionCreated(transaction._id.toString());
+			}
+
 			// TODO: Send push notification for payment reminder
 			// Schedule notification for a few days before expiry
 
@@ -324,9 +344,16 @@ export default {
 				throw new Error('Unauthorized: You cannot cancel this membership');
 			}
 
+			// IMPORTANT: Changing status to 'Canceled' does NOT affect revenue calculations
+			// Revenue is calculated from ALL transactions (Active, Canceled, Expired)
+			// This ensures revenue reflects all money ever received, so canceling a subscription
+			// doesn't deduct revenue (the transaction still exists with its priceAtPurchase)
 			await MembershipTransaction.findByIdAndUpdate(transactionId, {
 				status: 'Canceled',
 			});
+
+			// Update analytics: Revenue is NOT deducted (transaction still counts), only counts are updated
+			await onSubscriptionCanceled(transactionId);
 
 			return true;
 		},
@@ -395,6 +422,8 @@ export default {
 				await MembershipTransaction.findByIdAndUpdate(transaction._id, {
 					status: 'Expired',
 				});
+				// Update analytics when transaction expires (revenue is NOT deducted)
+				await onSubscriptionCanceled(transaction._id.toString());
 				return null;
 			}
 

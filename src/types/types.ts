@@ -17,6 +17,20 @@ export type Scalars = {
   Float: { input: number; output: number; }
 };
 
+export type Analytics = {
+  __typename?: 'Analytics';
+  activeSubscriptions: Scalars['Int']['output'];
+  canceledSubscriptions: Scalars['Int']['output'];
+  createdAt?: Maybe<Scalars['String']['output']>;
+  date: Scalars['String']['output'];
+  expiredSubscriptions: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  newSubscriptions: Scalars['Int']['output'];
+  revenueByMembership: Array<MembershipRevenue>;
+  totalRevenue: Scalars['Float']['output'];
+  updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
 export type ApproveSubscriptionRequestInput = {
   requestId: Scalars['ID']['input'];
 };
@@ -138,6 +152,11 @@ export type CreateUserInput = {
   role: RoleType;
 };
 
+export type DateRangeInput = {
+  endDate: Scalars['String']['input'];
+  startDate: Scalars['String']['input'];
+};
+
 export type DirectSubscribeInput = {
   memberId: Scalars['ID']['input'];
   membershipId: Scalars['ID']['input'];
@@ -219,6 +238,14 @@ export type Membership = {
   name: Scalars['String']['output'];
   status: MembershipStatus;
   updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
+export type MembershipRevenue = {
+  __typename?: 'MembershipRevenue';
+  count: Scalars['Int']['output'];
+  membershipId: Scalars['ID']['output'];
+  membershipName: Scalars['String']['output'];
+  revenue: Scalars['Float']['output'];
 };
 
 export enum MembershipStatus {
@@ -401,12 +428,21 @@ export type MutationUpdateUserArgs = {
   input: UpdateUserInput;
 };
 
+export type PeriodRevenue = {
+  __typename?: 'PeriodRevenue';
+  count: Scalars['Int']['output'];
+  period: Scalars['String']['output'];
+  revenue: Scalars['Float']['output'];
+};
+
 export type PurchaseMembershipInput = {
   membershipId: Scalars['ID']['input'];
 };
 
 export type Query = {
   __typename?: 'Query';
+  getAnalytics?: Maybe<Analytics>;
+  getAnalyticsRange: Array<Analytics>;
   getClientRequests: Array<CoachRequest>;
   getClientSessions: Array<Session>;
   getCoachRequests: Array<CoachRequest>;
@@ -420,6 +456,7 @@ export type Query = {
   getMySubscriptionRequests: Array<SubscriptionRequest>;
   getPendingCoachRequests: Array<CoachRequest>;
   getPendingSubscriptionRequests: Array<SubscriptionRequest>;
+  getRevenueSummary: RevenueSummary;
   getSession?: Maybe<Session>;
   getSessionLogs: Array<SessionLog>;
   getSubscriptionRequest?: Maybe<SubscriptionRequest>;
@@ -428,6 +465,16 @@ export type Query = {
   getUsers?: Maybe<Array<Maybe<User>>>;
   getWeightProgress: Array<SessionLog>;
   getWeightProgressChart: Array<WeightProgress>;
+};
+
+
+export type QueryGetAnalyticsArgs = {
+  date: Scalars['String']['input'];
+};
+
+
+export type QueryGetAnalyticsRangeArgs = {
+  dateRange: DateRangeInput;
 };
 
 
@@ -481,6 +528,11 @@ export type QueryGetMembershipsArgs = {
 };
 
 
+export type QueryGetRevenueSummaryArgs = {
+  dateRange?: InputMaybe<DateRangeInput>;
+};
+
+
 export type QueryGetSessionArgs = {
   id: Scalars['ID']['input'];
 };
@@ -519,6 +571,17 @@ export type QueryGetWeightProgressChartArgs = {
 
 export type RejectSubscriptionRequestInput = {
   requestId: Scalars['ID']['input'];
+};
+
+export type RevenueSummary = {
+  __typename?: 'RevenueSummary';
+  activeSubscriptions: Scalars['Int']['output'];
+  canceledSubscriptions: Scalars['Int']['output'];
+  expiredSubscriptions: Scalars['Int']['output'];
+  newSubscriptions: Scalars['Int']['output'];
+  revenueByMembership: Array<MembershipRevenue>;
+  revenueByPeriod: Array<PeriodRevenue>;
+  totalRevenue: Scalars['Float']['output'];
 };
 
 export enum RoleType {
@@ -757,6 +820,7 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
+  Analytics: ResolverTypeWrapper<Partial<Analytics>>;
   ApproveSubscriptionRequestInput: ResolverTypeWrapper<Partial<ApproveSubscriptionRequestInput>>;
   AuthResponse: ResolverTypeWrapper<Partial<AuthResponse>>;
   Boolean: ResolverTypeWrapper<Partial<Scalars['Boolean']['output']>>;
@@ -772,6 +836,7 @@ export type ResolversTypes = {
   CreateSessionLogInput: ResolverTypeWrapper<Partial<CreateSessionLogInput>>;
   CreateSubscriptionRequestInput: ResolverTypeWrapper<Partial<CreateSubscriptionRequestInput>>;
   CreateUserInput: ResolverTypeWrapper<Partial<CreateUserInput>>;
+  DateRangeInput: ResolverTypeWrapper<Partial<DateRangeInput>>;
   DirectSubscribeInput: ResolverTypeWrapper<Partial<DirectSubscribeInput>>;
   DurationType: ResolverTypeWrapper<Partial<DurationType>>;
   FitnessGoalType: ResolverTypeWrapper<Partial<FitnessGoalType>>;
@@ -784,12 +849,15 @@ export type ResolversTypes = {
   MemberDetails: ResolverTypeWrapper<Partial<MemberDetails>>;
   MemberDetailsInput: ResolverTypeWrapper<Partial<MemberDetailsInput>>;
   Membership: ResolverTypeWrapper<Partial<Membership>>;
+  MembershipRevenue: ResolverTypeWrapper<Partial<MembershipRevenue>>;
   MembershipStatus: ResolverTypeWrapper<Partial<MembershipStatus>>;
   MembershipTransaction: ResolverTypeWrapper<Partial<MembershipTransaction>>;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  PeriodRevenue: ResolverTypeWrapper<Partial<PeriodRevenue>>;
   PurchaseMembershipInput: ResolverTypeWrapper<Partial<PurchaseMembershipInput>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   RejectSubscriptionRequestInput: ResolverTypeWrapper<Partial<RejectSubscriptionRequestInput>>;
+  RevenueSummary: ResolverTypeWrapper<Partial<RevenueSummary>>;
   RoleType: ResolverTypeWrapper<Partial<RoleType>>;
   Session: ResolverTypeWrapper<Partial<Session>>;
   SessionLog: ResolverTypeWrapper<Partial<SessionLog>>;
@@ -809,6 +877,7 @@ export type ResolversTypes = {
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
+  Analytics: Partial<Analytics>;
   ApproveSubscriptionRequestInput: Partial<ApproveSubscriptionRequestInput>;
   AuthResponse: Partial<AuthResponse>;
   Boolean: Partial<Scalars['Boolean']['output']>;
@@ -823,6 +892,7 @@ export type ResolversParentTypes = {
   CreateSessionLogInput: Partial<CreateSessionLogInput>;
   CreateSubscriptionRequestInput: Partial<CreateSubscriptionRequestInput>;
   CreateUserInput: Partial<CreateUserInput>;
+  DateRangeInput: Partial<DateRangeInput>;
   DirectSubscribeInput: Partial<DirectSubscribeInput>;
   Float: Partial<Scalars['Float']['output']>;
   Goal: Partial<Goal>;
@@ -832,11 +902,14 @@ export type ResolversParentTypes = {
   MemberDetails: Partial<MemberDetails>;
   MemberDetailsInput: Partial<MemberDetailsInput>;
   Membership: Partial<Membership>;
+  MembershipRevenue: Partial<MembershipRevenue>;
   MembershipTransaction: Partial<MembershipTransaction>;
   Mutation: Record<PropertyKey, never>;
+  PeriodRevenue: Partial<PeriodRevenue>;
   PurchaseMembershipInput: Partial<PurchaseMembershipInput>;
   Query: Record<PropertyKey, never>;
   RejectSubscriptionRequestInput: Partial<RejectSubscriptionRequestInput>;
+  RevenueSummary: Partial<RevenueSummary>;
   Session: Partial<Session>;
   SessionLog: Partial<SessionLog>;
   String: Partial<Scalars['String']['output']>;
@@ -848,6 +921,19 @@ export type ResolversParentTypes = {
   UpdateUserInput: Partial<UpdateUserInput>;
   User: Partial<User>;
   WeightProgress: Partial<WeightProgress>;
+};
+
+export type AnalyticsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Analytics'] = ResolversParentTypes['Analytics']> = {
+  activeSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  canceledSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  expiredSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  newSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  revenueByMembership?: Resolver<Array<ResolversTypes['MembershipRevenue']>, ParentType, ContextType>;
+  totalRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type AuthResponseResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AuthResponse'] = ResolversParentTypes['AuthResponse']> = {
@@ -916,6 +1002,13 @@ export type MembershipResolvers<ContextType = IAuthContext, ParentType extends R
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
+export type MembershipRevenueResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['MembershipRevenue'] = ResolversParentTypes['MembershipRevenue']> = {
+  count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  membershipId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  membershipName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+};
+
 export type MembershipTransactionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['MembershipTransaction'] = ResolversParentTypes['MembershipTransaction']> = {
   client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -958,7 +1051,15 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   updateUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationUpdateUserArgs, 'id' | 'input'>>;
 };
 
+export type PeriodRevenueResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['PeriodRevenue'] = ResolversParentTypes['PeriodRevenue']> = {
+  count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  period?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+};
+
 export type QueryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
+  getAnalytics?: Resolver<Maybe<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsArgs, 'date'>>;
+  getAnalyticsRange?: Resolver<Array<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsRangeArgs, 'dateRange'>>;
   getClientRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetClientRequestsArgs, 'clientId'>>;
   getClientSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetClientSessionsArgs, 'clientId'>>;
   getCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetCoachRequestsArgs, 'coachId'>>;
@@ -972,6 +1073,7 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getMySubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
   getPendingCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType>;
   getPendingSubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
+  getRevenueSummary?: Resolver<ResolversTypes['RevenueSummary'], ParentType, ContextType, Partial<QueryGetRevenueSummaryArgs>>;
   getSession?: Resolver<Maybe<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionArgs, 'id'>>;
   getSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogsArgs, 'clientId'>>;
   getSubscriptionRequest?: Resolver<Maybe<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType, RequireFields<QueryGetSubscriptionRequestArgs, 'id'>>;
@@ -980,6 +1082,16 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getUsers?: Resolver<Maybe<Array<Maybe<ResolversTypes['User']>>>, ParentType, ContextType, Partial<QueryGetUsersArgs>>;
   getWeightProgress?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetWeightProgressArgs, 'clientId'>>;
   getWeightProgressChart?: Resolver<Array<ResolversTypes['WeightProgress']>, ParentType, ContextType, RequireFields<QueryGetWeightProgressChartArgs, 'clientId'>>;
+};
+
+export type RevenueSummaryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['RevenueSummary'] = ResolversParentTypes['RevenueSummary']> = {
+  activeSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  canceledSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  expiredSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  newSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  revenueByMembership?: Resolver<Array<ResolversTypes['MembershipRevenue']>, ParentType, ContextType>;
+  revenueByPeriod?: Resolver<Array<ResolversTypes['PeriodRevenue']>, ParentType, ContextType>;
+  totalRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
 export type SessionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Session'] = ResolversParentTypes['Session']> = {
@@ -1064,15 +1176,19 @@ export type WeightProgressResolvers<ContextType = IAuthContext, ParentType exten
 };
 
 export type Resolvers<ContextType = IAuthContext> = {
+  Analytics?: AnalyticsResolvers<ContextType>;
   AuthResponse?: AuthResponseResolvers<ContextType>;
   CoachDetails?: CoachDetailsResolvers<ContextType>;
   CoachRequest?: CoachRequestResolvers<ContextType>;
   Goal?: GoalResolvers<ContextType>;
   MemberDetails?: MemberDetailsResolvers<ContextType>;
   Membership?: MembershipResolvers<ContextType>;
+  MembershipRevenue?: MembershipRevenueResolvers<ContextType>;
   MembershipTransaction?: MembershipTransactionResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
+  PeriodRevenue?: PeriodRevenueResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
+  RevenueSummary?: RevenueSummaryResolvers<ContextType>;
   Session?: SessionResolvers<ContextType>;
   SessionLog?: SessionLogResolvers<ContextType>;
   SubscriptionRequest?: SubscriptionRequestResolvers<ContextType>;
