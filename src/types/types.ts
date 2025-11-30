@@ -291,6 +291,7 @@ export type Mutation = {
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
+  removeClient: Scalars['Boolean']['output'];
   updateCoachRequest: CoachRequest;
   updateGoal: Goal;
   updateMembership: Membership;
@@ -396,6 +397,11 @@ export type MutationPurchaseMembershipArgs = {
 
 export type MutationRejectSubscriptionRequestArgs = {
   input: RejectSubscriptionRequestInput;
+};
+
+
+export type MutationRemoveClientArgs = {
+  clientId: Scalars['ID']['input'];
 };
 
 
@@ -1044,6 +1050,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
+  removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
   updateCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationUpdateCoachRequestArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
   updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;

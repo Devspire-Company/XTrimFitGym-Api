@@ -383,6 +383,54 @@ const userResolvers: Resolvers = {
 			const user = await User.findByIdAndDelete(id);
 			return !!user;
 		},
+		removeClient: async (_, { clientId }, context) => {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+
+			if (!userId) {
+				throw new Error('Unauthorized: Please log in');
+			}
+
+			if (userRole !== 'coach') {
+				throw new Error('Only coaches can remove clients');
+			}
+
+			// Get coach and client
+			const coach = await User.findById(userId);
+			const client = await User.findById(clientId);
+
+			if (!coach) {
+				throw new Error('Coach not found');
+			}
+
+			if (!client) {
+				throw new Error('Client not found');
+			}
+
+			// Verify the client is actually a client of this coach
+			const clientIdObj = new mongoose.Types.ObjectId(clientId);
+			const coachClientIds = coach.coachDetails?.clients_ids || [];
+			const isClient = coachClientIds.some(
+				(id: mongoose.Types.ObjectId) => id.toString() === clientId
+			);
+
+			if (!isClient) {
+				throw new Error('This client is not in your client list');
+			}
+
+			// Remove client from coach's clientsIds
+			await User.findByIdAndUpdate(userId, {
+				$pull: { 'coachDetails.clients_ids': clientIdObj },
+			});
+
+			// Remove coach from client's coachesIds
+			const coachIdObj = new mongoose.Types.ObjectId(userId);
+			await User.findByIdAndUpdate(clientId, {
+				$pull: { 'membershipDetails.coaches_ids': coachIdObj },
+			});
+
+			return true;
+		},
 	},
 };
 
