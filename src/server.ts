@@ -10,7 +10,7 @@ import cookieParser from 'cookie-parser';
 import schema from './graphql/schema.js';
 import authContext from './context/auth-context.js';
 
-const port = Number(process.env.PORT) || 8080;
+const port = Number(process.env.PORT) || 8000;
 
 const server = new ApolloServer({ schema });
 const app = express();
@@ -56,9 +56,14 @@ async function startServer() {
 			schema,
 			context: async (ctx) => {
 				// Extract auth token from connection params
-				const token = ctx.connectionParams?.authorization?.replace('Bearer ', '') || '';
+				const authHeader = ctx.connectionParams?.authorization as
+					| string
+					| undefined;
+				const token = authHeader?.replace('Bearer ', '') || '';
 				// Create a mock request/response for auth context
-				const mockReq = { headers: { authorization: `Bearer ${token}` } } as any;
+				const mockReq = {
+					headers: { authorization: `Bearer ${token}` },
+				} as any;
 				const mockRes = {} as any;
 				return authContext({ req: mockReq, res: mockRes });
 			},
@@ -74,9 +79,9 @@ async function startServer() {
 		);
 		console.log(`WebSocket server running @ ws://localhost:${port}/graphql`);
 		console.log('\nTo connect from devices:');
-		console.log('  - Android Emulator: http://10.0.2.2:8080/graphql');
-		console.log('  - iOS Simulator: http://localhost:8080/graphql');
-		console.log('  - Physical devices: http://YOUR_LOCAL_IP:8080/graphql');
+		console.log(`  - Android Emulator: http://10.0.2.2:${port}/graphql`);
+		console.log(`  - iOS Simulator: http://localhost:${port}/graphql`);
+		console.log(`  - Physical devices: http://YOUR_LOCAL_IP:${port}/graphql`);
 	});
 }
 
