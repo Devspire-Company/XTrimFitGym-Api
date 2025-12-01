@@ -8,6 +8,7 @@ import {
 	onSubscriptionCanceled,
 	onSubscriptionSwitched,
 } from '../../database/models/analytics/analytics-helper.js';
+import { pubsub, EVENTS } from '../pubsub.js';
 
 type Context = IAuthContext;
 
@@ -157,6 +158,9 @@ export default {
 
 			await membership.save();
 
+			// Publish event for membership updates
+			pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
+
 			return mapMembershipToGraphQL(membership);
 		},
 
@@ -193,6 +197,9 @@ export default {
 				throw new Error('Membership not found');
 			}
 
+			// Publish event for membership updates
+			pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
+
 			return mapMembershipToGraphQL(membership);
 		},
 
@@ -220,6 +227,9 @@ export default {
 			if (!deleted) {
 				throw new Error('Membership not found');
 			}
+
+			// Publish event for membership updates
+			pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
 
 			return true;
 		},
@@ -428,6 +438,25 @@ export default {
 			}
 
 			return mapTransactionToGraphQL(transaction);
+		},
+	},
+
+	Subscription: {
+		membershipsUpdated: {
+			subscribe: (_: any, __: any, context: Context) => {
+				// Authorization check
+				if (!context.user || context.user.role !== 'admin') {
+					throw new Error('Unauthorized: Only admins can subscribe to membership updates');
+				}
+
+				// Return async iterator for the subscription
+				return pubsub.asyncIterator(EVENTS.MEMBERSHIPS_UPDATED);
+			},
+			resolve: async () => {
+				// Re-fetch memberships when event is published
+				const memberships = await Membership.find({}).lean();
+				return memberships.map((m) => mapMembershipToGraphQL(m));
+			},
 		},
 	},
 };

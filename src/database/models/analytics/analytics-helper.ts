@@ -2,6 +2,7 @@ import Analytics from './analytics-schema.js';
 import MembershipTransaction from '../membership/membershipTransaction-schema.js';
 import Membership from '../membership/membership-shema.js';
 import mongoose from 'mongoose';
+import { pubsub, EVENTS } from '../../../graphql/pubsub.js';
 
 /**
  * Updates analytics for today's date based on ALL transactions
@@ -94,6 +95,9 @@ export async function updateTodayAnalytics() {
 		},
 		{ upsert: true, new: true }
 	);
+
+	// Publish event for revenue summary update
+	pubsub.publish(EVENTS.REVENUE_SUMMARY_UPDATED, {});
 }
 
 /**

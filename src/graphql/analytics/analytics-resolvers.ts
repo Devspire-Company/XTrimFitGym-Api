@@ -4,6 +4,7 @@ import Membership from '../../database/models/membership/membership-shema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 import { updateTodayAnalytics } from '../../database/models/analytics/analytics-helper.js';
+import { pubsub, EVENTS } from '../pubsub.js';
 
 type Context = IAuthContext;
 
@@ -335,5 +336,74 @@ export default {
 			}));
 		},
 	},
+	Subscription: {
+		revenueSummaryUpdated: {
+			subscribe: (_: any, { dateRange }: { dateRange?: { startDate: string; endDate: string } }, context: Context) => {
+				// Authorization check
+				if (!context.user || context.user.role !== 'admin') {
+					throw new Error('Unauthorized: Only admins can subscribe to revenue updates');
+				}
+
+				// Return async iterator for the subscription
+				return pubsub.asyncIterator(EVENTS.REVENUE_SUMMARY_UPDATED);
+			},
+			resolve: async (payload: any, { dateRange }: { dateRange?: { startDate: string; endDate: string } }) => {
+				// Recalculate revenue summary when event is published
+				return await getRevenueSummaryData(dateRange);
+			},
+		},
+	},
 };
+
+// Helper function to get revenue summary data (extracted from getRevenueSummary)
+async function getRevenueSummaryData(dateRange?: { startDate: string; endDate: string }) {
+	const counts = await getSubscriptionCounts(dateRange);
+	const revenueData = await calculateRevenueFromAllTransactions();
+
+	// Calculate revenue by period if dateRange is provided
+	let revenueByPeriod: Array<{ period: string; revenue: number; count: number }> = [];
+	if (dateRange) {
+		// Group transactions by period (monthly)
+		const startDate = new Date(dateRange.startDate);
+		const endDate = new Date(dateRange.endDate);
+		const periodMap = new Map<string, { revenue: number; count: number }>();
+
+		const transactions = await MembershipTransaction.find({
+			createdAt: {
+				$gte: startDate,
+				$lte: endDate,
+			},
+		}).lean();
+
+		for (const transaction of transactions) {
+			const transactionDate = new Date(transaction.createdAt);
+			const period = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+			const price = transaction.priceAtPurchase || 0;
+
+			const existing = periodMap.get(period);
+			if (existing) {
+				existing.revenue += price;
+				existing.count += 1;
+			} else {
+				periodMap.set(period, { revenue: price, count: 1 });
+			}
+		}
+
+		revenueByPeriod = Array.from(periodMap.entries()).map(([period, data]) => ({
+			period,
+			revenue: data.revenue,
+			count: data.count,
+		}));
+	}
+
+	return {
+		totalRevenue: revenueData.totalRevenue,
+		activeSubscriptions: counts.activeSubscriptions,
+		newSubscriptions: counts.newSubscriptions,
+		canceledSubscriptions: counts.canceledSubscriptions,
+		expiredSubscriptions: counts.expiredSubscriptions,
+		revenueByMembership: Array.from(revenueData.revenueByMembership.values()),
+		revenueByPeriod,
+	};
+}
 

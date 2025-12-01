@@ -50,3 +50,11 @@ extend type Query {
 	getAnalyticsRange(dateRange: DateRangeInput!): [Analytics!]!
 }
 
+# Extend Subscription type
+extend type Subscription {
+	# Subscribe to revenue summary updates
+	revenueSummaryUpdated(dateRange: DateRangeInput): RevenueSummary!
+	# Subscribe to users updates
+	usersUpdated(role: RoleType): [User!]!
+}
+

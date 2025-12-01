@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import User from '../../database/models/user/user-schema.js';
 import { Resolvers } from '../../types/types.js';
 import type { IUser } from '../../database/models/user/user-schema.js';
+import { pubsub, EVENTS } from '../pubsub.js';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -182,6 +183,9 @@ const userResolvers: Resolvers = {
 			});
 
 			await user.save();
+
+			// Publish event for user updates
+			pubsub.publish(EVENTS.USERS_UPDATED, {});
 
 			// Generate token
 			const token = jwt.sign(
@@ -363,6 +367,9 @@ const userResolvers: Resolvers = {
 			// Save the document
 			await userDoc.save();
 
+			// Publish event for user updates
+			pubsub.publish(EVENTS.USERS_UPDATED, {});
+
 			// Return the updated user
 			const updatedUser = userDoc.toObject();
 			return mapUserToGraphQL(updatedUser as any);
@@ -381,6 +388,12 @@ const userResolvers: Resolvers = {
 			}
 
 			const user = await User.findByIdAndDelete(id);
+			
+			// Publish event for user updates
+			if (user) {
+				pubsub.publish(EVENTS.USERS_UPDATED, {});
+			}
+			
 			return !!user;
 		},
 		removeClient: async (_, { clientId }, context) => {
@@ -430,6 +443,32 @@ const userResolvers: Resolvers = {
 			});
 
 			return true;
+		},
+	},
+	Subscription: {
+		_empty: {
+			subscribe: () => {
+				// Placeholder subscription - never actually used
+				// This is required because GraphQL doesn't allow empty types
+				return pubsub.asyncIterator('_EMPTY');
+			},
+		},
+		usersUpdated: {
+			subscribe: (_: any, { role }: { role?: string }, context: any) => {
+				// Authorization check
+				if (!context.user || context.user.role !== 'admin') {
+					throw new Error('Unauthorized: Only admins can subscribe to user updates');
+				}
+
+				// Return async iterator for the subscription
+				return pubsub.asyncIterator(EVENTS.USERS_UPDATED);
+			},
+			resolve: async (payload: any, { role }: { role?: string }) => {
+				// Re-fetch users when event is published
+				const query = role ? { role } : {};
+				const users = await User.find(query).lean();
+				return users.map((user) => mapUserToGraphQL(user as any));
+			},
 		},
 	},
 };

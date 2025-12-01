@@ -841,6 +841,24 @@ export enum SessionStatus {
   Scheduled = 'scheduled'
 }
 
+export type Subscription = {
+  __typename?: 'Subscription';
+  _empty?: Maybe<Scalars['Boolean']['output']>;
+  membershipsUpdated: Array<Membership>;
+  revenueSummaryUpdated: RevenueSummary;
+  usersUpdated: Array<User>;
+};
+
+
+export type SubscriptionRevenueSummaryUpdatedArgs = {
+  dateRange?: InputMaybe<DateRangeInput>;
+};
+
+
+export type SubscriptionUsersUpdatedArgs = {
+  role?: InputMaybe<RoleType>;
+};
+
 export type SubscriptionRequest = {
   __typename?: 'SubscriptionRequest';
   approvedAt?: Maybe<Scalars['String']['output']>;
@@ -1084,6 +1102,7 @@ export type ResolversTypes = {
   SessionLog: ResolverTypeWrapper<Partial<SessionLog>>;
   SessionStatus: ResolverTypeWrapper<Partial<SessionStatus>>;
   String: ResolverTypeWrapper<Partial<Scalars['String']['output']>>;
+  Subscription: ResolverTypeWrapper<Record<PropertyKey, never>>;
   SubscriptionRequest: ResolverTypeWrapper<Partial<SubscriptionRequest>>;
   SubscriptionRequestStatus: ResolverTypeWrapper<Partial<SubscriptionRequestStatus>>;
   TransactionStatus: ResolverTypeWrapper<Partial<TransactionStatus>>;
@@ -1142,6 +1161,7 @@ export type ResolversParentTypes = {
   Session: Partial<Session>;
   SessionLog: Partial<SessionLog>;
   String: Partial<Scalars['String']['output']>;
+  Subscription: Record<PropertyKey, never>;
   SubscriptionRequest: Partial<SubscriptionRequest>;
   UpdateCoachRequestInput: Partial<UpdateCoachRequestInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
@@ -1427,6 +1447,13 @@ export type SessionLogResolvers<ContextType = IAuthContext, ParentType extends R
   weight?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
 };
 
+export type SubscriptionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Subscription'] = ResolversParentTypes['Subscription']> = {
+  _empty?: SubscriptionResolver<Maybe<ResolversTypes['Boolean']>, "_empty", ParentType, ContextType>;
+  membershipsUpdated?: SubscriptionResolver<Array<ResolversTypes['Membership']>, "membershipsUpdated", ParentType, ContextType>;
+  revenueSummaryUpdated?: SubscriptionResolver<ResolversTypes['RevenueSummary'], "revenueSummaryUpdated", ParentType, ContextType, Partial<SubscriptionRevenueSummaryUpdatedArgs>>;
+  usersUpdated?: SubscriptionResolver<Array<ResolversTypes['User']>, "usersUpdated", ParentType, ContextType, Partial<SubscriptionUsersUpdatedArgs>>;
+};
+
 export type SubscriptionRequestResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['SubscriptionRequest'] = ResolversParentTypes['SubscriptionRequest']> = {
   approvedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   approvedBy?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
@@ -1491,6 +1518,7 @@ export type Resolvers<ContextType = IAuthContext> = {
   RevenueSummary?: RevenueSummaryResolvers<ContextType>;
   Session?: SessionResolvers<ContextType>;
   SessionLog?: SessionLogResolvers<ContextType>;
+  Subscription?: SubscriptionResolvers<ContextType>;
   SubscriptionRequest?: SubscriptionRequestResolvers<ContextType>;
   User?: UserResolvers<ContextType>;
   WeightProgress?: WeightProgressResolvers<ContextType>;

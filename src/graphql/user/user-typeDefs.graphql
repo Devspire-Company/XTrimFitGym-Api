@@ -130,3 +130,10 @@ type Mutation {
 	deleteUser(id: ID!): Boolean
 	removeClient(clientId: ID!): Boolean!
 }
+
+# Subscriptions
+type Subscription {
+	# Base subscription type - extended in other modules
+	# This field is required as GraphQL doesn't allow empty types
+	_empty: Boolean
+}

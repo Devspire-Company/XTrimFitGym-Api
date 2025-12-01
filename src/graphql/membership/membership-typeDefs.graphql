@@ -102,3 +102,9 @@ extend type Mutation {
 	cancelMembership(transactionId: ID!): Boolean!
 }
 
+# Extend Subscription type
+extend type Subscription {
+	# Subscribe to membership updates
+	membershipsUpdated: [Membership!]!
+}
+
