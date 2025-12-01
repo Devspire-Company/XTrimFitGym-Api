@@ -1,11 +1,19 @@
 import mongoose, { Schema } from 'mongoose';
 
+export interface IProgressImage {
+	front?: string; // Front angle image URL
+	rightSide?: string; // Right side angle image URL
+	leftSide?: string; // Left side angle image URL
+	back?: string; // Back angle image URL
+}
+
 export interface ISessionLog {
 	_id?: mongoose.Types.ObjectId;
 	session_id: mongoose.Types.ObjectId;
 	client_id: mongoose.Types.ObjectId;
 	coach_id: mongoose.Types.ObjectId;
-	weight: number; // Weight entered by client at end of session
+	weight?: number; // Weight entered by client at end of session (optional if goal is not weight-related)
+	progressImages?: IProgressImage; // Progress images taken at session completion
 	clientConfirmed: boolean; // Client confirmed they entered weight
 	coachConfirmed: boolean; // Coach confirmed the session completion
 	notes?: string; // Additional notes about the session
@@ -33,7 +41,16 @@ const sessionLogSchema = new Schema(
 		},
 		weight: {
 			type: Number,
-			required: true,
+			required: false, // Made optional - only required for weight-related goals
+		},
+		progressImages: {
+			type: {
+				front: String,
+				rightSide: String,
+				leftSide: String,
+				back: String,
+			},
+			required: false,
 		},
 		clientConfirmed: {
 			type: Boolean,

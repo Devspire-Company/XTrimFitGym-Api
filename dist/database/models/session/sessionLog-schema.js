@@ -17,7 +17,16 @@ const sessionLogSchema = new Schema({
     },
     weight: {
         type: Number,
-        required: true,
+        required: false, // Made optional - only required for weight-related goals
+    },
+    progressImages: {
+        type: {
+            front: String,
+            rightSide: String,
+            leftSide: String,
+            back: String,
+        },
+        required: false,
     },
     clientConfirmed: {
         type: Boolean,

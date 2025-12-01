@@ -8,7 +8,8 @@ const sessionSchema = new Schema({
     clients_ids: {
         type: [mongoose.SchemaTypes.ObjectId],
         ref: 'User',
-        required: true,
+        required: false, // Allow empty array for templates
+        default: [],
     },
     name: {
         type: String,
@@ -40,6 +41,20 @@ const sessionSchema = new Schema({
         type: String,
         enum: ['scheduled', 'completed', 'cancelled'],
         default: 'scheduled',
+    },
+    templateId: {
+        type: mongoose.SchemaTypes.ObjectId,
+        ref: 'Session',
+        required: false,
+    },
+    goalId: {
+        type: mongoose.SchemaTypes.ObjectId,
+        ref: 'Goal',
+        required: false,
+    },
+    isTemplate: {
+        type: Boolean,
+        default: false,
     },
 }, {
     timestamps: true,

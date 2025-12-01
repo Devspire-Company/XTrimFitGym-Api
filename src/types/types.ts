@@ -66,6 +66,21 @@ export type CoachDetailsInput = {
   yearsOfExperience?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type CoachRating = {
+  __typename?: 'CoachRating';
+  client?: Maybe<User>;
+  clientId: Scalars['ID']['output'];
+  coach?: Maybe<User>;
+  coachId: Scalars['ID']['output'];
+  comment?: Maybe<Scalars['String']['output']>;
+  createdAt?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  rating: Scalars['Int']['output'];
+  sessionLog?: Maybe<SessionLog>;
+  sessionLogId: Scalars['ID']['output'];
+  updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
 export type CoachRequest = {
   __typename?: 'CoachRequest';
   client?: Maybe<User>;
@@ -90,6 +105,13 @@ export type ConfirmSessionCompletionInput = {
   sessionLogId: Scalars['ID']['input'];
 };
 
+export type CreateCoachRatingInput = {
+  coachId: Scalars['ID']['input'];
+  comment?: InputMaybe<Scalars['String']['input']>;
+  rating: Scalars['Int']['input'];
+  sessionLogId: Scalars['ID']['input'];
+};
+
 export type CreateCoachRequestInput = {
   coachId: Scalars['ID']['input'];
   message?: InputMaybe<Scalars['String']['input']>;
@@ -111,6 +133,17 @@ export type CreateMembershipInput = {
   monthlyPrice: Scalars['Float']['input'];
   name: Scalars['String']['input'];
   status: MembershipStatus;
+};
+
+export type CreateProgressRatingInput = {
+  clientId: Scalars['ID']['input'];
+  comment: Scalars['String']['input'];
+  endDate: Scalars['String']['input'];
+  goalId: Scalars['ID']['input'];
+  rating: Scalars['Int']['input'];
+  sessionLogIds: Array<Scalars['ID']['input']>;
+  startDate: Scalars['String']['input'];
+  verdict: ProgressVerdict;
 };
 
 export type CreateSessionFromTemplateInput = {
@@ -138,8 +171,9 @@ export type CreateSessionInput = {
 
 export type CreateSessionLogInput = {
   notes?: InputMaybe<Scalars['String']['input']>;
+  progressImages: ProgressImagesInput;
   sessionId: Scalars['ID']['input'];
-  weight: Scalars['Float']['input'];
+  weight?: InputMaybe<Scalars['Float']['input']>;
 };
 
 export type CreateSubscriptionRequestInput = {
@@ -282,24 +316,30 @@ export type Mutation = {
   clientConfirmWeight: SessionLog;
   completeSession: SessionLog;
   confirmSessionCompletion: SessionLog;
+  createCoachRating: CoachRating;
   createCoachRequest: CoachRequest;
   createGoal: Goal;
   createMembership: Membership;
+  createProgressRating: ProgressRating;
   createSession: Session;
   createSessionFromTemplate: Session;
   createSubscriptionRequest: SubscriptionRequest;
   createUser: AuthResponse;
+  deleteCoachRating: Scalars['Boolean']['output'];
   deleteGoal: Scalars['Boolean']['output'];
   deleteMembership: Scalars['Boolean']['output'];
+  deleteProgressRating: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
   directSubscribeMember: MembershipTransaction;
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
+  updateCoachRating: CoachRating;
   updateCoachRequest: CoachRequest;
   updateGoal: Goal;
   updateMembership: Membership;
+  updateProgressRating: ProgressRating;
   updateSession: Session;
   updateUser?: Maybe<User>;
 };
@@ -345,6 +385,11 @@ export type MutationConfirmSessionCompletionArgs = {
 };
 
 
+export type MutationCreateCoachRatingArgs = {
+  input: CreateCoachRatingInput;
+};
+
+
 export type MutationCreateCoachRequestArgs = {
   input: CreateCoachRequestInput;
 };
@@ -357,6 +402,11 @@ export type MutationCreateGoalArgs = {
 
 export type MutationCreateMembershipArgs = {
   input: CreateMembershipInput;
+};
+
+
+export type MutationCreateProgressRatingArgs = {
+  input: CreateProgressRatingInput;
 };
 
 
@@ -380,12 +430,22 @@ export type MutationCreateUserArgs = {
 };
 
 
+export type MutationDeleteCoachRatingArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteGoalArgs = {
   id: Scalars['ID']['input'];
 };
 
 
 export type MutationDeleteMembershipArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteProgressRatingArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -420,6 +480,13 @@ export type MutationRemoveClientArgs = {
 };
 
 
+export type MutationUpdateCoachRatingArgs = {
+  comment?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['ID']['input'];
+  rating?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type MutationUpdateCoachRequestArgs = {
   id: Scalars['ID']['input'];
   input: UpdateCoachRequestInput;
@@ -435,6 +502,12 @@ export type MutationUpdateGoalArgs = {
 export type MutationUpdateMembershipArgs = {
   id: Scalars['ID']['input'];
   input: UpdateMembershipInput;
+};
+
+
+export type MutationUpdateProgressRatingArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateProgressRatingInput;
 };
 
 
@@ -456,6 +529,48 @@ export type PeriodRevenue = {
   revenue: Scalars['Float']['output'];
 };
 
+export type ProgressImages = {
+  __typename?: 'ProgressImages';
+  back?: Maybe<Scalars['String']['output']>;
+  front?: Maybe<Scalars['String']['output']>;
+  leftSide?: Maybe<Scalars['String']['output']>;
+  rightSide?: Maybe<Scalars['String']['output']>;
+};
+
+export type ProgressImagesInput = {
+  back?: InputMaybe<Scalars['String']['input']>;
+  front?: InputMaybe<Scalars['String']['input']>;
+  leftSide?: InputMaybe<Scalars['String']['input']>;
+  rightSide?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type ProgressRating = {
+  __typename?: 'ProgressRating';
+  client?: Maybe<User>;
+  clientId: Scalars['ID']['output'];
+  coach?: Maybe<User>;
+  coachId: Scalars['ID']['output'];
+  comment: Scalars['String']['output'];
+  createdAt?: Maybe<Scalars['String']['output']>;
+  endDate: Scalars['String']['output'];
+  goal?: Maybe<Goal>;
+  goalId: Scalars['ID']['output'];
+  id: Scalars['ID']['output'];
+  rating: Scalars['Int']['output'];
+  sessionLogIds: Array<Scalars['ID']['output']>;
+  sessionLogs?: Maybe<Array<SessionLog>>;
+  startDate: Scalars['String']['output'];
+  updatedAt?: Maybe<Scalars['String']['output']>;
+  verdict: ProgressVerdict;
+};
+
+export enum ProgressVerdict {
+  Achieved = 'achieved',
+  CloseToAchievement = 'close_to_achievement',
+  Progressive = 'progressive',
+  Regressing = 'regressing'
+}
+
 export type PurchaseMembershipInput = {
   membershipId: Scalars['ID']['input'];
 };
@@ -465,9 +580,14 @@ export type Query = {
   getAllClientGoals: Array<Goal>;
   getAnalytics?: Maybe<Analytics>;
   getAnalyticsRange: Array<Analytics>;
+  getClientProgressRatings: Array<ProgressRating>;
   getClientRequests: Array<CoachRequest>;
   getClientSessions: Array<Session>;
+  getCoachProgressRatings: Array<ProgressRating>;
+  getCoachRatingBySessionLog?: Maybe<CoachRating>;
+  getCoachRatings: Array<CoachRating>;
   getCoachRequests: Array<CoachRequest>;
+  getCoachSessionLogs: Array<SessionLog>;
   getCoachSessions: Array<Session>;
   getCurrentMembership?: Maybe<MembershipTransaction>;
   getFitnessGoalTypes: Array<Scalars['String']['output']>;
@@ -479,9 +599,12 @@ export type Query = {
   getMySubscriptionRequests: Array<SubscriptionRequest>;
   getPendingCoachRequests: Array<CoachRequest>;
   getPendingSubscriptionRequests: Array<SubscriptionRequest>;
+  getProgressRatings: Array<ProgressRating>;
   getRevenueSummary: RevenueSummary;
   getSession?: Maybe<Session>;
+  getSessionLogBySessionId?: Maybe<SessionLog>;
   getSessionLogs: Array<SessionLog>;
+  getSessionLogsForRating: Array<SessionLog>;
   getSessionTemplates: Array<Session>;
   getSubscriptionRequest?: Maybe<SubscriptionRequest>;
   getUpcomingSessions: Array<Session>;
@@ -508,6 +631,11 @@ export type QueryGetAnalyticsRangeArgs = {
 };
 
 
+export type QueryGetClientProgressRatingsArgs = {
+  clientId: Scalars['ID']['input'];
+};
+
+
 export type QueryGetClientRequestsArgs = {
   clientId: Scalars['ID']['input'];
   status?: InputMaybe<CoachRequestStatus>;
@@ -520,9 +648,29 @@ export type QueryGetClientSessionsArgs = {
 };
 
 
+export type QueryGetCoachProgressRatingsArgs = {
+  coachId: Scalars['ID']['input'];
+};
+
+
+export type QueryGetCoachRatingBySessionLogArgs = {
+  sessionLogId: Scalars['ID']['input'];
+};
+
+
+export type QueryGetCoachRatingsArgs = {
+  coachId: Scalars['ID']['input'];
+};
+
+
 export type QueryGetCoachRequestsArgs = {
   coachId: Scalars['ID']['input'];
   status?: InputMaybe<CoachRequestStatus>;
+};
+
+
+export type QueryGetCoachSessionLogsArgs = {
+  coachId: Scalars['ID']['input'];
 };
 
 
@@ -558,6 +706,12 @@ export type QueryGetMembershipsArgs = {
 };
 
 
+export type QueryGetProgressRatingsArgs = {
+  clientId: Scalars['ID']['input'];
+  goalId: Scalars['ID']['input'];
+};
+
+
 export type QueryGetRevenueSummaryArgs = {
   dateRange?: InputMaybe<DateRangeInput>;
 };
@@ -568,8 +722,21 @@ export type QueryGetSessionArgs = {
 };
 
 
+export type QueryGetSessionLogBySessionIdArgs = {
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type QueryGetSessionLogsArgs = {
   clientId: Scalars['ID']['input'];
+};
+
+
+export type QueryGetSessionLogsForRatingArgs = {
+  clientId: Scalars['ID']['input'];
+  endDate: Scalars['String']['input'];
+  goalId: Scalars['ID']['input'];
+  startDate: Scalars['String']['input'];
 };
 
 
@@ -661,10 +828,11 @@ export type SessionLog = {
   createdAt?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   notes?: Maybe<Scalars['String']['output']>;
+  progressImages?: Maybe<ProgressImages>;
   session?: Maybe<Session>;
   sessionId: Scalars['ID']['output'];
   updatedAt?: Maybe<Scalars['String']['output']>;
-  weight: Scalars['Float']['output'];
+  weight?: Maybe<Scalars['Float']['output']>;
 };
 
 export enum SessionStatus {
@@ -725,6 +893,13 @@ export type UpdateMembershipInput = {
   monthlyPrice?: InputMaybe<Scalars['Float']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<MembershipStatus>;
+};
+
+export type UpdateProgressRatingInput = {
+  comment?: InputMaybe<Scalars['String']['input']>;
+  rating?: InputMaybe<Scalars['Int']['input']>;
+  sessionLogIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  verdict?: InputMaybe<ProgressVerdict>;
 };
 
 export type UpdateSessionInput = {
@@ -865,12 +1040,15 @@ export type ResolversTypes = {
   Boolean: ResolverTypeWrapper<Partial<Scalars['Boolean']['output']>>;
   CoachDetails: ResolverTypeWrapper<Partial<CoachDetails>>;
   CoachDetailsInput: ResolverTypeWrapper<Partial<CoachDetailsInput>>;
+  CoachRating: ResolverTypeWrapper<Partial<CoachRating>>;
   CoachRequest: ResolverTypeWrapper<Partial<CoachRequest>>;
   CoachRequestStatus: ResolverTypeWrapper<Partial<CoachRequestStatus>>;
   ConfirmSessionCompletionInput: ResolverTypeWrapper<Partial<ConfirmSessionCompletionInput>>;
+  CreateCoachRatingInput: ResolverTypeWrapper<Partial<CreateCoachRatingInput>>;
   CreateCoachRequestInput: ResolverTypeWrapper<Partial<CreateCoachRequestInput>>;
   CreateGoalInput: ResolverTypeWrapper<Partial<CreateGoalInput>>;
   CreateMembershipInput: ResolverTypeWrapper<Partial<CreateMembershipInput>>;
+  CreateProgressRatingInput: ResolverTypeWrapper<Partial<CreateProgressRatingInput>>;
   CreateSessionFromTemplateInput: ResolverTypeWrapper<Partial<CreateSessionFromTemplateInput>>;
   CreateSessionInput: ResolverTypeWrapper<Partial<CreateSessionInput>>;
   CreateSessionLogInput: ResolverTypeWrapper<Partial<CreateSessionLogInput>>;
@@ -893,6 +1071,10 @@ export type ResolversTypes = {
   MembershipTransaction: ResolverTypeWrapper<Partial<MembershipTransaction>>;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
   PeriodRevenue: ResolverTypeWrapper<Partial<PeriodRevenue>>;
+  ProgressImages: ResolverTypeWrapper<Partial<ProgressImages>>;
+  ProgressImagesInput: ResolverTypeWrapper<Partial<ProgressImagesInput>>;
+  ProgressRating: ResolverTypeWrapper<Partial<ProgressRating>>;
+  ProgressVerdict: ResolverTypeWrapper<Partial<ProgressVerdict>>;
   PurchaseMembershipInput: ResolverTypeWrapper<Partial<PurchaseMembershipInput>>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   RejectSubscriptionRequestInput: ResolverTypeWrapper<Partial<RejectSubscriptionRequestInput>>;
@@ -908,6 +1090,7 @@ export type ResolversTypes = {
   UpdateCoachRequestInput: ResolverTypeWrapper<Partial<UpdateCoachRequestInput>>;
   UpdateGoalInput: ResolverTypeWrapper<Partial<UpdateGoalInput>>;
   UpdateMembershipInput: ResolverTypeWrapper<Partial<UpdateMembershipInput>>;
+  UpdateProgressRatingInput: ResolverTypeWrapper<Partial<UpdateProgressRatingInput>>;
   UpdateSessionInput: ResolverTypeWrapper<Partial<UpdateSessionInput>>;
   UpdateUserInput: ResolverTypeWrapper<Partial<UpdateUserInput>>;
   User: ResolverTypeWrapper<Partial<User>>;
@@ -922,11 +1105,14 @@ export type ResolversParentTypes = {
   Boolean: Partial<Scalars['Boolean']['output']>;
   CoachDetails: Partial<CoachDetails>;
   CoachDetailsInput: Partial<CoachDetailsInput>;
+  CoachRating: Partial<CoachRating>;
   CoachRequest: Partial<CoachRequest>;
   ConfirmSessionCompletionInput: Partial<ConfirmSessionCompletionInput>;
+  CreateCoachRatingInput: Partial<CreateCoachRatingInput>;
   CreateCoachRequestInput: Partial<CreateCoachRequestInput>;
   CreateGoalInput: Partial<CreateGoalInput>;
   CreateMembershipInput: Partial<CreateMembershipInput>;
+  CreateProgressRatingInput: Partial<CreateProgressRatingInput>;
   CreateSessionFromTemplateInput: Partial<CreateSessionFromTemplateInput>;
   CreateSessionInput: Partial<CreateSessionInput>;
   CreateSessionLogInput: Partial<CreateSessionLogInput>;
@@ -946,6 +1132,9 @@ export type ResolversParentTypes = {
   MembershipTransaction: Partial<MembershipTransaction>;
   Mutation: Record<PropertyKey, never>;
   PeriodRevenue: Partial<PeriodRevenue>;
+  ProgressImages: Partial<ProgressImages>;
+  ProgressImagesInput: Partial<ProgressImagesInput>;
+  ProgressRating: Partial<ProgressRating>;
   PurchaseMembershipInput: Partial<PurchaseMembershipInput>;
   Query: Record<PropertyKey, never>;
   RejectSubscriptionRequestInput: Partial<RejectSubscriptionRequestInput>;
@@ -957,6 +1146,7 @@ export type ResolversParentTypes = {
   UpdateCoachRequestInput: Partial<UpdateCoachRequestInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
   UpdateMembershipInput: Partial<UpdateMembershipInput>;
+  UpdateProgressRatingInput: Partial<UpdateProgressRatingInput>;
   UpdateSessionInput: Partial<UpdateSessionInput>;
   UpdateUserInput: Partial<UpdateUserInput>;
   User: Partial<User>;
@@ -991,6 +1181,20 @@ export type CoachDetailsResolvers<ContextType = IAuthContext, ParentType extends
   teachingDate?: Resolver<Maybe<Array<Maybe<ResolversTypes['String']>>>, ParentType, ContextType>;
   teachingTime?: Resolver<Maybe<Array<Maybe<ResolversTypes['String']>>>, ParentType, ContextType>;
   yearsOfExperience?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+};
+
+export type CoachRatingResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['CoachRating'] = ResolversParentTypes['CoachRating']> = {
+  client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  coach?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  coachId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  comment?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  rating?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  sessionLog?: Resolver<Maybe<ResolversTypes['SessionLog']>, ParentType, ContextType>;
+  sessionLogId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type CoachRequestResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['CoachRequest'] = ResolversParentTypes['CoachRequest']> = {
@@ -1074,24 +1278,30 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   clientConfirmWeight?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationClientConfirmWeightArgs, 'sessionLogId'>>;
   completeSession?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationCompleteSessionArgs, 'input'>>;
   confirmSessionCompletion?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationConfirmSessionCompletionArgs, 'input'>>;
+  createCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationCreateCoachRatingArgs, 'input'>>;
   createCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationCreateCoachRequestArgs, 'input'>>;
   createGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationCreateGoalArgs, 'input'>>;
   createMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationCreateMembershipArgs, 'input'>>;
+  createProgressRating?: Resolver<ResolversTypes['ProgressRating'], ParentType, ContextType, RequireFields<MutationCreateProgressRatingArgs, 'input'>>;
   createSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionArgs, 'input'>>;
   createSessionFromTemplate?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionFromTemplateArgs, 'input'>>;
   createSubscriptionRequest?: Resolver<ResolversTypes['SubscriptionRequest'], ParentType, ContextType, RequireFields<MutationCreateSubscriptionRequestArgs, 'input'>>;
   createUser?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationCreateUserArgs, 'input'>>;
+  deleteCoachRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteCoachRatingArgs, 'id'>>;
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
   deleteMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteMembershipArgs, 'id'>>;
+  deleteProgressRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteProgressRatingArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
   directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
+  updateCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationUpdateCoachRatingArgs, 'id'>>;
   updateCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationUpdateCoachRequestArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
   updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;
+  updateProgressRating?: Resolver<ResolversTypes['ProgressRating'], ParentType, ContextType, RequireFields<MutationUpdateProgressRatingArgs, 'id' | 'input'>>;
   updateSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationUpdateSessionArgs, 'id' | 'input'>>;
   updateUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationUpdateUserArgs, 'id' | 'input'>>;
 };
@@ -1102,13 +1312,44 @@ export type PeriodRevenueResolvers<ContextType = IAuthContext, ParentType extend
   revenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
+export type ProgressImagesResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['ProgressImages'] = ResolversParentTypes['ProgressImages']> = {
+  back?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  front?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  leftSide?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  rightSide?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type ProgressRatingResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['ProgressRating'] = ResolversParentTypes['ProgressRating']> = {
+  client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  coach?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  coachId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  comment?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  endDate?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  goal?: Resolver<Maybe<ResolversTypes['Goal']>, ParentType, ContextType>;
+  goalId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  rating?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  sessionLogIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
+  sessionLogs?: Resolver<Maybe<Array<ResolversTypes['SessionLog']>>, ParentType, ContextType>;
+  startDate?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  verdict?: Resolver<ResolversTypes['ProgressVerdict'], ParentType, ContextType>;
+};
+
 export type QueryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   getAllClientGoals?: Resolver<Array<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetAllClientGoalsArgs, 'coachId'>>;
   getAnalytics?: Resolver<Maybe<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsArgs, 'date'>>;
   getAnalyticsRange?: Resolver<Array<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsRangeArgs, 'dateRange'>>;
+  getClientProgressRatings?: Resolver<Array<ResolversTypes['ProgressRating']>, ParentType, ContextType, RequireFields<QueryGetClientProgressRatingsArgs, 'clientId'>>;
   getClientRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetClientRequestsArgs, 'clientId'>>;
   getClientSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetClientSessionsArgs, 'clientId'>>;
+  getCoachProgressRatings?: Resolver<Array<ResolversTypes['ProgressRating']>, ParentType, ContextType, RequireFields<QueryGetCoachProgressRatingsArgs, 'coachId'>>;
+  getCoachRatingBySessionLog?: Resolver<Maybe<ResolversTypes['CoachRating']>, ParentType, ContextType, RequireFields<QueryGetCoachRatingBySessionLogArgs, 'sessionLogId'>>;
+  getCoachRatings?: Resolver<Array<ResolversTypes['CoachRating']>, ParentType, ContextType, RequireFields<QueryGetCoachRatingsArgs, 'coachId'>>;
   getCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetCoachRequestsArgs, 'coachId'>>;
+  getCoachSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetCoachSessionLogsArgs, 'coachId'>>;
   getCoachSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetCoachSessionsArgs, 'coachId'>>;
   getCurrentMembership?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType>;
   getFitnessGoalTypes?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
@@ -1120,9 +1361,12 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getMySubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
   getPendingCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType>;
   getPendingSubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
+  getProgressRatings?: Resolver<Array<ResolversTypes['ProgressRating']>, ParentType, ContextType, RequireFields<QueryGetProgressRatingsArgs, 'clientId' | 'goalId'>>;
   getRevenueSummary?: Resolver<ResolversTypes['RevenueSummary'], ParentType, ContextType, Partial<QueryGetRevenueSummaryArgs>>;
   getSession?: Resolver<Maybe<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionArgs, 'id'>>;
+  getSessionLogBySessionId?: Resolver<Maybe<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogBySessionIdArgs, 'sessionId'>>;
   getSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogsArgs, 'clientId'>>;
+  getSessionLogsForRating?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogsForRatingArgs, 'clientId' | 'endDate' | 'goalId' | 'startDate'>>;
   getSessionTemplates?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionTemplatesArgs, 'coachId'>>;
   getSubscriptionRequest?: Resolver<Maybe<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType, RequireFields<QueryGetSubscriptionRequestArgs, 'id'>>;
   getUpcomingSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType>;
@@ -1176,10 +1420,11 @@ export type SessionLogResolvers<ContextType = IAuthContext, ParentType extends R
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   notes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  progressImages?: Resolver<Maybe<ResolversTypes['ProgressImages']>, ParentType, ContextType>;
   session?: Resolver<Maybe<ResolversTypes['Session']>, ParentType, ContextType>;
   sessionId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  weight?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  weight?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
 };
 
 export type SubscriptionRequestResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['SubscriptionRequest'] = ResolversParentTypes['SubscriptionRequest']> = {
@@ -1231,6 +1476,7 @@ export type Resolvers<ContextType = IAuthContext> = {
   Analytics?: AnalyticsResolvers<ContextType>;
   AuthResponse?: AuthResponseResolvers<ContextType>;
   CoachDetails?: CoachDetailsResolvers<ContextType>;
+  CoachRating?: CoachRatingResolvers<ContextType>;
   CoachRequest?: CoachRequestResolvers<ContextType>;
   Goal?: GoalResolvers<ContextType>;
   MemberDetails?: MemberDetailsResolvers<ContextType>;
@@ -1239,6 +1485,8 @@ export type Resolvers<ContextType = IAuthContext> = {
   MembershipTransaction?: MembershipTransactionResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
   PeriodRevenue?: PeriodRevenueResolvers<ContextType>;
+  ProgressImages?: ProgressImagesResolvers<ContextType>;
+  ProgressRating?: ProgressRatingResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   RevenueSummary?: RevenueSummaryResolvers<ContextType>;
   Session?: SessionResolvers<ContextType>;

@@ -1,13 +1,29 @@
 import CoachRequest from '../../database/models/coachRequest/coachRequest-schema.js';
 import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
+// Helper to map User document to GraphQL format (simplified for coach request context)
+const mapUserToGraphQLForRequest = (user) => {
+    if (!user)
+        return null;
+    // Handle both populated documents (from .lean()) and plain objects
+    // When using .lean(), _id is present, when populated normally, it might be _id or id
+    const userId = user._id ? user._id.toString() : (user.id || null);
+    if (!userId)
+        return null;
+    return {
+        id: userId,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+    };
+};
 const mapCoachRequestToGraphQL = (request) => {
     return {
         id: request._id.toString(),
         clientId: request.client_id.toString(),
-        client: request.client_id,
+        client: request.client_id, // Will be resolved by CoachRequest.client resolver
         coachId: request.coach_id.toString(),
-        coach: request.coach_id,
+        coach: request.coach_id, // Will be resolved by CoachRequest.coach resolver
         status: request.status,
         message: request.message || null,
         createdAt: request.createdAt?.toISOString(),
@@ -187,18 +203,32 @@ const coachRequestResolvers = {
     },
     CoachRequest: {
         client: async (parent) => {
-            if (parent.client) {
-                return parent.client;
+            // If client is already populated (from populate in mapCoachRequestToGraphQL)
+            // parent.client will be the populated client_id from the request
+            if (parent.client && typeof parent.client === 'object') {
+                // Map the populated user to GraphQL format
+                return mapUserToGraphQLForRequest(parent.client);
             }
-            const user = await User.findById(parent.clientId).lean();
-            return user;
+            // Fallback: fetch the user if not populated
+            if (parent.clientId) {
+                const user = await User.findById(parent.clientId).lean();
+                return mapUserToGraphQLForRequest(user);
+            }
+            return null;
         },
         coach: async (parent) => {
-            if (parent.coach) {
-                return parent.coach;
+            // If coach is already populated (from populate in mapCoachRequestToGraphQL)
+            // parent.coach will be the populated coach_id from the request
+            if (parent.coach && typeof parent.coach === 'object') {
+                // Map the populated user to GraphQL format
+                return mapUserToGraphQLForRequest(parent.coach);
             }
-            const user = await User.findById(parent.coachId).lean();
-            return user;
+            // Fallback: fetch the user if not populated
+            if (parent.coachId) {
+                const user = await User.findById(parent.coachId).lean();
+                return mapUserToGraphQLForRequest(user);
+            }
+            return null;
         },
     },
 };

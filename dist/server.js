@@ -22,6 +22,9 @@ async function startServer() {
     // Middleware order matters! cookieParser must come before expressMiddleware
     app.use(cookieParser()); // Global cookie parser
     app.use(express.json()); // Global JSON parser
+    // Upload routes (must come before GraphQL)
+    const uploadRouter = await import('./routes/upload.js');
+    app.use('/api/upload', uploadRouter.default);
     app.use('/graphql', expressMiddleware(server, {
         context: ({ req, res }) => authContext({ req, res }),
     }));

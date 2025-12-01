@@ -10,17 +10,6 @@ export var DurationType;
     DurationType["Quarterly"] = "QUARTERLY";
     DurationType["Yearly"] = "YEARLY";
 })(DurationType || (DurationType = {}));
-export var FitnessGoalType;
-(function (FitnessGoalType) {
-    FitnessGoalType["AthleticPerformance"] = "ATHLETIC_PERFORMANCE";
-    FitnessGoalType["Endurance"] = "ENDURANCE";
-    FitnessGoalType["Flexibility"] = "FLEXIBILITY";
-    FitnessGoalType["GeneralFitness"] = "GENERAL_FITNESS";
-    FitnessGoalType["MuscleBuilding"] = "MUSCLE_BUILDING";
-    FitnessGoalType["Rehabilitation"] = "REHABILITATION";
-    FitnessGoalType["StrengthTraining"] = "STRENGTH_TRAINING";
-    FitnessGoalType["WeightLoss"] = "WEIGHT_LOSS";
-})(FitnessGoalType || (FitnessGoalType = {}));
 export var GoalStatus;
 (function (GoalStatus) {
     GoalStatus["Active"] = "active";
@@ -34,6 +23,13 @@ export var MembershipStatus;
     MembershipStatus["ComingSoon"] = "COMING_SOON";
     MembershipStatus["Inactive"] = "INACTIVE";
 })(MembershipStatus || (MembershipStatus = {}));
+export var ProgressVerdict;
+(function (ProgressVerdict) {
+    ProgressVerdict["Achieved"] = "achieved";
+    ProgressVerdict["CloseToAchievement"] = "close_to_achievement";
+    ProgressVerdict["Progressive"] = "progressive";
+    ProgressVerdict["Regressing"] = "regressing";
+})(ProgressVerdict || (ProgressVerdict = {}));
 export var RoleType;
 (function (RoleType) {
     RoleType["Admin"] = "admin";

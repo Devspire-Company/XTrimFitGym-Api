@@ -10,13 +10,8 @@ const memberSchema = new Schema({
     },
     fitnessGoal: {
         type: [String],
-        enum: [
-            'Weight loss',
-            'Muscle building',
-            'General fitness',
-            'Strength training',
-            'Endurance',
-        ],
+        // No enum constraint - values are managed in config/fitness-goal-types.ts
+        // Predefined values: Weight loss, Muscle building, General fitness, Strength training, Endurance, Flexibility, Rehabilitation, Athletic Performance
     },
     workOutTime: [String],
     coaches_ids: {
@@ -39,13 +34,8 @@ const coachSchema = new Schema({
     },
     specialization: {
         type: [String],
-        enum: [
-            'Weight loss',
-            'Muscle building',
-            'General fitness',
-            'Strength training',
-            'Endurance',
-        ],
+        // No enum constraint - values are managed in config/fitness-goal-types.ts
+        // Predefined values: Weight loss, Muscle building, General fitness, Strength training, Endurance, Flexibility, Rehabilitation, Athletic Performance
     },
     ratings: {
         type: Number,

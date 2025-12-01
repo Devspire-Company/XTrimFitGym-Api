@@ -54,6 +54,14 @@ input UpdateSessionInput {
 	status: SessionStatus
 }
 
+# Progress Images type
+type ProgressImages {
+	front: String
+	rightSide: String
+	leftSide: String
+	back: String
+}
+
 # Session Log types (for completed sessions with weight tracking)
 type SessionLog {
 	id: ID!
@@ -63,7 +71,8 @@ type SessionLog {
 	client: User # Populated client details
 	coachId: ID!
 	coach: User # Populated coach details
-	weight: Float!
+	weight: Float # Optional - only required for weight-related goals
+	progressImages: ProgressImages # Progress images taken at session completion
 	clientConfirmed: Boolean!
 	coachConfirmed: Boolean!
 	notes: String
@@ -72,9 +81,17 @@ type SessionLog {
 	updatedAt: String
 }
 
+input ProgressImagesInput {
+	front: String
+	rightSide: String
+	leftSide: String
+	back: String
+}
+
 input CreateSessionLogInput {
 	sessionId: ID!
-	weight: Float!
+	weight: Float # Optional - only required for weight-related goals
+	progressImages: ProgressImagesInput! # Required - must upload 4 images (front, rightSide, leftSide, back)
 	notes: String
 }
 
@@ -97,6 +114,10 @@ extend type Query {
 	getSessionTemplates(coachId: ID!): [Session!]!
 	# Get session logs for a client
 	getSessionLogs(clientId: ID!): [SessionLog!]!
+	# Get session logs for a coach (all sessions they've coached)
+	getCoachSessionLogs(coachId: ID!): [SessionLog!]!
+	# Get session log by session ID (for coaches to view specific session progress)
+	getSessionLogBySessionId(sessionId: ID!): SessionLog
 	# Get weight progress for a client
 	getWeightProgress(clientId: ID!, goalId: ID): [SessionLog!]!
 }

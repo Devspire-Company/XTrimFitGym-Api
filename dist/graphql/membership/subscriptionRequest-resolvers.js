@@ -3,6 +3,7 @@ import Membership from '../../database/models/membership/membership-shema.js';
 import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
 import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
+import { onSubscriptionCreated, onSubscriptionSwitched, } from '../../database/models/analytics/analytics-helper.js';
 // Helper to map membership to GraphQL format
 const mapMembershipToGraphQL = (membership) => {
     if (!membership)
@@ -99,7 +100,12 @@ const createMembershipTransaction = async (memberId, membershipId, approvedBy) =
     if (membership.status !== 'Active') {
         throw new Error('This membership plan is not available');
     }
-    // Cancel any existing active memberships
+    // Check if user has an existing active membership (switching plans)
+    const hasExistingActive = await MembershipTransaction.findOne({
+        client_id: new mongoose.Types.ObjectId(memberId),
+        status: 'Active',
+    }).lean();
+    // Cancel any existing active memberships (when switching plans)
     await MembershipTransaction.updateMany({
         client_id: new mongoose.Types.ObjectId(memberId),
         status: 'Active',
@@ -133,6 +139,13 @@ const createMembershipTransaction = async (memberId, membershipId, approvedBy) =
     await User.findByIdAndUpdate(memberId, {
         'membershipDetails.membership_id': new mongoose.Types.ObjectId(membershipId),
     });
+    // Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
+    if (hasExistingActive) {
+        await onSubscriptionSwitched(transaction._id.toString());
+    }
+    else {
+        await onSubscriptionCreated(transaction._id.toString());
+    }
     const populatedTransaction = await MembershipTransaction.findById(transaction._id)
         .populate('membership_id')
         .populate('client_id', 'firstName lastName email')

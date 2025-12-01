@@ -41,16 +41,27 @@ const mapSessionToGraphQL = (session: any) => {
 
 	// Handle goalId - it might be an ObjectId or a populated object
 	let goalId: string | null = null;
+	let goal: any = null;
 	if (session.goalId) {
-		if (session.goalId._id) {
-			// Populated object - use _id
-			goalId = session.goalId._id.toString();
+		if (session.goalId._id || session.goalId.title || session.goalId.goalType) {
+			// Populated object - map it properly
+			goalId = session.goalId._id
+				? session.goalId._id.toString()
+				: session.goalId.id || String(session.goalId);
+			// Map the goal object with proper structure for GraphQL
+			goal = {
+				id: goalId,
+				title: session.goalId.title || '',
+				goalType: session.goalId.goalType || '',
+			};
 		} else if (session.goalId instanceof mongoose.Types.ObjectId) {
-			// ObjectId instance
+			// ObjectId instance - not populated
 			goalId = session.goalId.toString();
+			goal = null;
 		} else {
 			// Already a string or other format
 			goalId = String(session.goalId);
+			goal = null;
 		}
 	}
 
@@ -83,7 +94,7 @@ const mapSessionToGraphQL = (session: any) => {
 		status: session.status || 'scheduled',
 		templateId: templateId,
 		goalId: goalId,
-		goal: session.goalId || null,
+		goal: goal, // Use the properly mapped goal object
 		isTemplate: session.isTemplate || false,
 		createdAt: session.createdAt?.toISOString(),
 		updatedAt: session.updatedAt?.toISOString(),
@@ -91,21 +102,95 @@ const mapSessionToGraphQL = (session: any) => {
 };
 
 const mapSessionLogToGraphQL = (sessionLog: any) => {
+	// Map session using mapSessionToGraphQL if it's populated
+	let mappedSession = null;
+	if (sessionLog.session_id) {
+		if (sessionLog.session_id._id || sessionLog.session_id.name) {
+			// It's a populated object, use mapSessionToGraphQL
+			mappedSession = mapSessionToGraphQL(sessionLog.session_id);
+		} else {
+			// It's just an ObjectId, convert to string
+			mappedSession = {
+				id: sessionLog.session_id.toString(),
+			};
+		}
+	}
+
+	// Map client if populated
+	let mappedClient = null;
+	if (sessionLog.client_id) {
+		if (sessionLog.client_id._id || sessionLog.client_id.firstName) {
+			// It's a populated object
+			mappedClient = {
+				id: sessionLog.client_id._id
+					? sessionLog.client_id._id.toString()
+					: sessionLog.client_id.id || String(sessionLog.client_id),
+				firstName: sessionLog.client_id.firstName || '',
+				lastName: sessionLog.client_id.lastName || '',
+				email: sessionLog.client_id.email || '',
+			};
+		} else {
+			// It's just an ObjectId
+			mappedClient = {
+				id: sessionLog.client_id.toString(),
+			};
+		}
+	}
+
+	// Map coach if populated
+	let mappedCoach = null;
+	if (sessionLog.coach_id) {
+		if (sessionLog.coach_id._id || sessionLog.coach_id.firstName) {
+			// It's a populated object
+			mappedCoach = {
+				id: sessionLog.coach_id._id
+					? sessionLog.coach_id._id.toString()
+					: sessionLog.coach_id.id || String(sessionLog.coach_id),
+				firstName: sessionLog.coach_id.firstName || '',
+				lastName: sessionLog.coach_id.lastName || '',
+				email: sessionLog.coach_id.email || '',
+			};
+		} else {
+			// It's just an ObjectId
+			mappedCoach = {
+				id: sessionLog.coach_id.toString(),
+			};
+		}
+	}
+
+	// Get sessionId and IDs as strings
+	const sessionId =
+		sessionLog.session_id?._id?.toString() ||
+		sessionLog.session_id?.id ||
+		sessionLog.session_id?.toString() ||
+		'';
+	const clientId =
+		sessionLog.client_id?._id?.toString() ||
+		sessionLog.client_id?.id ||
+		sessionLog.client_id?.toString() ||
+		'';
+	const coachId =
+		sessionLog.coach_id?._id?.toString() ||
+		sessionLog.coach_id?.id ||
+		sessionLog.coach_id?.toString() ||
+		'';
+
 	return {
 		id: sessionLog._id.toString(),
-		sessionId: sessionLog.session_id.toString(),
-		session: sessionLog.session_id,
-		clientId: sessionLog.client_id.toString(),
-		client: sessionLog.client_id,
-		coachId: sessionLog.coach_id.toString(),
-		coach: sessionLog.coach_id,
-		weight: sessionLog.weight,
+		sessionId: sessionId,
+		session: mappedSession,
+		clientId: clientId,
+		client: mappedClient,
+		coachId: coachId,
+		coach: mappedCoach,
+		weight: sessionLog.weight || null,
+		progressImages: sessionLog.progressImages || null,
 		clientConfirmed: sessionLog.clientConfirmed,
 		coachConfirmed: sessionLog.coachConfirmed,
 		notes: sessionLog.notes || null,
-		completedAt: sessionLog.completedAt?.toISOString(),
-		createdAt: sessionLog.createdAt?.toISOString(),
-		updatedAt: sessionLog.updatedAt?.toISOString(),
+		completedAt: sessionLog.completedAt?.toISOString() || null,
+		createdAt: sessionLog.createdAt?.toISOString() || null,
+		updatedAt: sessionLog.updatedAt?.toISOString() || null,
 	};
 };
 
@@ -128,11 +213,38 @@ export default {
 				query.status = status;
 			}
 
-			const sessions = await Session.find(query)
+			// Get all sessions first
+			const allSessions = await Session.find(query)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
+				.populate('goalId', 'title goalType')
 				.sort({ date: 1, startTime: 1 })
 				.lean();
+
+			// Get all session logs for sessions created by this coach to filter out completed sessions
+			const sessionLogs = await SessionLog.find({
+				coach_id: new mongoose.Types.ObjectId(coachId),
+			})
+				.select('session_id')
+				.lean();
+
+			// Create a set of completed session IDs
+			const completedSessionIds = new Set(
+				sessionLogs.map((log: any) => {
+					const sessionId = log.session_id;
+					return sessionId instanceof mongoose.Types.ObjectId
+						? sessionId.toString()
+						: sessionId._id
+						? sessionId._id.toString()
+						: String(sessionId);
+				})
+			);
+
+			// Filter out completed sessions
+			const sessions = allSessions.filter((session: any) => {
+				const sessionId = session._id.toString();
+				return !completedSessionIds.has(sessionId);
+			});
 
 			return sessions.map(mapSessionToGraphQL);
 		},
@@ -156,11 +268,38 @@ export default {
 				query.status = status;
 			}
 
-			const sessions = await Session.find(query)
+			// Get all sessions first
+			const allSessions = await Session.find(query)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
+				.populate('goalId', 'title goalType')
 				.sort({ date: 1, startTime: 1 })
 				.lean();
+
+			// Get all session logs for this client to filter out completed sessions
+			const sessionLogs = await SessionLog.find({
+				client_id: new mongoose.Types.ObjectId(clientId),
+			})
+				.select('session_id')
+				.lean();
+
+			// Create a set of completed session IDs
+			const completedSessionIds = new Set(
+				sessionLogs.map((log: any) => {
+					const sessionId = log.session_id;
+					return sessionId instanceof mongoose.Types.ObjectId
+						? sessionId.toString()
+						: sessionId._id
+						? sessionId._id.toString()
+						: String(sessionId);
+				})
+			);
+
+			// Filter out completed sessions
+			const sessions = allSessions.filter((session: any) => {
+				const sessionId = session._id.toString();
+				return !completedSessionIds.has(sessionId);
+			});
 
 			return sessions.map(mapSessionToGraphQL);
 		},
@@ -274,13 +413,127 @@ export default {
 			const sessionLogs = await SessionLog.find({
 				client_id: new mongoose.Types.ObjectId(clientId),
 			})
-				.populate('session_id')
-				.populate('coach_id', 'firstName lastName')
-				.populate('client_id', 'firstName lastName')
+				.populate({
+					path: 'session_id',
+					populate: [
+						{ path: 'coach_id', select: 'id firstName lastName email' },
+						{ path: 'clients_ids', select: 'id firstName lastName email' },
+						{
+							path: 'goalId',
+							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							populate: [
+								{ path: 'client_id', select: 'id firstName lastName email' },
+								{ path: 'coach_id', select: 'id firstName lastName email' },
+							],
+						},
+					],
+				})
+				.populate('coach_id', 'id firstName lastName email')
+				.populate('client_id', 'id firstName lastName email')
 				.sort({ completedAt: -1 })
 				.lean();
 
 			return sessionLogs.map(mapSessionLogToGraphQL);
+		},
+
+		getCoachSessionLogs: async (
+			_: any,
+			{ coachId }: { coachId: string },
+			context: Context
+		) => {
+			// Authorization: Only coach or admin can view their session logs
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (userId !== coachId && userRole !== 'admin') {
+				throw new Error(
+					'Unauthorized: You can only view your own session logs'
+				);
+			}
+
+			const sessionLogs = await SessionLog.find({
+				coach_id: new mongoose.Types.ObjectId(coachId),
+			})
+				.populate({
+					path: 'session_id',
+					populate: [
+						{ path: 'coach_id', select: 'id firstName lastName email' },
+						{ path: 'clients_ids', select: 'id firstName lastName email' },
+						{
+							path: 'goalId',
+							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							populate: [
+								{ path: 'client_id', select: 'id firstName lastName email' },
+								{ path: 'coach_id', select: 'id firstName lastName email' },
+							],
+						},
+					],
+				})
+				.populate('coach_id', 'id firstName lastName email')
+				.populate('client_id', 'id firstName lastName email')
+				.sort({ completedAt: -1 })
+				.lean();
+
+			return sessionLogs.map(mapSessionLogToGraphQL);
+		},
+
+		getSessionLogBySessionId: async (
+			_: any,
+			{ sessionId }: { sessionId: string },
+			context: Context
+		) => {
+			// Authorization: Only coach of the session, client, or admin can view
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+
+			const session = await Session.findById(sessionId).lean();
+			if (!session) {
+				throw new Error('Session not found');
+			}
+
+			const sessionCoachId = session.coach_id
+				? session.coach_id instanceof mongoose.Types.ObjectId
+					? session.coach_id.toString()
+					: String(session.coach_id)
+				: null;
+
+			const isCoach = sessionCoachId === userId;
+			const isClient = session.clients_ids?.some(
+				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+			);
+
+			if (!isCoach && !isClient && userRole !== 'admin') {
+				throw new Error(
+					'Unauthorized: You can only view session logs for your own sessions'
+				);
+			}
+
+			const sessionLog = await SessionLog.findOne({
+				session_id: new mongoose.Types.ObjectId(sessionId),
+			})
+				.populate({
+					path: 'session_id',
+					populate: [
+						{ path: 'coach_id', select: 'id firstName lastName email' },
+						{ path: 'clients_ids', select: 'id firstName lastName email' },
+						{
+							path: 'goalId',
+							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							populate: [
+								{ path: 'client_id', select: 'id firstName lastName email' },
+								{ path: 'coach_id', select: 'id firstName lastName email' },
+							],
+						},
+					],
+				})
+				.populate('coach_id', 'id firstName lastName email')
+				.populate('client_id', 'id firstName lastName email')
+				.lean();
+
+			if (!sessionLog) {
+				return null;
+			}
+
+			return mapSessionLogToGraphQL(sessionLog);
 		},
 
 		getWeightProgress: async (
@@ -307,7 +560,24 @@ export default {
 			}
 
 			const sessionLogs = await SessionLog.find(query)
-				.populate('session_id', 'date name')
+				.populate({
+					path: 'session_id',
+					select: 'id date name',
+					populate: [
+						{ path: 'coach_id', select: 'id firstName lastName email' },
+						{ path: 'clients_ids', select: 'id firstName lastName email' },
+						{
+							path: 'goalId',
+							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							populate: [
+								{ path: 'client_id', select: 'id firstName lastName email' },
+								{ path: 'coach_id', select: 'id firstName lastName email' },
+							],
+						},
+					],
+				})
+				.populate('coach_id', 'id firstName lastName email')
+				.populate('client_id', 'id firstName lastName email')
 				.sort({ completedAt: 1 })
 				.lean();
 
@@ -665,7 +935,7 @@ export default {
 			{ input }: { input: any },
 			context: Context
 		) => {
-			// Authorization: Only members/clients can complete sessions (enter weight)
+			// Authorization: Only members/clients can complete sessions
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userRole !== 'member' && userRole !== 'admin') {
@@ -676,50 +946,132 @@ export default {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			const session = await Session.findById(input.sessionId).lean();
+			const userIdString = String(userId);
+
+			// Validate progress images are provided
+			if (!input.progressImages) {
+				throw new Error('Progress images are required');
+			}
+
+			const { front, rightSide, leftSide, back } = input.progressImages;
+			if (!front || !rightSide || !leftSide || !back) {
+				throw new Error(
+					'All four progress images are required: front, rightSide, leftSide, and back'
+				);
+			}
+
+			const session = await Session.findById(input.sessionId)
+				.populate('goalId')
+				.lean();
 			if (!session) {
 				throw new Error('Session not found');
 			}
 
 			// Check if client is part of this session
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userIdString
 			);
 
 			if (!isClient && userRole !== 'admin') {
 				throw new Error('Unauthorized: You are not part of this session');
 			}
 
+			// Check if goal is weight-related
+			// If goalId is not populated, fetch it
+			let goal = session.goalId as any;
+			if (!goal || (!goal.goalType && !goal._id)) {
+				// Goal not populated, fetch it
+				if (session.goalId) {
+					const goalId = session.goalId instanceof mongoose.Types.ObjectId
+						? session.goalId
+						: new mongoose.Types.ObjectId(String(session.goalId));
+					goal = await Goal.findById(goalId).select('goalType title').lean();
+				}
+			}
+
+			const isWeightRelated =
+				goal &&
+				goal.goalType &&
+				(String(goal.goalType).trim() === 'Weight loss' || 
+				 String(goal.goalType).trim() === 'Muscle building');
+
+			// Validate weight if goal is weight-related - THIS IS REQUIRED
+			if (isWeightRelated) {
+				if (!input.weight || input.weight === null || input.weight === undefined) {
+					throw new Error(
+						`Weight is required for weight-related goals. This session is associated with a "${goal.goalType}" goal, and weight tracking is mandatory.`
+					);
+				}
+				const weightNum = parseFloat(String(input.weight));
+				if (isNaN(weightNum) || weightNum <= 0) {
+					throw new Error('Please enter a valid weight (must be greater than 0)');
+				}
+			}
+
 			// Check if session log already exists
 			let sessionLog = await SessionLog.findOne({
 				session_id: new mongoose.Types.ObjectId(input.sessionId),
-				client_id: new mongoose.Types.ObjectId(userId),
+				client_id: new mongoose.Types.ObjectId(userIdString),
 			});
 
 			if (sessionLog) {
 				// Update existing log
-				sessionLog.weight = input.weight;
+				if (isWeightRelated && input.weight) {
+					sessionLog.weight = parseFloat(input.weight);
+				}
+				sessionLog.progressImages = {
+					front: front,
+					rightSide: rightSide,
+					leftSide: leftSide,
+					back: back,
+				};
 				sessionLog.clientConfirmed = true;
+				sessionLog.coachConfirmed = true; // Auto-confirm since coach confirmation is no longer required
 				if (input.notes !== undefined) sessionLog.notes = input.notes;
 				await sessionLog.save();
 			} else {
 				// Create new log
-				sessionLog = new SessionLog({
+				const logData: any = {
 					session_id: new mongoose.Types.ObjectId(input.sessionId),
-					client_id: new mongoose.Types.ObjectId(userId),
+					client_id: new mongoose.Types.ObjectId(userIdString),
 					coach_id: session.coach_id,
-					weight: input.weight,
+					progressImages: {
+						front: front,
+						rightSide: rightSide,
+						leftSide: leftSide,
+						back: back,
+					},
 					clientConfirmed: true,
-					coachConfirmed: false,
+					coachConfirmed: true, // Auto-confirm since coach confirmation is no longer required
 					notes: input.notes || null,
-				});
+				};
+
+				if (isWeightRelated && input.weight) {
+					logData.weight = parseFloat(input.weight);
+				}
+
+				sessionLog = new SessionLog(logData);
 				await sessionLog.save();
 			}
 
 			const populatedLog = await SessionLog.findById(sessionLog._id)
-				.populate('session_id')
-				.populate('coach_id', 'firstName lastName')
-				.populate('client_id', 'firstName lastName')
+				.populate({
+					path: 'session_id',
+					populate: [
+						{ path: 'coach_id', select: 'id firstName lastName email' },
+						{ path: 'clients_ids', select: 'id firstName lastName email' },
+						{
+							path: 'goalId',
+							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							populate: [
+								{ path: 'client_id', select: 'id firstName lastName email' },
+								{ path: 'coach_id', select: 'id firstName lastName email' },
+							],
+						},
+					],
+				})
+				.populate('coach_id', 'id firstName lastName email')
+				.populate('client_id', 'id firstName lastName email')
 				.lean();
 
 			return mapSessionLogToGraphQL(populatedLog);

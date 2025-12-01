@@ -2,6 +2,7 @@ import Membership from '../../database/models/membership/membership-shema.js';
 import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
 import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
+import { onSubscriptionCreated, onSubscriptionCanceled, onSubscriptionSwitched, } from '../../database/models/analytics/analytics-helper.js';
 const mapMembershipToGraphQL = (membership) => {
     return {
         id: membership._id.toString(),
@@ -70,6 +71,8 @@ export default {
                 await MembershipTransaction.findByIdAndUpdate(transaction._id, {
                     status: 'Expired',
                 });
+                // Update analytics when transaction expires (revenue is NOT deducted)
+                await onSubscriptionCanceled(transaction._id.toString());
                 return null;
             }
             return mapTransactionToGraphQL(transaction);
@@ -179,7 +182,12 @@ export default {
             if (membership.status !== 'Active') {
                 throw new Error('This membership plan is not available');
             }
-            // Cancel any existing active memberships
+            // Check if user has an existing active membership (switching plans)
+            const hasExistingActive = await MembershipTransaction.findOne({
+                client_id: new mongoose.Types.ObjectId(userId),
+                status: 'Active',
+            }).lean();
+            // Cancel any existing active memberships (when switching plans)
             await MembershipTransaction.updateMany({
                 client_id: new mongoose.Types.ObjectId(userId),
                 status: 'Active',
@@ -213,6 +221,13 @@ export default {
             await User.findByIdAndUpdate(userId, {
                 'membershipDetails.membership_id': new mongoose.Types.ObjectId(input.membershipId),
             });
+            // Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
+            if (hasExistingActive) {
+                await onSubscriptionSwitched(transaction._id.toString());
+            }
+            else {
+                await onSubscriptionCreated(transaction._id.toString());
+            }
             // TODO: Send push notification for payment reminder
             // Schedule notification for a few days before expiry
             const populatedTransaction = await MembershipTransaction.findById(transaction._id)
@@ -235,9 +250,15 @@ export default {
             if (transaction.client_id.toString() !== userId && userRole !== 'admin') {
                 throw new Error('Unauthorized: You cannot cancel this membership');
             }
+            // IMPORTANT: Changing status to 'Canceled' does NOT affect revenue calculations
+            // Revenue is calculated from ALL transactions (Active, Canceled, Expired)
+            // This ensures revenue reflects all money ever received, so canceling a subscription
+            // doesn't deduct revenue (the transaction still exists with its priceAtPurchase)
             await MembershipTransaction.findByIdAndUpdate(transactionId, {
                 status: 'Canceled',
             });
+            // Update analytics: Revenue is NOT deducted (transaction still counts), only counts are updated
+            await onSubscriptionCanceled(transactionId);
             return true;
         },
     },
@@ -301,49 +322,8 @@ export default {
                 await MembershipTransaction.findByIdAndUpdate(transaction._id, {
                     status: 'Expired',
                 });
-                return null;
-            }
-            return mapTransactionToGraphQL(transaction);
-        },
-    },
-    MemberDetails: {
-        membershipTransaction: async (parent, _, context, info) => {
-            // Get user ID from parent MemberDetails (which has _userId stored from User resolver)
-            // or find user by membershipId
-            let userId = null;
-            // Try to get user ID from parent (stored by User resolver)
-            if (parent?._userId) {
-                userId = parent._userId;
-            }
-            // Fallback: find user by membershipId
-            if (!userId && parent?.membershipId) {
-                const user = await User.findOne({
-                    'membershipDetails.membership_id': new mongoose.Types.ObjectId(parent.membershipId),
-                }).lean();
-                if (user) {
-                    userId = user._id.toString();
-                }
-            }
-            if (!userId) {
-                return null;
-            }
-            // Only return ACTIVE transactions (exclude cancelled, expired, or replaced subscriptions)
-            // This ensures cancelled/replaced subscriptions are not included in revenue calculations
-            const transaction = await MembershipTransaction.findOne({
-                client_id: new mongoose.Types.ObjectId(userId),
-                status: 'Active',
-            })
-                .populate('membership_id')
-                .sort({ createdAt: -1 })
-                .lean();
-            if (!transaction) {
-                return null;
-            }
-            // Check if expired
-            if (new Date(transaction.expiresAt) < new Date()) {
-                await MembershipTransaction.findByIdAndUpdate(transaction._id, {
-                    status: 'Expired',
-                });
+                // Update analytics when transaction expires (revenue is NOT deducted)
+                await onSubscriptionCanceled(transaction._id.toString());
                 return null;
             }
             return mapTransactionToGraphQL(transaction);

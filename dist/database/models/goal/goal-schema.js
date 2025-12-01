@@ -5,19 +5,16 @@ const goalSchema = new Schema({
         ref: 'User',
         required: true,
     },
+    coach_id: {
+        type: mongoose.SchemaTypes.ObjectId,
+        ref: 'User',
+        required: false,
+    },
     goalType: {
         type: String,
-        enum: [
-            'Weight loss',
-            'Muscle building',
-            'General fitness',
-            'Strength training',
-            'Endurance',
-            'Flexibility',
-            'Athletic performance',
-            'Rehabilitation',
-        ],
         required: true,
+        // No enum constraint - values are managed in config/fitness-goal-types.ts
+        // Predefined values: Weight loss, Muscle building, General fitness, Strength training, Endurance, Flexibility, Rehabilitation, Athletic Performance
     },
     title: {
         type: String,
