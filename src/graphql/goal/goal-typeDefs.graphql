@@ -1,20 +1,14 @@
 # Goal types
-enum FitnessGoalType {
-	WEIGHT_LOSS
-	MUSCLE_BUILDING
-	GENERAL_FITNESS
-	STRENGTH_TRAINING
-	ENDURANCE
-	FLEXIBILITY
-	ATHLETIC_PERFORMANCE
-	REHABILITATION
-}
+# FitnessGoalType is now a String type - predefined values are managed in config/fitness-goal-types.ts
+# Predefined values: Weight loss, Muscle building, General fitness, Strength training, Endurance, Flexibility, Rehabilitation, Athletic Performance
 
 type Goal {
 	id: ID!
 	clientId: ID!
 	client: User # Populated client details
-	goalType: FitnessGoalType!
+	coachId: ID # Coach assigned to help with this goal
+	coach: User # Populated coach details
+	goalType: String! # String type - can be any value, predefined values in config
 	title: String!
 	description: String
 	targetWeight: Float
@@ -33,7 +27,7 @@ enum GoalStatus {
 }
 
 input CreateGoalInput {
-	goalType: FitnessGoalType!
+	goalType: String! # String type - can be any value, predefined values in config
 	title: String!
 	description: String
 	targetWeight: Float
@@ -42,7 +36,7 @@ input CreateGoalInput {
 }
 
 input UpdateGoalInput {
-	goalType: FitnessGoalType
+	goalType: String # String type - can be any value, predefined values in config
 	title: String
 	description: String
 	targetWeight: Float
@@ -65,8 +59,12 @@ extend type Query {
 	getGoals(clientId: ID!, status: GoalStatus): [Goal!]!
 	# Get goal by ID
 	getGoal(id: ID!): Goal
+	# Get all client goals (for coaches to see and pick)
+	getAllClientGoals(coachId: ID!, status: GoalStatus): [Goal!]!
 	# Get weight progress chart data
 	getWeightProgressChart(clientId: ID!, goalId: ID): [WeightProgress!]!
+	# Get predefined fitness goal types (for dropdowns/selects)
+	getFitnessGoalTypes: [String!]!
 }
 
 # Extend Mutation type
@@ -77,5 +75,7 @@ extend type Mutation {
 	updateGoal(id: ID!, input: UpdateGoalInput!): Goal!
 	# Delete a goal
 	deleteGoal(id: ID!): Boolean!
+	# Assign coach to a goal (coach picks a goal to help with)
+	assignCoachToGoal(goalId: ID!): Goal!
 }
 

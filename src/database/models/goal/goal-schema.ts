@@ -1,18 +1,12 @@
 import mongoose, { Schema } from 'mongoose';
 
-export type FitnessGoalType =
-	| 'Weight loss'
-	| 'Muscle building'
-	| 'General fitness'
-	| 'Strength training'
-	| 'Endurance'
-	| 'Flexibility'
-	| 'Athletic performance'
-	| 'Rehabilitation';
+// FitnessGoalType is now a string type - predefined values are managed in config/fitness-goal-types.ts
+export type FitnessGoalType = string;
 
 export interface IGoal {
 	_id?: mongoose.Types.ObjectId;
 	client_id: mongoose.Types.ObjectId;
+	coach_id?: mongoose.Types.ObjectId; // Coach assigned to help with this goal (one coach per goal)
 	goalType: FitnessGoalType;
 	title: string; // Custom goal title
 	description?: string; // Goal description
@@ -31,19 +25,16 @@ const goalSchema = new Schema(
 			ref: 'User',
 			required: true,
 		},
+		coach_id: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'User',
+			required: false,
+		},
 		goalType: {
 			type: String,
-			enum: [
-				'Weight loss',
-				'Muscle building',
-				'General fitness',
-				'Strength training',
-				'Endurance',
-				'Flexibility',
-				'Athletic performance',
-				'Rehabilitation',
-			],
 			required: true,
+			// No enum constraint - values are managed in config/fitness-goal-types.ts
+			// Predefined values: Weight loss, Muscle building, General fitness, Strength training, Endurance, Flexibility, Rehabilitation, Athletic Performance
 		},
 		title: {
 			type: String,

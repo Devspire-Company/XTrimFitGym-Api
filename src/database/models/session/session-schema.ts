@@ -13,6 +13,9 @@ export interface ISession {
 	gymArea: string; // Gym area/location (e.g., "Main Training Area", "Cardio Zone")
 	note?: string;
 	status: 'scheduled' | 'completed' | 'cancelled';
+	templateId?: mongoose.Types.ObjectId; // Reference to template session if this was created from a template
+	goalId?: mongoose.Types.ObjectId; // Link to goal this session is helping achieve
+	isTemplate?: boolean; // Whether this session is a reusable template
 	createdAt?: Date;
 	updatedAt?: Date;
 }
@@ -27,7 +30,8 @@ const sessionSchema = new Schema(
 		clients_ids: {
 			type: [mongoose.SchemaTypes.ObjectId],
 			ref: 'User',
-			required: true,
+			required: false, // Allow empty array for templates
+			default: [],
 		},
 		name: {
 			type: String,
@@ -59,6 +63,20 @@ const sessionSchema = new Schema(
 			type: String,
 			enum: ['scheduled', 'completed', 'cancelled'],
 			default: 'scheduled',
+		},
+		templateId: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'Session',
+			required: false,
+		},
+		goalId: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'Goal',
+			required: false,
+		},
+		isTemplate: {
+			type: Boolean,
+			default: false,
 		},
 	},
 	{

@@ -8,81 +8,25 @@ import mongoose from 'mongoose';
 type Context = IAuthContext;
 
 const mapSessionToGraphQL = (session: any) => {
-	// Handle coach_id - it might be an ObjectId or a populated object
-	let coachId: string;
-	if (session.coach_id) {
-		if (session.coach_id._id) {
-			// Populated object - use _id
-			coachId = session.coach_id._id.toString();
-		} else if (session.coach_id instanceof mongoose.Types.ObjectId) {
-			// ObjectId instance
-			coachId = session.coach_id.toString();
-		} else {
-			// Already a string or other format
-			coachId = String(session.coach_id);
-		}
-	} else {
-		coachId = '';
-	}
-
-	// Handle clients_ids - they might be ObjectIds or populated objects
-	const clientsIds = (session.clients_ids || []).map((id: any) => {
-		if (id._id) {
-			// Populated object - use _id
-			return id._id.toString();
-		} else if (id instanceof mongoose.Types.ObjectId) {
-			// ObjectId instance
-			return id.toString();
-		} else {
-			// Already a string or other format
-			return String(id);
-		}
-	});
-
-	// Handle goalId - it might be an ObjectId or a populated object
-	let goalId: string | null = null;
-	if (session.goalId) {
-		if (session.goalId._id) {
-			// Populated object - use _id
-			goalId = session.goalId._id.toString();
-		} else if (session.goalId instanceof mongoose.Types.ObjectId) {
-			// ObjectId instance
-			goalId = session.goalId.toString();
-		} else {
-			// Already a string or other format
-			goalId = String(session.goalId);
-		}
-	}
-
-	// Handle templateId
-	let templateId: string | null = null;
-	if (session.templateId) {
-		if (session.templateId instanceof mongoose.Types.ObjectId) {
-			templateId = session.templateId.toString();
-		} else {
-			templateId = String(session.templateId);
-		}
-	}
-
 	return {
 		id: session._id.toString(),
-		coachId: coachId,
+		coachId: session.coach_id.toString(),
 		coach: session.coach_id,
-		clientsIds: clientsIds,
+		clientsIds: session.clients_ids?.map((id: mongoose.Types.ObjectId) =>
+			id.toString()
+		) || [],
 		clients: session.clients_ids || [],
 		name: session.name,
 		workoutType: session.workoutType || null,
 		date: session.date?.toISOString(),
 		startTime: session.startTime || session.time || '',
 		endTime: session.endTime || null,
-		time:
-			session.time ||
-			`${session.startTime}${session.endTime ? ` - ${session.endTime}` : ''}`,
+		time: session.time || `${session.startTime}${session.endTime ? ` - ${session.endTime}` : ''}`,
 		gymArea: session.gymArea,
 		note: session.note || null,
 		status: session.status || 'scheduled',
-		templateId: templateId,
-		goalId: goalId,
+		templateId: session.templateId?.toString() || null,
+		goalId: session.goalId?.toString() || null,
 		goal: session.goalId || null,
 		isTemplate: session.isTemplate || false,
 		createdAt: session.createdAt?.toISOString(),
@@ -215,7 +159,8 @@ export default {
 			// Authorization: Only coach, clients, or admin can view
 			const isCoach = session.coach_id.toString() === userId;
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+				(clientId: mongoose.Types.ObjectId) =>
+					clientId.toString() === userId
 			);
 			const isAdmin = userRole === 'admin';
 
@@ -234,19 +179,12 @@ export default {
 			// Authorization: Only coach can view their own templates
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
-
-			// Ensure coachId is a string for comparison
-			const coachIdString = String(coachId);
-			const userIdString = userId ? String(userId) : null;
-
-			if (userIdString !== coachIdString && userRole !== 'admin') {
-				throw new Error(
-					'Unauthorized: You can only view your own session templates'
-				);
+			if (userId !== coachId && userRole !== 'admin') {
+				throw new Error('Unauthorized: You can only view your own session templates');
 			}
 
 			const sessions = await Session.find({
-				coach_id: new mongoose.Types.ObjectId(coachIdString),
+				coach_id: new mongoose.Types.ObjectId(coachId),
 				isTemplate: true,
 			})
 				.populate('coach_id', 'firstName lastName')
@@ -266,9 +204,7 @@ export default {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userId !== clientId && userRole !== 'admin') {
-				throw new Error(
-					'Unauthorized: You can only view your own session logs'
-				);
+				throw new Error('Unauthorized: You can only view your own session logs');
 			}
 
 			const sessionLogs = await SessionLog.find({
@@ -332,9 +268,6 @@ export default {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			// Ensure userId is a string
-			const userIdString = String(userId);
-
 			// If creating from template, get template details
 			let templateSession = null;
 			if (input.templateId) {
@@ -342,32 +275,18 @@ export default {
 				if (!templateSession) {
 					throw new Error('Template session not found');
 				}
-				const templateCoachIdString = String(templateSession.coach_id);
-				if (templateCoachIdString !== userIdString && userRole !== 'admin') {
+				if (templateSession.coach_id.toString() !== userId && userRole !== 'admin') {
 					throw new Error('Unauthorized: You can only use your own templates');
 				}
 			}
 
-			// For templates, allow empty clients_ids array
-			// For regular sessions, ensure at least one client is provided
-			if (
-				!input.isTemplate &&
-				(!input.clientsIds || input.clientsIds.length === 0)
-			) {
-				throw new Error('At least one client must be selected for a session');
-			}
-
-			const clientsIds = input.isTemplate
-				? []
-				: input.clientsIds.map((id: string) => new mongoose.Types.ObjectId(id));
-
 			const session = new Session({
-				coach_id: new mongoose.Types.ObjectId(userIdString),
-				clients_ids: clientsIds,
+				coach_id: new mongoose.Types.ObjectId(userId),
+				clients_ids: input.clientsIds.map(
+					(id: string) => new mongoose.Types.ObjectId(id)
+				),
 				name: templateSession ? templateSession.name : input.name,
-				workoutType: templateSession
-					? templateSession.workoutType
-					: input.workoutType || null,
+				workoutType: templateSession ? templateSession.workoutType : (input.workoutType || null),
 				date: new Date(input.date),
 				startTime: input.startTime,
 				endTime: input.endTime || null,
@@ -375,21 +294,17 @@ export default {
 					? `${input.startTime} - ${input.endTime}`
 					: input.startTime,
 				gymArea: templateSession ? templateSession.gymArea : input.gymArea,
-				note: templateSession ? templateSession.note : input.note || null,
-				templateId: input.templateId
-					? new mongoose.Types.ObjectId(input.templateId)
-					: undefined,
-				goalId: input.goalId
-					? new mongoose.Types.ObjectId(input.goalId)
-					: undefined,
-				isTemplate: input.isTemplate === true, // Explicitly check for true
+				note: templateSession ? templateSession.note : (input.note || null),
+				templateId: input.templateId ? new mongoose.Types.ObjectId(input.templateId) : undefined,
+				goalId: input.goalId ? new mongoose.Types.ObjectId(input.goalId) : undefined,
+				isTemplate: input.isTemplate || false,
 				status: input.isTemplate ? 'scheduled' : 'scheduled',
 			});
 
 			await session.save();
 
 			// Update coach's sessions_ids
-			await User.findByIdAndUpdate(userIdString, {
+			await User.findByIdAndUpdate(userId, {
 				$push: {
 					'coachDetails.sessions_ids': session._id,
 				},
@@ -419,57 +334,20 @@ export default {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userRole !== 'coach' && userRole !== 'admin') {
-				throw new Error(
-					'Unauthorized: Only coaches can create sessions from templates'
-				);
+				throw new Error('Unauthorized: Only coaches can create sessions from templates');
 			}
 
 			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			// Ensure all IDs are strings
-			const userIdString = String(userId);
-			const templateIdString = String(input.templateId);
-			const goalIdString = input.goalId ? String(input.goalId) : null;
-
-			// Validate and convert client IDs
-			if (!input.clientsIds || !Array.isArray(input.clientsIds) || input.clientsIds.length === 0) {
-				throw new Error('At least one client must be selected');
-			}
-
-			const clientsIds = input.clientsIds.map((id: string) => {
-				const idString = String(id);
-				// Validate ObjectId format
-				if (!mongoose.Types.ObjectId.isValid(idString)) {
-					throw new Error(`Invalid client ID: ${idString}`);
-				}
-				return new mongoose.Types.ObjectId(idString);
-			});
-
-			// Validate templateId
-			if (!mongoose.Types.ObjectId.isValid(templateIdString)) {
-				throw new Error(`Invalid template ID: ${templateIdString}`);
-			}
-
-			// Validate goalId if provided
-			if (goalIdString && !mongoose.Types.ObjectId.isValid(goalIdString)) {
-				throw new Error(`Invalid goal ID: ${goalIdString}`);
-			}
-
 			// Get template session
-			const templateSession = await Session.findById(templateIdString).lean();
+			const templateSession = await Session.findById(input.templateId).lean();
 			if (!templateSession) {
 				throw new Error('Template session not found');
 			}
 
-			const templateCoachId = templateSession.coach_id
-				? templateSession.coach_id instanceof mongoose.Types.ObjectId
-					? templateSession.coach_id.toString()
-					: String(templateSession.coach_id)
-				: null;
-
-			if (templateCoachId !== userIdString && userRole !== 'admin') {
+			if (templateSession.coach_id.toString() !== userId && userRole !== 'admin') {
 				throw new Error('Unauthorized: You can only use your own templates');
 			}
 
@@ -477,33 +355,12 @@ export default {
 				throw new Error('Session is not a template');
 			}
 
-			// Verify goal exists if provided
-			if (goalIdString) {
-				const goal = await Goal.findById(goalIdString).lean();
-				if (!goal) {
-					throw new Error('Goal not found');
-				}
-				// Verify the goal belongs to one of the selected clients
-				const goalClientId = goal.client_id
-					? goal.client_id instanceof mongoose.Types.ObjectId
-						? goal.client_id.toString()
-						: String(goal.client_id)
-					: null;
-				
-				if (goalClientId) {
-					const isGoalForSelectedClient = clientsIds.some((clientObjId: mongoose.Types.ObjectId) => 
-						clientObjId.toString() === goalClientId
-					);
-					if (!isGoalForSelectedClient && userRole !== 'admin') {
-						throw new Error('The selected goal must belong to one of the selected clients');
-					}
-				}
-			}
-
 			// Create new session from template
 			const session = new Session({
-				coach_id: new mongoose.Types.ObjectId(userIdString),
-				clients_ids: clientsIds,
+				coach_id: new mongoose.Types.ObjectId(userId),
+				clients_ids: input.clientsIds.map(
+					(id: string) => new mongoose.Types.ObjectId(id)
+				),
 				name: templateSession.name,
 				workoutType: templateSession.workoutType || null,
 				date: new Date(input.date),
@@ -514,10 +371,8 @@ export default {
 					: input.startTime,
 				gymArea: templateSession.gymArea,
 				note: templateSession.note || null,
-				templateId: new mongoose.Types.ObjectId(templateIdString),
-				goalId: goalIdString
-					? new mongoose.Types.ObjectId(goalIdString)
-					: undefined,
+				templateId: new mongoose.Types.ObjectId(input.templateId),
+				goalId: input.goalId ? new mongoose.Types.ObjectId(input.goalId) : undefined,
 				isTemplate: false,
 				status: 'scheduled',
 			});
@@ -525,59 +380,17 @@ export default {
 			await session.save();
 
 			// Update coach's sessions_ids
-			await User.findByIdAndUpdate(userIdString, {
+			await User.findByIdAndUpdate(userId, {
 				$push: {
 					'coachDetails.sessions_ids': session._id,
 				},
 			});
 
-			// Populate session with all required fields
-			// Use execPopulate or populate with proper error handling
 			const populatedSession = await Session.findById(session._id)
-				.populate({
-					path: 'coach_id',
-					select: 'firstName lastName email',
-					model: 'User',
-				})
-				.populate({
-					path: 'clients_ids',
-					select: 'firstName lastName email',
-					model: 'User',
-				})
-				.populate({
-					path: 'goalId',
-					select: 'title goalType',
-					model: 'Goal',
-				})
+				.populate('coach_id', 'firstName lastName')
+				.populate('clients_ids', 'firstName lastName email')
+				.populate('goalId', 'title goalType')
 				.lean();
-
-			if (!populatedSession) {
-				throw new Error('Failed to create session: Session was not saved properly');
-			}
-
-			// Validate that populated fields have valid IDs
-			if (!populatedSession.coach_id || !populatedSession.coach_id._id) {
-				throw new Error('Failed to populate coach: Coach not found');
-			}
-
-			if (!populatedSession.clients_ids || populatedSession.clients_ids.length === 0) {
-				throw new Error('Failed to populate clients: No valid clients found');
-			}
-
-			// Validate all clients have valid IDs
-			const invalidClients = populatedSession.clients_ids.filter(
-				(client: any) => !client || !client._id
-			);
-			if (invalidClients.length > 0) {
-				throw new Error(`Failed to populate clients: ${invalidClients.length} invalid client(s)`);
-			}
-
-			// If goalId was provided, validate it was populated correctly
-			if (goalIdString && populatedSession.goalId) {
-				if (!populatedSession.goalId._id) {
-					throw new Error('Failed to populate goal: Goal not found');
-				}
-			}
 
 			return mapSessionToGraphQL(populatedSession);
 		},
@@ -611,7 +424,8 @@ export default {
 			if (input.workoutType !== undefined)
 				updateData.workoutType = input.workoutType;
 			if (input.date !== undefined) updateData.date = new Date(input.date);
-			if (input.startTime !== undefined) updateData.startTime = input.startTime;
+			if (input.startTime !== undefined)
+				updateData.startTime = input.startTime;
 			if (input.endTime !== undefined) updateData.endTime = input.endTime;
 			if (input.gymArea !== undefined) updateData.gymArea = input.gymArea;
 			if (input.note !== undefined) updateData.note = input.note;
@@ -623,9 +437,11 @@ export default {
 					: input.startTime || session.startTime;
 			}
 
-			const updatedSession = await Session.findByIdAndUpdate(id, updateData, {
-				new: true,
-			})
+			const updatedSession = await Session.findByIdAndUpdate(
+				id,
+				updateData,
+				{ new: true }
+			)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
 				.lean();
@@ -683,7 +499,8 @@ export default {
 
 			// Check if client is part of this session
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+				(clientId: mongoose.Types.ObjectId) =>
+					clientId.toString() === userId
 			);
 
 			if (!isClient && userRole !== 'admin') {
@@ -831,207 +648,61 @@ export default {
 
 	Session: {
 		coach: async (parent: any) => {
-			// If coach is already populated (object), return it
-			if (parent.coach && typeof parent.coach === 'object' && parent.coach._id) {
-				const coachId = parent.coach._id.toString();
-				if (!coachId) {
-					return null;
-				}
-				return {
-					id: coachId,
-					firstName: parent.coach.firstName || '',
-					lastName: parent.coach.lastName || '',
-					email: parent.coach.email || '',
-				};
-			}
-			
-			// If coach is an ID string, fetch it
-			if (parent.coachId) {
-				const coachIdString = String(parent.coachId);
-				if (!mongoose.Types.ObjectId.isValid(coachIdString)) {
-					return null;
-				}
-				const user = await User.findById(coachIdString)
+			if (typeof parent.coach === 'string') {
+				const user = await User.findById(parent.coach)
 					.select('firstName lastName email')
 					.lean();
-				return user && user._id
+				return user
 					? {
 							id: user._id.toString(),
-							firstName: user.firstName || '',
-							lastName: user.lastName || '',
-							email: user.email || '',
+							firstName: user.firstName,
+							lastName: user.lastName,
+							email: user.email,
 					  }
 					: null;
 			}
-			
-			return null;
+			return parent.coach;
 		},
 		clients: async (parent: any) => {
-			// If clients are already populated (array of objects), return them
-			if (parent.clients && Array.isArray(parent.clients) && parent.clients.length > 0) {
-				return parent.clients
-					.filter((client: any) => client && client._id) // Filter out null/undefined clients
-					.map((client: any) => {
-						// Handle populated object
-						const clientId = client._id.toString();
-						if (!clientId) {
-							return null;
-						}
-						return {
-							id: clientId,
-							firstName: client.firstName || '',
-							lastName: client.lastName || '',
-							email: client.email || '',
-						};
-					})
-					.filter((client: any) => client !== null); // Remove any null entries
-			}
-			
-			// If clientsIds exist, fetch clients
 			if (parent.clientsIds && parent.clientsIds.length > 0) {
-				const clientsIds = parent.clientsIds
-					.map((id: string) => {
-						const idString = String(id);
-						if (!mongoose.Types.ObjectId.isValid(idString)) {
-							return null;
-						}
-						return new mongoose.Types.ObjectId(idString);
-					})
-					.filter((id: any) => id !== null);
-				
-				if (clientsIds.length === 0) {
-					return [];
-				}
-				
 				const clients = await User.find({
-					_id: { $in: clientsIds },
+					_id: { $in: parent.clientsIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
 				})
 					.select('firstName lastName email')
 					.lean();
-				
-				return clients
-					.filter((client: any) => client && client._id) // Filter out null/undefined
-					.map((client: any) => {
-						const clientId = client._id.toString();
-						if (!clientId) {
-							return null;
-						}
-						return {
-							id: clientId,
-							firstName: client.firstName || '',
-							lastName: client.lastName || '',
-							email: client.email || '',
-						};
-					})
-					.filter((client: any) => client !== null); // Remove any null entries
+				return clients.map((client: any) => ({
+					id: client._id.toString(),
+					firstName: client.firstName,
+					lastName: client.lastName,
+					email: client.email,
+				}));
 			}
 			return [];
 		},
 		goal: async (parent: any) => {
 			if (!parent.goalId) return null;
-			
-			// If goal is already populated (object), format it
-			if (parent.goal && typeof parent.goal === 'object' && parent.goal._id) {
-				// Handle populated goal object
-				const goal = parent.goal;
-				
-				// Get client ID
-				let clientId: string;
-				if (goal.client_id) {
-					if (goal.client_id._id) {
-						clientId = goal.client_id._id.toString();
-					} else if (goal.client_id instanceof mongoose.Types.ObjectId) {
-						clientId = goal.client_id.toString();
-					} else {
-						clientId = String(goal.client_id);
-					}
-				} else {
-					return null; // Invalid goal data
-				}
-				
-				// Get coach ID
-				let coachId: string | null = null;
-				if (goal.coach_id) {
-					if (goal.coach_id._id) {
-						coachId = goal.coach_id._id.toString();
-					} else if (goal.coach_id instanceof mongoose.Types.ObjectId) {
-						coachId = goal.coach_id.toString();
-					} else {
-						coachId = String(goal.coach_id);
-					}
-				}
-				
-				return {
-					id: goal._id.toString(),
-					clientId: clientId,
-					coachId: coachId,
-					goalType: goal.goalType,
-					title: goal.title,
-					description: goal.description || null,
-					targetWeight: goal.targetWeight || null,
-					currentWeight: goal.currentWeight || null,
-					targetDate: goal.targetDate?.toISOString() || null,
-					status: goal.status || 'active',
-					createdAt: goal.createdAt?.toISOString() || null,
-					updatedAt: goal.updatedAt?.toISOString() || null,
-				};
-			}
-			
-			// If goalId exists but goal is not populated, fetch it
-			if (parent.goalId) {
-				const goalIdString = String(parent.goalId);
-				if (!mongoose.Types.ObjectId.isValid(goalIdString)) {
-					return null;
-				}
-				
-				const goal = await Goal.findById(goalIdString)
+			if (typeof parent.goal === 'string') {
+				const goal = await Goal.findById(parent.goal)
 					.populate('client_id', 'firstName lastName email')
 					.populate('coach_id', 'firstName lastName email')
 					.lean();
 				if (!goal) return null;
-				
-				// Handle populated objects
-				let clientId: string;
-				if (goal.client_id) {
-					if (goal.client_id._id) {
-						clientId = goal.client_id._id.toString();
-					} else if (goal.client_id instanceof mongoose.Types.ObjectId) {
-						clientId = goal.client_id.toString();
-					} else {
-						clientId = String(goal.client_id);
-					}
-				} else {
-					return null;
-				}
-				
-				let coachId: string | null = null;
-				if (goal.coach_id) {
-					if (goal.coach_id._id) {
-						coachId = goal.coach_id._id.toString();
-					} else if (goal.coach_id instanceof mongoose.Types.ObjectId) {
-						coachId = goal.coach_id.toString();
-					} else {
-						coachId = String(goal.coach_id);
-					}
-				}
-				
 				return {
 					id: goal._id.toString(),
-					clientId: clientId,
-					coachId: coachId,
-					goalType: goal.goalType,
+					clientId: goal.client_id.toString(),
+					coachId: goal.coach_id?.toString() || null,
+					goalType: goal.goalType.toUpperCase().replace(/\s+/g, '_'),
 					title: goal.title,
 					description: goal.description || null,
 					targetWeight: goal.targetWeight || null,
 					currentWeight: goal.currentWeight || null,
 					targetDate: goal.targetDate?.toISOString() || null,
 					status: goal.status || 'active',
-					createdAt: goal.createdAt?.toISOString() || null,
-					updatedAt: goal.updatedAt?.toISOString() || null,
+					createdAt: goal.createdAt?.toISOString(),
+					updatedAt: goal.updatedAt?.toISOString(),
 				};
 			}
-			
-			return null;
+			return parent.goal;
 		},
 	},
 
@@ -1080,3 +751,4 @@ export default {
 		},
 	},
 };
+

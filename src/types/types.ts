@@ -98,7 +98,7 @@ export type CreateCoachRequestInput = {
 export type CreateGoalInput = {
   currentWeight?: InputMaybe<Scalars['Float']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
-  goalType: FitnessGoalType;
+  goalType: Scalars['String']['input'];
   targetDate?: InputMaybe<Scalars['String']['input']>;
   targetWeight?: InputMaybe<Scalars['Float']['input']>;
   title: Scalars['String']['input'];
@@ -113,14 +113,26 @@ export type CreateMembershipInput = {
   status: MembershipStatus;
 };
 
+export type CreateSessionFromTemplateInput = {
+  clientsIds: Array<Scalars['ID']['input']>;
+  date: Scalars['String']['input'];
+  endTime?: InputMaybe<Scalars['String']['input']>;
+  goalId?: InputMaybe<Scalars['ID']['input']>;
+  startTime: Scalars['String']['input'];
+  templateId: Scalars['ID']['input'];
+};
+
 export type CreateSessionInput = {
   clientsIds: Array<Scalars['ID']['input']>;
   date: Scalars['String']['input'];
   endTime?: InputMaybe<Scalars['String']['input']>;
+  goalId?: InputMaybe<Scalars['ID']['input']>;
   gymArea: Scalars['String']['input'];
+  isTemplate?: InputMaybe<Scalars['Boolean']['input']>;
   name: Scalars['String']['input'];
   note?: InputMaybe<Scalars['String']['input']>;
   startTime: Scalars['String']['input'];
+  templateId?: InputMaybe<Scalars['ID']['input']>;
   workoutType?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -168,25 +180,16 @@ export enum DurationType {
   Yearly = 'YEARLY'
 }
 
-export enum FitnessGoalType {
-  AthleticPerformance = 'ATHLETIC_PERFORMANCE',
-  Endurance = 'ENDURANCE',
-  Flexibility = 'FLEXIBILITY',
-  GeneralFitness = 'GENERAL_FITNESS',
-  MuscleBuilding = 'MUSCLE_BUILDING',
-  Rehabilitation = 'REHABILITATION',
-  StrengthTraining = 'STRENGTH_TRAINING',
-  WeightLoss = 'WEIGHT_LOSS'
-}
-
 export type Goal = {
   __typename?: 'Goal';
   client?: Maybe<User>;
   clientId: Scalars['ID']['output'];
+  coach?: Maybe<User>;
+  coachId?: Maybe<Scalars['ID']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
   currentWeight?: Maybe<Scalars['Float']['output']>;
   description?: Maybe<Scalars['String']['output']>;
-  goalType: FitnessGoalType;
+  goalType: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   status: GoalStatus;
   targetDate?: Maybe<Scalars['String']['output']>;
@@ -272,6 +275,7 @@ export type MembershipTransaction = {
 export type Mutation = {
   __typename?: 'Mutation';
   approveSubscriptionRequest: MembershipTransaction;
+  assignCoachToGoal: Goal;
   cancelCoachRequest: Scalars['Boolean']['output'];
   cancelMembership: Scalars['Boolean']['output'];
   cancelSession: Scalars['Boolean']['output'];
@@ -282,6 +286,7 @@ export type Mutation = {
   createGoal: Goal;
   createMembership: Membership;
   createSession: Session;
+  createSessionFromTemplate: Session;
   createSubscriptionRequest: SubscriptionRequest;
   createUser: AuthResponse;
   deleteGoal: Scalars['Boolean']['output'];
@@ -302,6 +307,11 @@ export type Mutation = {
 
 export type MutationApproveSubscriptionRequestArgs = {
   input: ApproveSubscriptionRequestInput;
+};
+
+
+export type MutationAssignCoachToGoalArgs = {
+  goalId: Scalars['ID']['input'];
 };
 
 
@@ -352,6 +362,11 @@ export type MutationCreateMembershipArgs = {
 
 export type MutationCreateSessionArgs = {
   input: CreateSessionInput;
+};
+
+
+export type MutationCreateSessionFromTemplateArgs = {
+  input: CreateSessionFromTemplateInput;
 };
 
 
@@ -447,6 +462,7 @@ export type PurchaseMembershipInput = {
 
 export type Query = {
   __typename?: 'Query';
+  getAllClientGoals: Array<Goal>;
   getAnalytics?: Maybe<Analytics>;
   getAnalyticsRange: Array<Analytics>;
   getClientRequests: Array<CoachRequest>;
@@ -454,6 +470,7 @@ export type Query = {
   getCoachRequests: Array<CoachRequest>;
   getCoachSessions: Array<Session>;
   getCurrentMembership?: Maybe<MembershipTransaction>;
+  getFitnessGoalTypes: Array<Scalars['String']['output']>;
   getGoal?: Maybe<Goal>;
   getGoals: Array<Goal>;
   getMembership?: Maybe<Membership>;
@@ -465,12 +482,19 @@ export type Query = {
   getRevenueSummary: RevenueSummary;
   getSession?: Maybe<Session>;
   getSessionLogs: Array<SessionLog>;
+  getSessionTemplates: Array<Session>;
   getSubscriptionRequest?: Maybe<SubscriptionRequest>;
   getUpcomingSessions: Array<Session>;
   getUser?: Maybe<User>;
   getUsers?: Maybe<Array<Maybe<User>>>;
   getWeightProgress: Array<SessionLog>;
   getWeightProgressChart: Array<WeightProgress>;
+};
+
+
+export type QueryGetAllClientGoalsArgs = {
+  coachId: Scalars['ID']['input'];
+  status?: InputMaybe<GoalStatus>;
 };
 
 
@@ -549,6 +573,11 @@ export type QueryGetSessionLogsArgs = {
 };
 
 
+export type QueryGetSessionTemplatesArgs = {
+  coachId: Scalars['ID']['input'];
+};
+
+
 export type QueryGetSubscriptionRequestArgs = {
   id: Scalars['ID']['input'];
 };
@@ -605,12 +634,16 @@ export type Session = {
   createdAt?: Maybe<Scalars['String']['output']>;
   date: Scalars['String']['output'];
   endTime?: Maybe<Scalars['String']['output']>;
+  goal?: Maybe<Goal>;
+  goalId?: Maybe<Scalars['ID']['output']>;
   gymArea: Scalars['String']['output'];
   id: Scalars['ID']['output'];
+  isTemplate?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   startTime: Scalars['String']['output'];
   status: SessionStatus;
+  templateId?: Maybe<Scalars['ID']['output']>;
   time?: Maybe<Scalars['String']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   workoutType?: Maybe<Scalars['String']['output']>;
@@ -678,7 +711,7 @@ export type UpdateCoachRequestInput = {
 export type UpdateGoalInput = {
   currentWeight?: InputMaybe<Scalars['Float']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
-  goalType?: InputMaybe<FitnessGoalType>;
+  goalType?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<GoalStatus>;
   targetDate?: InputMaybe<Scalars['String']['input']>;
   targetWeight?: InputMaybe<Scalars['Float']['input']>;
@@ -838,6 +871,7 @@ export type ResolversTypes = {
   CreateCoachRequestInput: ResolverTypeWrapper<Partial<CreateCoachRequestInput>>;
   CreateGoalInput: ResolverTypeWrapper<Partial<CreateGoalInput>>;
   CreateMembershipInput: ResolverTypeWrapper<Partial<CreateMembershipInput>>;
+  CreateSessionFromTemplateInput: ResolverTypeWrapper<Partial<CreateSessionFromTemplateInput>>;
   CreateSessionInput: ResolverTypeWrapper<Partial<CreateSessionInput>>;
   CreateSessionLogInput: ResolverTypeWrapper<Partial<CreateSessionLogInput>>;
   CreateSubscriptionRequestInput: ResolverTypeWrapper<Partial<CreateSubscriptionRequestInput>>;
@@ -845,7 +879,6 @@ export type ResolversTypes = {
   DateRangeInput: ResolverTypeWrapper<Partial<DateRangeInput>>;
   DirectSubscribeInput: ResolverTypeWrapper<Partial<DirectSubscribeInput>>;
   DurationType: ResolverTypeWrapper<Partial<DurationType>>;
-  FitnessGoalType: ResolverTypeWrapper<Partial<FitnessGoalType>>;
   Float: ResolverTypeWrapper<Partial<Scalars['Float']['output']>>;
   Goal: ResolverTypeWrapper<Partial<Goal>>;
   GoalStatus: ResolverTypeWrapper<Partial<GoalStatus>>;
@@ -894,6 +927,7 @@ export type ResolversParentTypes = {
   CreateCoachRequestInput: Partial<CreateCoachRequestInput>;
   CreateGoalInput: Partial<CreateGoalInput>;
   CreateMembershipInput: Partial<CreateMembershipInput>;
+  CreateSessionFromTemplateInput: Partial<CreateSessionFromTemplateInput>;
   CreateSessionInput: Partial<CreateSessionInput>;
   CreateSessionLogInput: Partial<CreateSessionLogInput>;
   CreateSubscriptionRequestInput: Partial<CreateSubscriptionRequestInput>;
@@ -974,10 +1008,12 @@ export type CoachRequestResolvers<ContextType = IAuthContext, ParentType extends
 export type GoalResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Goal'] = ResolversParentTypes['Goal']> = {
   client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  coach?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  coachId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   currentWeight?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  goalType?: Resolver<ResolversTypes['FitnessGoalType'], ParentType, ContextType>;
+  goalType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['GoalStatus'], ParentType, ContextType>;
   targetDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -1031,6 +1067,7 @@ export type MembershipTransactionResolvers<ContextType = IAuthContext, ParentTyp
 
 export type MutationResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   approveSubscriptionRequest?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationApproveSubscriptionRequestArgs, 'input'>>;
+  assignCoachToGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationAssignCoachToGoalArgs, 'goalId'>>;
   cancelCoachRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelCoachRequestArgs, 'id'>>;
   cancelMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelMembershipArgs, 'transactionId'>>;
   cancelSession?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelSessionArgs, 'id'>>;
@@ -1041,6 +1078,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   createGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationCreateGoalArgs, 'input'>>;
   createMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationCreateMembershipArgs, 'input'>>;
   createSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionArgs, 'input'>>;
+  createSessionFromTemplate?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionFromTemplateArgs, 'input'>>;
   createSubscriptionRequest?: Resolver<ResolversTypes['SubscriptionRequest'], ParentType, ContextType, RequireFields<MutationCreateSubscriptionRequestArgs, 'input'>>;
   createUser?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationCreateUserArgs, 'input'>>;
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
@@ -1065,6 +1103,7 @@ export type PeriodRevenueResolvers<ContextType = IAuthContext, ParentType extend
 };
 
 export type QueryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
+  getAllClientGoals?: Resolver<Array<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetAllClientGoalsArgs, 'coachId'>>;
   getAnalytics?: Resolver<Maybe<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsArgs, 'date'>>;
   getAnalyticsRange?: Resolver<Array<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsRangeArgs, 'dateRange'>>;
   getClientRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetClientRequestsArgs, 'clientId'>>;
@@ -1072,6 +1111,7 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getCoachRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetCoachRequestsArgs, 'coachId'>>;
   getCoachSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetCoachSessionsArgs, 'coachId'>>;
   getCurrentMembership?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType>;
+  getFitnessGoalTypes?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   getGoal?: Resolver<Maybe<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetGoalArgs, 'id'>>;
   getGoals?: Resolver<Array<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetGoalsArgs, 'clientId'>>;
   getMembership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType, RequireFields<QueryGetMembershipArgs, 'id'>>;
@@ -1083,6 +1123,7 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getRevenueSummary?: Resolver<ResolversTypes['RevenueSummary'], ParentType, ContextType, Partial<QueryGetRevenueSummaryArgs>>;
   getSession?: Resolver<Maybe<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionArgs, 'id'>>;
   getSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetSessionLogsArgs, 'clientId'>>;
+  getSessionTemplates?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetSessionTemplatesArgs, 'coachId'>>;
   getSubscriptionRequest?: Resolver<Maybe<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType, RequireFields<QueryGetSubscriptionRequestArgs, 'id'>>;
   getUpcomingSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType>;
   getUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<QueryGetUserArgs, 'id'>>;
@@ -1109,12 +1150,16 @@ export type SessionResolvers<ContextType = IAuthContext, ParentType extends Reso
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   endTime?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  goal?: Resolver<Maybe<ResolversTypes['Goal']>, ParentType, ContextType>;
+  goalId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   gymArea?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  isTemplate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   startTime?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['SessionStatus'], ParentType, ContextType>;
+  templateId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   time?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   workoutType?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
