@@ -771,11 +771,16 @@ export default {
 			}
 
 			// Create new session from template
+			// Use workoutType from input if provided, otherwise use template's workoutType
+			const workoutType = input.workoutType !== undefined && input.workoutType !== null
+				? input.workoutType
+				: templateSession.workoutType || null;
+
 			const session = new Session({
 				coach_id: new mongoose.Types.ObjectId(userIdString),
 				clients_ids: clientsIds,
 				name: templateSession.name,
-				workoutType: templateSession.workoutType || null,
+				workoutType: workoutType,
 				date: new Date(input.date),
 				startTime: input.startTime,
 				endTime: input.endTime || null,

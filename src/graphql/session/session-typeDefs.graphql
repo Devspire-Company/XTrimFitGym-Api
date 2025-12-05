@@ -148,5 +148,6 @@ input CreateSessionFromTemplateInput {
 	startTime: String! # Start time for this instance
 	endTime: String # End time for this instance
 	goalId: ID # Link to goal
+	workoutType: String # Optional workout exercises data (overrides template workoutType)
 }
 

@@ -153,6 +153,7 @@ export type CreateSessionFromTemplateInput = {
   goalId?: InputMaybe<Scalars['ID']['input']>;
   startTime: Scalars['String']['input'];
   templateId: Scalars['ID']['input'];
+  workoutType?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type CreateSessionInput = {
