@@ -2,6 +2,7 @@ import Analytics from './analytics-schema.js';
 import MembershipTransaction from '../membership/membershipTransaction-schema.js';
 import Membership from '../membership/membership-shema.js';
 import mongoose from 'mongoose';
+import { pubsub, EVENTS } from '../../../graphql/pubsub.js';
 /**
  * Updates analytics for today's date based on ALL transactions
  * IMPORTANT: Revenue is calculated from ALL transactions (Active, Canceled, Expired)
@@ -83,6 +84,8 @@ export async function updateTodayAnalytics() {
             count: r.count,
         })),
     }, { upsert: true, new: true });
+    // Publish event for revenue summary update
+    pubsub.publish(EVENTS.REVENUE_SUMMARY_UPDATED, {});
 }
 /**
  * Updates analytics when a new subscription is created

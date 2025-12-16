@@ -35,6 +35,39 @@ export type ApproveSubscriptionRequestInput = {
   requestId: Scalars['ID']['input'];
 };
 
+export type AttendanceConnection = {
+  __typename?: 'AttendanceConnection';
+  hasMore: Scalars['Boolean']['output'];
+  records: Array<AttendanceRecord>;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type AttendanceFilter = {
+  deviceName?: InputMaybe<Scalars['String']['input']>;
+  direction?: InputMaybe<Scalars['String']['input']>;
+  endDate?: InputMaybe<Scalars['String']['input']>;
+  personName?: InputMaybe<Scalars['String']['input']>;
+  startDate?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type AttendancePagination = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type AttendanceRecord = {
+  __typename?: 'AttendanceRecord';
+  authDate: Scalars['String']['output'];
+  authDateTime: Scalars['String']['output'];
+  authTime: Scalars['String']['output'];
+  cardNo?: Maybe<Scalars['String']['output']>;
+  deviceName: Scalars['String']['output'];
+  deviceSerNum: Scalars['String']['output'];
+  direction: Scalars['String']['output'];
+  id: Scalars['String']['output'];
+  personName: Scalars['String']['output'];
+};
+
 export type AuthResponse = {
   __typename?: 'AuthResponse';
   token: Scalars['String']['output'];
@@ -130,6 +163,7 @@ export type CreateMembershipInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   durationType: DurationType;
   features: Array<Scalars['String']['input']>;
+  monthDuration: Scalars['Int']['input'];
   monthlyPrice: Scalars['Float']['input'];
   name: Scalars['String']['input'];
   status: MembershipStatus;
@@ -272,6 +306,7 @@ export type Membership = {
   durationType: DurationType;
   features: Array<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
+  monthDuration: Scalars['Int']['output'];
   monthlyPrice: Scalars['Float']['output'];
   name: Scalars['String']['output'];
   status: MembershipStatus;
@@ -330,6 +365,7 @@ export type Mutation = {
   deleteGoal: Scalars['Boolean']['output'];
   deleteMembership: Scalars['Boolean']['output'];
   deleteProgressRating: Scalars['Boolean']['output'];
+  deleteSubscriptionRequest: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
   directSubscribeMember: MembershipTransaction;
   login: AuthResponse;
@@ -447,6 +483,11 @@ export type MutationDeleteMembershipArgs = {
 
 
 export type MutationDeleteProgressRatingArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteSubscriptionRequestArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -579,8 +620,11 @@ export type PurchaseMembershipInput = {
 export type Query = {
   __typename?: 'Query';
   getAllClientGoals: Array<Goal>;
+  getAllSubscriptionRequests: Array<SubscriptionRequest>;
   getAnalytics?: Maybe<Analytics>;
   getAnalyticsRange: Array<Analytics>;
+  getAttendanceRecord?: Maybe<AttendanceRecord>;
+  getAttendanceRecords: AttendanceConnection;
   getClientProgressRatings: Array<ProgressRating>;
   getClientRequests: Array<CoachRequest>;
   getClientSessions: Array<Session>;
@@ -629,6 +673,17 @@ export type QueryGetAnalyticsArgs = {
 
 export type QueryGetAnalyticsRangeArgs = {
   dateRange: DateRangeInput;
+};
+
+
+export type QueryGetAttendanceRecordArgs = {
+  id: Scalars['String']['input'];
+};
+
+
+export type QueryGetAttendanceRecordsArgs = {
+  filter?: InputMaybe<AttendanceFilter>;
+  pagination?: InputMaybe<AttendancePagination>;
 };
 
 
@@ -845,6 +900,8 @@ export enum SessionStatus {
 export type Subscription = {
   __typename?: 'Subscription';
   _empty?: Maybe<Scalars['Boolean']['output']>;
+  attendanceRecordAdded: AttendanceRecord;
+  attendanceUpdated: Array<AttendanceRecord>;
   membershipsUpdated: Array<Membership>;
   revenueSummaryUpdated: RevenueSummary;
   usersUpdated: Array<User>;
@@ -865,7 +922,6 @@ export type SubscriptionRequest = {
   approvedAt?: Maybe<Scalars['String']['output']>;
   approvedBy?: Maybe<User>;
   createdAt?: Maybe<Scalars['String']['output']>;
-  expiresAt: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   member?: Maybe<User>;
   memberId: Scalars['ID']['output'];
@@ -880,7 +936,6 @@ export type SubscriptionRequest = {
 
 export enum SubscriptionRequestStatus {
   Approved = 'APPROVED',
-  Expired = 'EXPIRED',
   Pending = 'PENDING',
   Rejected = 'REJECTED'
 }
@@ -909,6 +964,7 @@ export type UpdateMembershipInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   durationType?: InputMaybe<DurationType>;
   features?: InputMaybe<Array<Scalars['String']['input']>>;
+  monthDuration?: InputMaybe<Scalars['Int']['input']>;
   monthlyPrice?: InputMaybe<Scalars['Float']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<MembershipStatus>;
@@ -1055,6 +1111,10 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 export type ResolversTypes = {
   Analytics: ResolverTypeWrapper<Partial<Analytics>>;
   ApproveSubscriptionRequestInput: ResolverTypeWrapper<Partial<ApproveSubscriptionRequestInput>>;
+  AttendanceConnection: ResolverTypeWrapper<Partial<AttendanceConnection>>;
+  AttendanceFilter: ResolverTypeWrapper<Partial<AttendanceFilter>>;
+  AttendancePagination: ResolverTypeWrapper<Partial<AttendancePagination>>;
+  AttendanceRecord: ResolverTypeWrapper<Partial<AttendanceRecord>>;
   AuthResponse: ResolverTypeWrapper<Partial<AuthResponse>>;
   Boolean: ResolverTypeWrapper<Partial<Scalars['Boolean']['output']>>;
   CoachDetails: ResolverTypeWrapper<Partial<CoachDetails>>;
@@ -1121,6 +1181,10 @@ export type ResolversTypes = {
 export type ResolversParentTypes = {
   Analytics: Partial<Analytics>;
   ApproveSubscriptionRequestInput: Partial<ApproveSubscriptionRequestInput>;
+  AttendanceConnection: Partial<AttendanceConnection>;
+  AttendanceFilter: Partial<AttendanceFilter>;
+  AttendancePagination: Partial<AttendancePagination>;
+  AttendanceRecord: Partial<AttendanceRecord>;
   AuthResponse: Partial<AuthResponse>;
   Boolean: Partial<Scalars['Boolean']['output']>;
   CoachDetails: Partial<CoachDetails>;
@@ -1185,6 +1249,24 @@ export type AnalyticsResolvers<ContextType = IAuthContext, ParentType extends Re
   revenueByMembership?: Resolver<Array<ResolversTypes['MembershipRevenue']>, ParentType, ContextType>;
   totalRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type AttendanceConnectionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AttendanceConnection'] = ResolversParentTypes['AttendanceConnection']> = {
+  hasMore?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  records?: Resolver<Array<ResolversTypes['AttendanceRecord']>, ParentType, ContextType>;
+  totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type AttendanceRecordResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AttendanceRecord'] = ResolversParentTypes['AttendanceRecord']> = {
+  authDate?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  authDateTime?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  authTime?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  cardNo?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  deviceName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  deviceSerNum?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  direction?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  personName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type AuthResponseResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AuthResponse'] = ResolversParentTypes['AuthResponse']> = {
@@ -1263,6 +1345,7 @@ export type MembershipResolvers<ContextType = IAuthContext, ParentType extends R
   durationType?: Resolver<ResolversTypes['DurationType'], ParentType, ContextType>;
   features?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  monthDuration?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   monthlyPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['MembershipStatus'], ParentType, ContextType>;
@@ -1312,6 +1395,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
   deleteMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteMembershipArgs, 'id'>>;
   deleteProgressRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteProgressRatingArgs, 'id'>>;
+  deleteSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSubscriptionRequestArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
   directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
@@ -1361,8 +1445,11 @@ export type ProgressRatingResolvers<ContextType = IAuthContext, ParentType exten
 
 export type QueryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   getAllClientGoals?: Resolver<Array<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetAllClientGoalsArgs, 'coachId'>>;
+  getAllSubscriptionRequests?: Resolver<Array<ResolversTypes['SubscriptionRequest']>, ParentType, ContextType>;
   getAnalytics?: Resolver<Maybe<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsArgs, 'date'>>;
   getAnalyticsRange?: Resolver<Array<ResolversTypes['Analytics']>, ParentType, ContextType, RequireFields<QueryGetAnalyticsRangeArgs, 'dateRange'>>;
+  getAttendanceRecord?: Resolver<Maybe<ResolversTypes['AttendanceRecord']>, ParentType, ContextType, RequireFields<QueryGetAttendanceRecordArgs, 'id'>>;
+  getAttendanceRecords?: Resolver<ResolversTypes['AttendanceConnection'], ParentType, ContextType, Partial<QueryGetAttendanceRecordsArgs>>;
   getClientProgressRatings?: Resolver<Array<ResolversTypes['ProgressRating']>, ParentType, ContextType, RequireFields<QueryGetClientProgressRatingsArgs, 'clientId'>>;
   getClientRequests?: Resolver<Array<ResolversTypes['CoachRequest']>, ParentType, ContextType, RequireFields<QueryGetClientRequestsArgs, 'clientId'>>;
   getClientSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetClientSessionsArgs, 'clientId'>>;
@@ -1450,6 +1537,8 @@ export type SessionLogResolvers<ContextType = IAuthContext, ParentType extends R
 
 export type SubscriptionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Subscription'] = ResolversParentTypes['Subscription']> = {
   _empty?: SubscriptionResolver<Maybe<ResolversTypes['Boolean']>, "_empty", ParentType, ContextType>;
+  attendanceRecordAdded?: SubscriptionResolver<ResolversTypes['AttendanceRecord'], "attendanceRecordAdded", ParentType, ContextType>;
+  attendanceUpdated?: SubscriptionResolver<Array<ResolversTypes['AttendanceRecord']>, "attendanceUpdated", ParentType, ContextType>;
   membershipsUpdated?: SubscriptionResolver<Array<ResolversTypes['Membership']>, "membershipsUpdated", ParentType, ContextType>;
   revenueSummaryUpdated?: SubscriptionResolver<ResolversTypes['RevenueSummary'], "revenueSummaryUpdated", ParentType, ContextType, Partial<SubscriptionRevenueSummaryUpdatedArgs>>;
   usersUpdated?: SubscriptionResolver<Array<ResolversTypes['User']>, "usersUpdated", ParentType, ContextType, Partial<SubscriptionUsersUpdatedArgs>>;
@@ -1459,7 +1548,6 @@ export type SubscriptionRequestResolvers<ContextType = IAuthContext, ParentType 
   approvedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   approvedBy?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  expiresAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   member?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   memberId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -1502,6 +1590,8 @@ export type WeightProgressResolvers<ContextType = IAuthContext, ParentType exten
 
 export type Resolvers<ContextType = IAuthContext> = {
   Analytics?: AnalyticsResolvers<ContextType>;
+  AttendanceConnection?: AttendanceConnectionResolvers<ContextType>;
+  AttendanceRecord?: AttendanceRecordResolvers<ContextType>;
   AuthResponse?: AuthResponseResolvers<ContextType>;
   CoachDetails?: CoachDetailsResolvers<ContextType>;
   CoachRating?: CoachRatingResolvers<ContextType>;

@@ -7,7 +7,6 @@ type SubscriptionRequest {
 	membership: Membership # Populated membership details
 	status: SubscriptionRequestStatus!
 	requestedAt: String!
-	expiresAt: String!
 	approvedAt: String
 	approvedBy: User
 	rejectedAt: String
@@ -20,7 +19,6 @@ enum SubscriptionRequestStatus {
 	PENDING
 	APPROVED
 	REJECTED
-	EXPIRED
 }
 
 input CreateSubscriptionRequestInput {
@@ -44,6 +42,8 @@ input DirectSubscribeInput {
 extend type Query {
 	# Get all pending subscription requests (admin only)
 	getPendingSubscriptionRequests: [SubscriptionRequest!]!
+	# Get all subscription requests (admin only)
+	getAllSubscriptionRequests: [SubscriptionRequest!]!
 	# Get subscription request by ID
 	getSubscriptionRequest(id: ID!): SubscriptionRequest
 	# Get member's subscription requests
@@ -58,6 +58,8 @@ extend type Mutation {
 	approveSubscriptionRequest(input: ApproveSubscriptionRequestInput!): MembershipTransaction!
 	# Reject a subscription request (admin)
 	rejectSubscriptionRequest(input: RejectSubscriptionRequestInput!): Boolean!
+	# Delete a subscription request (admin)
+	deleteSubscriptionRequest(id: ID!): Boolean!
 	# Directly subscribe a member (admin)
 	directSubscribeMember(input: DirectSubscribeInput!): MembershipTransaction!
 }

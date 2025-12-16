@@ -13,6 +13,21 @@ import { pubsub, EVENTS } from '../pubsub.js';
 type Context = IAuthContext;
 
 const mapMembershipToGraphQL = (membership: any) => {
+	// Calculate monthDuration based on durationType if not set
+	let monthDuration = membership.monthDuration;
+	if (!monthDuration || monthDuration < 1) {
+		const durationType = membership.durationType?.toLowerCase() || 'monthly';
+		if (durationType === 'monthly') {
+			monthDuration = 1;
+		} else if (durationType === 'quarterly') {
+			monthDuration = 3;
+		} else if (durationType === 'yearly') {
+			monthDuration = 12;
+		} else {
+			monthDuration = 1; // default fallback
+		}
+	}
+
 	return {
 		id: membership._id.toString(),
 		name: membership.name,
@@ -21,6 +36,7 @@ const mapMembershipToGraphQL = (membership: any) => {
 		features: membership.features || [],
 		status: membership.status?.toUpperCase() || 'INACTIVE',
 		durationType: membership.durationType?.toUpperCase() || 'MONTHLY',
+		monthDuration: monthDuration,
 		createdAt: membership.createdAt?.toISOString(),
 		updatedAt: membership.updatedAt?.toISOString(),
 	};
@@ -154,6 +170,7 @@ export default {
 				durationType:
 					input.durationType.charAt(0) +
 						input.durationType.slice(1).toLowerCase() || 'Monthly',
+				monthDuration: input.monthDuration || 1,
 			});
 
 			await membership.save();
@@ -188,6 +205,8 @@ export default {
 			if (input.durationType !== undefined)
 				updateData.durationType =
 					input.durationType.charAt(0) + input.durationType.slice(1).toLowerCase();
+			if (input.monthDuration !== undefined)
+				updateData.monthDuration = input.monthDuration;
 
 			const membership = await Membership.findByIdAndUpdate(id, updateData, {
 				new: true,
@@ -260,10 +279,24 @@ export default {
 			}
 
 			// Check if user has an existing active membership (switching plans)
-			const hasExistingActive = await MembershipTransaction.findOne({
+			const existingActive = await MembershipTransaction.findOne({
 				client_id: new mongoose.Types.ObjectId(userId),
 				status: 'Active',
 			}).lean();
+
+			// Calculate remaining days from existing subscription if not expired
+			let remainingDays = 0;
+			if (existingActive && existingActive.expiresAt) {
+				const now = new Date();
+				const expiryDate = new Date(existingActive.expiresAt);
+				
+				// Only add remaining days if the subscription hasn't expired yet
+				if (expiryDate > now) {
+					const diffTime = expiryDate.getTime() - now.getTime();
+					remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Convert to days
+					remainingDays = Math.max(0, remainingDays); // Ensure non-negative
+				}
+			}
 
 			// Cancel any existing active memberships (when switching plans)
 			await MembershipTransaction.updateMany(
@@ -276,20 +309,15 @@ export default {
 				}
 			);
 
-			// Calculate expiry date based on duration type
+			// Calculate expiry date based on month duration + remaining days
 			const now = new Date();
-			let expiresAt = new Date(now);
-
-			switch (membership.durationType) {
-				case 'Monthly':
-					expiresAt.setMonth(expiresAt.getMonth() + 1);
-					break;
-				case 'Quarterly':
-					expiresAt.setMonth(expiresAt.getMonth() + 3);
-					break;
-				case 'Yearly':
-					expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-					break;
+			const expiresAt = new Date(now);
+			const monthDuration = membership.monthDuration || 1;
+			expiresAt.setMonth(expiresAt.getMonth() + monthDuration);
+			
+			// Add remaining days from previous subscription
+			if (remainingDays > 0) {
+				expiresAt.setDate(expiresAt.getDate() + remainingDays);
 			}
 
 			const transaction = new MembershipTransaction({
@@ -311,7 +339,7 @@ export default {
 			});
 
 			// Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
-			if (hasExistingActive) {
+			if (existingActive) {
 				await onSubscriptionSwitched(transaction._id.toString());
 			} else {
 				await onSubscriptionCreated(transaction._id.toString());
@@ -450,7 +478,7 @@ export default {
 				}
 
 				// Return async iterator for the subscription
-				return pubsub.asyncIterator(EVENTS.MEMBERSHIPS_UPDATED);
+				return pubsub.asyncIterableIterator(EVENTS.MEMBERSHIPS_UPDATED);
 			},
 			resolve: async () => {
 				// Re-fetch memberships when event is published

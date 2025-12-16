@@ -3,7 +3,25 @@ import MembershipTransaction from '../../database/models/membership/membershipTr
 import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
 import { onSubscriptionCreated, onSubscriptionCanceled, onSubscriptionSwitched, } from '../../database/models/analytics/analytics-helper.js';
+import { pubsub, EVENTS } from '../pubsub.js';
 const mapMembershipToGraphQL = (membership) => {
+    // Calculate monthDuration based on durationType if not set
+    let monthDuration = membership.monthDuration;
+    if (!monthDuration || monthDuration < 1) {
+        const durationType = membership.durationType?.toLowerCase() || 'monthly';
+        if (durationType === 'monthly') {
+            monthDuration = 1;
+        }
+        else if (durationType === 'quarterly') {
+            monthDuration = 3;
+        }
+        else if (durationType === 'yearly') {
+            monthDuration = 12;
+        }
+        else {
+            monthDuration = 1; // default fallback
+        }
+    }
     return {
         id: membership._id.toString(),
         name: membership.name,
@@ -12,6 +30,7 @@ const mapMembershipToGraphQL = (membership) => {
         features: membership.features || [],
         status: membership.status?.toUpperCase() || 'INACTIVE',
         durationType: membership.durationType?.toUpperCase() || 'MONTHLY',
+        monthDuration: monthDuration,
         createdAt: membership.createdAt?.toISOString(),
         updatedAt: membership.updatedAt?.toISOString(),
     };
@@ -112,8 +131,11 @@ export default {
                 status: input.status.charAt(0) + input.status.slice(1).toLowerCase() || 'Active',
                 durationType: input.durationType.charAt(0) +
                     input.durationType.slice(1).toLowerCase() || 'Monthly',
+                monthDuration: input.monthDuration || 1,
             });
             await membership.save();
+            // Publish event for membership updates
+            pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
             return mapMembershipToGraphQL(membership);
         },
         updateMembership: async (_, { id, input }, context) => {
@@ -137,12 +159,16 @@ export default {
             if (input.durationType !== undefined)
                 updateData.durationType =
                     input.durationType.charAt(0) + input.durationType.slice(1).toLowerCase();
+            if (input.monthDuration !== undefined)
+                updateData.monthDuration = input.monthDuration;
             const membership = await Membership.findByIdAndUpdate(id, updateData, {
                 new: true,
             }).lean();
             if (!membership) {
                 throw new Error('Membership not found');
             }
+            // Publish event for membership updates
+            pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
             return mapMembershipToGraphQL(membership);
         },
         deleteMembership: async (_, { id }, context) => {
@@ -163,6 +189,8 @@ export default {
             if (!deleted) {
                 throw new Error('Membership not found');
             }
+            // Publish event for membership updates
+            pubsub.publish(EVENTS.MEMBERSHIPS_UPDATED, {});
             return true;
         },
         purchaseMembership: async (_, { input }, context) => {
@@ -183,10 +211,22 @@ export default {
                 throw new Error('This membership plan is not available');
             }
             // Check if user has an existing active membership (switching plans)
-            const hasExistingActive = await MembershipTransaction.findOne({
+            const existingActive = await MembershipTransaction.findOne({
                 client_id: new mongoose.Types.ObjectId(userId),
                 status: 'Active',
             }).lean();
+            // Calculate remaining days from existing subscription if not expired
+            let remainingDays = 0;
+            if (existingActive && existingActive.expiresAt) {
+                const now = new Date();
+                const expiryDate = new Date(existingActive.expiresAt);
+                // Only add remaining days if the subscription hasn't expired yet
+                if (expiryDate > now) {
+                    const diffTime = expiryDate.getTime() - now.getTime();
+                    remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Convert to days
+                    remainingDays = Math.max(0, remainingDays); // Ensure non-negative
+                }
+            }
             // Cancel any existing active memberships (when switching plans)
             await MembershipTransaction.updateMany({
                 client_id: new mongoose.Types.ObjectId(userId),
@@ -194,19 +234,14 @@ export default {
             }, {
                 status: 'Canceled',
             });
-            // Calculate expiry date based on duration type
+            // Calculate expiry date based on month duration + remaining days
             const now = new Date();
-            let expiresAt = new Date(now);
-            switch (membership.durationType) {
-                case 'Monthly':
-                    expiresAt.setMonth(expiresAt.getMonth() + 1);
-                    break;
-                case 'Quarterly':
-                    expiresAt.setMonth(expiresAt.getMonth() + 3);
-                    break;
-                case 'Yearly':
-                    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-                    break;
+            const expiresAt = new Date(now);
+            const monthDuration = membership.monthDuration || 1;
+            expiresAt.setMonth(expiresAt.getMonth() + monthDuration);
+            // Add remaining days from previous subscription
+            if (remainingDays > 0) {
+                expiresAt.setDate(expiresAt.getDate() + remainingDays);
             }
             const transaction = new MembershipTransaction({
                 client_id: new mongoose.Types.ObjectId(userId),
@@ -222,7 +257,7 @@ export default {
                 'membershipDetails.membership_id': new mongoose.Types.ObjectId(input.membershipId),
             });
             // Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
-            if (hasExistingActive) {
+            if (existingActive) {
                 await onSubscriptionSwitched(transaction._id.toString());
             }
             else {
@@ -327,6 +362,23 @@ export default {
                 return null;
             }
             return mapTransactionToGraphQL(transaction);
+        },
+    },
+    Subscription: {
+        membershipsUpdated: {
+            subscribe: (_, __, context) => {
+                // Authorization check
+                if (!context.user || context.user.role !== 'admin') {
+                    throw new Error('Unauthorized: Only admins can subscribe to membership updates');
+                }
+                // Return async iterator for the subscription
+                return pubsub.asyncIterableIterator(EVENTS.MEMBERSHIPS_UPDATED);
+            },
+            resolve: async () => {
+                // Re-fetch memberships when event is published
+                const memberships = await Membership.find({}).lean();
+                return memberships.map((m) => mapMembershipToGraphQL(m));
+            },
         },
     },
 };

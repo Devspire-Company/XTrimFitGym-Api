@@ -20,6 +20,23 @@ const mapMembershipToGraphQL = (membership) => {
         console.error('⚠️ Cannot map membership: missing _id or id', membership);
         throw new Error('Invalid membership: missing ID');
     }
+    // Calculate monthDuration based on durationType if not set
+    let monthDuration = membership.monthDuration;
+    if (!monthDuration || monthDuration < 1) {
+        const durationType = membership.durationType?.toLowerCase() || 'monthly';
+        if (durationType === 'monthly') {
+            monthDuration = 1;
+        }
+        else if (durationType === 'quarterly') {
+            monthDuration = 3;
+        }
+        else if (durationType === 'yearly') {
+            monthDuration = 12;
+        }
+        else {
+            monthDuration = 1; // default fallback
+        }
+    }
     return {
         id: membershipId,
         name: membership.name,
@@ -28,6 +45,7 @@ const mapMembershipToGraphQL = (membership) => {
         features: membership.features || [],
         status: membership.status?.toUpperCase() || 'INACTIVE',
         durationType: membership.durationType?.toUpperCase() || 'MONTHLY',
+        monthDuration: monthDuration,
         createdAt: membership.createdAt?.toISOString(),
         updatedAt: membership.updatedAt?.toISOString(),
     };
@@ -55,15 +73,19 @@ const mapSubscriptionRequestToGraphQL = (request, membershipData, memberData) =>
             member = memberId;
         }
     }
+    // Handle EXPIRED status - convert to REJECTED since EXPIRED is no longer in the enum
+    let status = request.status?.toUpperCase() || 'PENDING';
+    if (status === 'EXPIRED') {
+        status = 'REJECTED';
+    }
     return {
         id: request._id.toString(),
         memberId: request.member_id?.toString() || (typeof request.member_id === 'string' ? request.member_id : ''),
         member: member,
         membershipId: request.membership_id?.toString() || (typeof request.membership_id === 'string' ? request.membership_id : ''),
         membership: membership,
-        status: request.status?.toUpperCase() || 'PENDING',
+        status: status,
         requestedAt: request.requestedAt?.toISOString(),
-        expiresAt: request.expiresAt?.toISOString(),
         approvedAt: request.approvedAt?.toISOString() || null,
         approvedBy: request.approvedBy || null,
         rejectedAt: request.rejectedAt?.toISOString() || null,
@@ -101,10 +123,22 @@ const createMembershipTransaction = async (memberId, membershipId, approvedBy) =
         throw new Error('This membership plan is not available');
     }
     // Check if user has an existing active membership (switching plans)
-    const hasExistingActive = await MembershipTransaction.findOne({
+    const existingActive = await MembershipTransaction.findOne({
         client_id: new mongoose.Types.ObjectId(memberId),
         status: 'Active',
     }).lean();
+    // Calculate remaining days from existing subscription if not expired
+    let remainingDays = 0;
+    if (existingActive && existingActive.expiresAt) {
+        const now = new Date();
+        const expiryDate = new Date(existingActive.expiresAt);
+        // Only add remaining days if the subscription hasn't expired yet
+        if (expiryDate > now) {
+            const diffTime = expiryDate.getTime() - now.getTime();
+            remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Convert to days
+            remainingDays = Math.max(0, remainingDays); // Ensure non-negative
+        }
+    }
     // Cancel any existing active memberships (when switching plans)
     await MembershipTransaction.updateMany({
         client_id: new mongoose.Types.ObjectId(memberId),
@@ -112,19 +146,14 @@ const createMembershipTransaction = async (memberId, membershipId, approvedBy) =
     }, {
         status: 'Canceled',
     });
-    // Calculate expiry date based on duration type
+    // Calculate expiry date based on month duration + remaining days
     const now = new Date();
-    let expiresAt = new Date(now);
-    switch (membership.durationType) {
-        case 'Monthly':
-            expiresAt.setMonth(expiresAt.getMonth() + 1);
-            break;
-        case 'Quarterly':
-            expiresAt.setMonth(expiresAt.getMonth() + 3);
-            break;
-        case 'Yearly':
-            expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-            break;
+    const expiresAt = new Date(now);
+    const monthDuration = membership.monthDuration || 1;
+    expiresAt.setMonth(expiresAt.getMonth() + monthDuration);
+    // Add remaining days from previous subscription
+    if (remainingDays > 0) {
+        expiresAt.setDate(expiresAt.getDate() + remainingDays);
     }
     const transaction = new MembershipTransaction({
         client_id: new mongoose.Types.ObjectId(memberId),
@@ -140,7 +169,7 @@ const createMembershipTransaction = async (memberId, membershipId, approvedBy) =
         'membershipDetails.membership_id': new mongoose.Types.ObjectId(membershipId),
     });
     // Update analytics: If switching plans, use onSubscriptionSwitched; otherwise onSubscriptionCreated
-    if (hasExistingActive) {
+    if (existingActive) {
         await onSubscriptionSwitched(transaction._id.toString());
     }
     else {
@@ -185,16 +214,8 @@ export default {
             if (userRole !== 'admin') {
                 throw new Error('Unauthorized: Only admins can view pending subscription requests');
             }
-            // Auto-expire old pending requests
-            await SubscriptionRequest.updateMany({
-                status: 'Pending',
-                expiresAt: { $lt: new Date() },
-            }, {
-                status: 'Expired',
-            });
             const requests = await SubscriptionRequest.find({
                 status: 'Pending',
-                expiresAt: { $gt: new Date() },
             })
                 .populate('member_id', 'firstName lastName email')
                 .populate('membership_id')
@@ -214,6 +235,60 @@ export default {
                     };
                 }
                 return mapSubscriptionRequestToGraphQL(request, undefined, memberData);
+            });
+        },
+        getAllSubscriptionRequests: async (_, __, context) => {
+            // Authorization: Only admin can view all requests
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can view all subscription requests');
+            }
+            const requests = await SubscriptionRequest.find({})
+                .populate('member_id', 'firstName lastName email')
+                .populate('membership_id')
+                .populate('approvedBy', 'firstName lastName')
+                .populate('rejectedBy', 'firstName lastName')
+                .sort({ createdAt: -1 })
+                .lean();
+            // Map requests and ensure member data is properly formatted
+            return requests.map((request) => {
+                // Ensure member is properly formatted before mapping
+                let memberData = null;
+                if (request.member_id && typeof request.member_id === 'object' && request.member_id._id) {
+                    // If it's a populated object, format it properly
+                    memberData = {
+                        id: request.member_id._id.toString(),
+                        firstName: request.member_id.firstName,
+                        lastName: request.member_id.lastName,
+                        email: request.member_id.email,
+                    };
+                }
+                // Format approvedBy and rejectedBy if populated
+                let approvedByData = null;
+                if (request.approvedBy && typeof request.approvedBy === 'object' && request.approvedBy._id) {
+                    approvedByData = {
+                        id: request.approvedBy._id.toString(),
+                        firstName: request.approvedBy.firstName,
+                        lastName: request.approvedBy.lastName,
+                    };
+                }
+                let rejectedByData = null;
+                if (request.rejectedBy && typeof request.rejectedBy === 'object' && request.rejectedBy._id) {
+                    rejectedByData = {
+                        id: request.rejectedBy._id.toString(),
+                        firstName: request.rejectedBy.firstName,
+                        lastName: request.rejectedBy.lastName,
+                    };
+                }
+                const mapped = mapSubscriptionRequestToGraphQL(request, undefined, memberData);
+                // Override approvedBy and rejectedBy with properly formatted data
+                if (approvedByData) {
+                    mapped.approvedBy = approvedByData;
+                }
+                if (rejectedByData) {
+                    mapped.rejectedBy = rejectedByData;
+                }
+                return mapped;
             });
         },
         getSubscriptionRequest: async (_, { id }, context) => {
@@ -299,20 +374,17 @@ export default {
                 member_id: new mongoose.Types.ObjectId(userId),
                 membership_id: new mongoose.Types.ObjectId(input.membershipId),
                 status: 'Pending',
-                expiresAt: { $gt: new Date() },
             }).lean();
             if (existingRequest) {
                 throw new Error('You already have a pending request for this membership plan');
             }
-            // Create subscription request with 1 minute expiration
+            // Create subscription request (no expiration)
             const now = new Date();
-            const expiresAt = new Date(now.getTime() + 60 * 1000); // 1 minute from now
             const request = new SubscriptionRequest({
                 member_id: new mongoose.Types.ObjectId(userId),
                 membership_id: new mongoose.Types.ObjectId(input.membershipId),
                 status: 'Pending',
                 requestedAt: now,
-                expiresAt,
             });
             await request.save();
             const populatedRequest = await SubscriptionRequest.findById(request._id)
@@ -412,13 +484,6 @@ export default {
             if (request.status !== 'Pending') {
                 throw new Error(`Cannot approve request with status: ${request.status}`);
             }
-            // Check if request has expired
-            if (new Date(request.expiresAt) < new Date()) {
-                await SubscriptionRequest.findByIdAndUpdate(input.requestId, {
-                    status: 'Expired',
-                });
-                throw new Error('This subscription request has expired');
-            }
             // Create membership transaction
             const transaction = await createMembershipTransaction(request.member_id.toString(), request.membership_id.toString(), userId);
             // Update request status
@@ -459,6 +524,28 @@ export default {
                 rejectedAt: new Date(),
                 rejectedBy: new mongoose.Types.ObjectId(userId),
             });
+            return true;
+        },
+        deleteSubscriptionRequest: async (_, { id }, context) => {
+            // Authorization: Only admin can delete requests
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can delete subscription requests');
+            }
+            if (!userId) {
+                throw new Error('Unauthorized: Please log in');
+            }
+            const request = await SubscriptionRequest.findById(id).lean();
+            if (!request) {
+                throw new Error('Subscription request not found');
+            }
+            // Only allow deleting pending or rejected requests
+            // Approved requests should not be deleted as they have associated transactions
+            if (request.status === 'Approved') {
+                throw new Error('Cannot delete an approved subscription request. It has an associated membership transaction.');
+            }
+            await SubscriptionRequest.findByIdAndDelete(id);
             return true;
         },
         directSubscribeMember: async (_, { input }, context) => {

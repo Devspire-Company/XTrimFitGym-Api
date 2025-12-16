@@ -1,6 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
-export type SubscriptionRequestStatusType = 'Pending' | 'Approved' | 'Rejected' | 'Expired';
+export type SubscriptionRequestStatusType = 'Pending' | 'Approved' | 'Rejected';
 export interface ISubscriptionRequest {
 	status: SubscriptionRequestStatusType;
 }
@@ -19,16 +19,12 @@ const subscriptionRequestSchema = new Schema(
 		},
 		status: {
 			type: String,
-			enum: ['Pending', 'Approved', 'Rejected', 'Expired'],
+			enum: ['Pending', 'Approved', 'Rejected'],
 			default: 'Pending',
 		},
 		requestedAt: {
 			type: Date,
 			default: Date.now,
-		},
-		expiresAt: {
-			type: Date,
-			required: true,
 		},
 		approvedAt: {
 			type: Date,
@@ -49,16 +45,8 @@ const subscriptionRequestSchema = new Schema(
 );
 
 // Index for efficient querying
-subscriptionRequestSchema.index({ status: 1, expiresAt: 1 });
+subscriptionRequestSchema.index({ status: 1 });
 subscriptionRequestSchema.index({ member_id: 1, status: 1 });
-
-// Auto-expire pending requests after 1 minute
-subscriptionRequestSchema.pre('save', function (next) {
-	if (this.status === 'Pending' && new Date() > this.expiresAt) {
-		this.status = 'Expired';
-	}
-	next();
-});
 
 const SubscriptionRequest =
 	(mongoose.models.SubscriptionRequest as mongoose.Model<ISubscriptionRequest>) ||

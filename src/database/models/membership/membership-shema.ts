@@ -32,6 +32,12 @@ const membershipSchema = new Schema(
 			enum: ['Monthly', 'Yearly', 'Quarterly'],
 			required: true,
 		},
+		monthDuration: {
+			type: Number,
+			required: true,
+			default: 1,
+			min: 1,
+		},
 	},
 	{ timestamps: true }
 );

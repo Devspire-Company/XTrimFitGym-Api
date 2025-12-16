@@ -187,6 +187,22 @@ export default {
             if (input.rating < 1 || input.rating > 10) {
                 throw new Error('Rating must be between 1 and 10');
             }
+            // Check if a progress rating already exists for the same client, goal, and overlapping date range
+            const existingRatings = await ProgressRating.find({
+                coach_id: new mongoose.Types.ObjectId(userId),
+                client_id: new mongoose.Types.ObjectId(input.clientId),
+                goal_id: new mongoose.Types.ObjectId(input.goalId),
+            }).lean();
+            // Check for overlapping date ranges
+            const hasOverlappingDateRange = existingRatings.some((existing) => {
+                const existingStart = new Date(existing.startDate);
+                const existingEnd = new Date(existing.endDate);
+                // Two date ranges overlap if: newStart <= existingEnd AND newEnd >= existingStart
+                return startDate <= existingEnd && endDate >= existingStart;
+            });
+            if (hasOverlappingDateRange) {
+                throw new Error('A progress rating already exists for this client and goal with an overlapping date range. Please use a different date range or update the existing rating.');
+            }
             // Validate session logs exist and belong to the client and goal
             if (input.sessionLogIds && input.sessionLogIds.length > 0) {
                 const sessionLogs = await SessionLog.find({
@@ -213,7 +229,9 @@ export default {
                 rating: input.rating,
                 comment: input.comment,
                 verdict: input.verdict,
-                sessionLogIds: input.sessionLogIds.map((id) => new mongoose.Types.ObjectId(id)),
+                sessionLogIds: (input.sessionLogIds && input.sessionLogIds.length > 0)
+                    ? input.sessionLogIds.map((id) => new mongoose.Types.ObjectId(id))
+                    : [],
             });
             await rating.save();
             const populatedRating = await ProgressRating.findById(rating._id)

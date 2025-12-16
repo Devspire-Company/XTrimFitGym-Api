@@ -9,7 +9,9 @@
 		"dev": "tsx --watch --env-file=.env src/server.ts",
 		"generate": "graphql-codegen",
 		"start": "node --env-file=.env dist/server.js",
-		"seed:memberships": "tsx --env-file=.env src/database/seedMemberships.ts"
+		"seed:memberships": "tsx --env-file=.env src/database/seedMemberships.ts",
+		"migrate:monthDuration": "tsx --env-file=.env src/database/migrations/addMonthDurationToMemberships.ts",
+		"migrate:removeExpiredStatus": "tsx --env-file=.env src/database/migrations/removeExpiredStatusFromSubscriptionRequests.ts"
 	},
 	"keywords": [],
 	"author": "",
@@ -40,6 +42,7 @@
 		"jsonwebtoken": "^9.0.2",
 		"mongoose": "^8.19.4",
 		"multer": "^2.0.2",
+		"mysql2": "^3.15.3",
 		"tsx": "^4.20.6",
 		"ws": "^8.18.3",
 		"zod": "^4.1.12"

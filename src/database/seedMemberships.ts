@@ -15,6 +15,7 @@ const membershipPlans = [
 		],
 		status: 'Active',
 		durationType: 'Monthly',
+		monthDuration: 1,
 	},
 	{
 		name: 'PROMO Student',
@@ -30,6 +31,7 @@ const membershipPlans = [
 		],
 		status: 'Active',
 		durationType: 'Quarterly',
+		monthDuration: 3,
 	},
 	{
 		name: 'Non Student',
@@ -45,6 +47,7 @@ const membershipPlans = [
 		],
 		status: 'Active',
 		durationType: 'Quarterly',
+		monthDuration: 3,
 	},
 ];
 

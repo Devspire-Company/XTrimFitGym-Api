@@ -633,11 +633,15 @@ export default {
                 }
             }
             // Create new session from template
+            // Use workoutType from input if provided, otherwise use template's workoutType
+            const workoutType = input.workoutType !== undefined && input.workoutType !== null
+                ? input.workoutType
+                : templateSession.workoutType || null;
             const session = new Session({
                 coach_id: new mongoose.Types.ObjectId(userIdString),
                 clients_ids: clientsIds,
                 name: templateSession.name,
-                workoutType: templateSession.workoutType || null,
+                workoutType: workoutType,
                 date: new Date(input.date),
                 startTime: input.startTime,
                 endTime: input.endTime || null,
@@ -799,17 +803,29 @@ export default {
                 throw new Error('Unauthorized: You are not part of this session');
             }
             // Check if goal is weight-related
-            const goal = session.goalId;
-            const isWeightRelated = goal &&
-                (goal.goalType === 'Weight loss' || goal.goalType === 'Muscle building');
-            // Validate weight if goal is weight-related
-            if (isWeightRelated) {
-                if (!input.weight) {
-                    throw new Error('Weight is required for weight-related goals (Weight loss or Muscle building)');
+            // If goalId is not populated, fetch it
+            let goal = session.goalId;
+            if (!goal || (!goal.goalType && !goal._id)) {
+                // Goal not populated, fetch it
+                if (session.goalId) {
+                    const goalId = session.goalId instanceof mongoose.Types.ObjectId
+                        ? session.goalId
+                        : new mongoose.Types.ObjectId(String(session.goalId));
+                    goal = await Goal.findById(goalId).select('goalType title').lean();
                 }
-                const weightNum = parseFloat(input.weight);
+            }
+            const isWeightRelated = goal &&
+                goal.goalType &&
+                (String(goal.goalType).trim() === 'Weight loss' ||
+                    String(goal.goalType).trim() === 'Muscle building');
+            // Validate weight if goal is weight-related - THIS IS REQUIRED
+            if (isWeightRelated) {
+                if (!input.weight || input.weight === null || input.weight === undefined) {
+                    throw new Error(`Weight is required for weight-related goals. This session is associated with a "${goal.goalType}" goal, and weight tracking is mandatory.`);
+                }
+                const weightNum = parseFloat(String(input.weight));
                 if (isNaN(weightNum) || weightNum <= 0) {
-                    throw new Error('Please enter a valid weight');
+                    throw new Error('Please enter a valid weight (must be greater than 0)');
                 }
             }
             // Check if session log already exists
@@ -1188,27 +1204,6 @@ export default {
                     : null;
             }
             return parent.coach;
-        },
-        goal: async (parent) => {
-            // If goal is already populated and has the right structure, return it
-            if (parent.goal && parent.goal.id && parent.goal.goalType) {
-                return parent.goal;
-            }
-            // If goalId exists but goal is not populated, fetch it
-            if (parent.goalId && !parent.goal) {
-                const goal = await Goal.findById(parent.goalId)
-                    .select('title goalType')
-                    .lean();
-                if (goal) {
-                    return {
-                        id: goal._id.toString(),
-                        title: goal.title,
-                        goalType: goal.goalType,
-                    };
-                }
-            }
-            // Return null if no goal
-            return null;
         },
     },
 };

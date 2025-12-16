@@ -2,13 +2,19 @@ import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@as-integrations/express5';
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
 import connectDb from './database/connectDb.js';
+import { connectMySQL } from './database/mysql/connectMysql.js';
+import { attendanceMonitor } from './services/attendance-monitor.js';
 import cookieParser from 'cookie-parser';
 import schema from './graphql/schema.js';
 import authContext from './context/auth-context.js';
-const port = Number(process.env.PORT) || 8080;
+const port = Number(process.env.PORT) || 8000;
 const server = new ApolloServer({ schema });
 const app = express();
+const httpServer = createServer(app);
 // CORS configuration
 app.use(cors({
     origin: true, // Allow all origins in development
@@ -19,6 +25,26 @@ app.use(cors({
 async function startServer() {
     await server.start();
     await connectDb();
+    // Connect to MySQL for attendance monitoring
+    try {
+        const mysqlConfig = {
+            host: process.env.MYSQL_HOST || '127.0.0.1',
+            port: Number(process.env.MYSQL_PORT) || 3307,
+            user: process.env.MYSQL_USER || 'root',
+            password: process.env.MYSQL_PASSWORD || '',
+            database: process.env.MYSQL_DATABASE || 'xtrimfitgym',
+        };
+        await connectMySQL(mysqlConfig);
+        console.log('MySQL connected for attendance monitoring');
+        // Initialize and start attendance monitoring
+        await attendanceMonitor.initialize();
+        attendanceMonitor.startPolling();
+        console.log('Attendance monitor started - listening for real-time updates');
+    }
+    catch (error) {
+        console.error('Failed to initialize MySQL or attendance monitor:', error);
+        console.error('Attendance monitoring will not be available');
+    }
     // Middleware order matters! cookieParser must come before expressMiddleware
     app.use(cookieParser()); // Global cookie parser
     app.use(express.json()); // Global JSON parser
@@ -28,14 +54,34 @@ async function startServer() {
     app.use('/graphql', expressMiddleware(server, {
         context: ({ req, res }) => authContext({ req, res }),
     }));
+    // WebSocket server for subscriptions
+    const wsServer = new WebSocketServer({
+        server: httpServer,
+        path: '/graphql',
+    });
+    const serverCleanup = useServer({
+        schema,
+        context: async (ctx) => {
+            // Extract auth token from connection params
+            const authHeader = ctx.connectionParams?.authorization;
+            const token = authHeader?.replace('Bearer ', '') || '';
+            // Create a mock request/response for auth context
+            const mockReq = {
+                headers: { authorization: `Bearer ${token}` },
+            };
+            const mockRes = {};
+            return authContext({ req: mockReq, res: mockRes });
+        },
+    }, wsServer);
     // Listen on all network interfaces (0.0.0.0) to allow connections from devices
-    app.listen(port, '0.0.0.0', () => {
+    httpServer.listen(port, '0.0.0.0', () => {
         console.log(`Server is up and running @ http://localhost:${port}/graphql`);
         console.log(`Server accessible from network @ http://0.0.0.0:${port}/graphql`);
+        console.log(`WebSocket server running @ ws://localhost:${port}/graphql`);
         console.log('\nTo connect from devices:');
-        console.log('  - Android Emulator: http://10.0.2.2:8080/graphql');
-        console.log('  - iOS Simulator: http://localhost:8080/graphql');
-        console.log('  - Physical devices: http://YOUR_LOCAL_IP:8080/graphql');
+        console.log(`  - Android Emulator: http://10.0.2.2:${port}/graphql`);
+        console.log(`  - iOS Simulator: http://localhost:${port}/graphql`);
+        console.log(`  - Physical devices: http://YOUR_LOCAL_IP:${port}/graphql`);
     });
 }
 startServer();
