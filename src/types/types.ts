@@ -43,6 +43,7 @@ export type AttendanceConnection = {
 };
 
 export type AttendanceFilter = {
+  cardNo?: InputMaybe<Scalars['String']['input']>;
   deviceName?: InputMaybe<Scalars['String']['input']>;
   direction?: InputMaybe<Scalars['String']['input']>;
   endDate?: InputMaybe<Scalars['String']['input']>;
@@ -1011,6 +1012,7 @@ export type User = {
   agreedToLiabilityWaiver?: Maybe<Scalars['Boolean']['output']>;
   agreedToPrivacyPolicy?: Maybe<Scalars['Boolean']['output']>;
   agreedToTermsAndConditions?: Maybe<Scalars['Boolean']['output']>;
+  attendanceId?: Maybe<Scalars['Int']['output']>;
   coachDetails?: Maybe<CoachDetails>;
   createdAt?: Maybe<Scalars['String']['output']>;
   currentMembership?: Maybe<MembershipTransaction>;
@@ -1564,6 +1566,7 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   agreedToLiabilityWaiver?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   agreedToPrivacyPolicy?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   agreedToTermsAndConditions?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  attendanceId?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   coachDetails?: Resolver<Maybe<ResolversTypes['CoachDetails']>, ParentType, ContextType>;
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   currentMembership?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType>;

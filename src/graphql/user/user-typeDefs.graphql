@@ -26,6 +26,12 @@ type CoachDetails {
 }
 
 # Main User type
+type LoginHistoryEntry {
+	ipAddress: String
+	userAgent: String
+	loginAt: String
+}
+
 type User {
 	id: ID!
 	firstName: String!
@@ -40,8 +46,10 @@ type User {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	attendanceId: Int
 	membershipDetails: MemberDetails
 	coachDetails: CoachDetails
+	loginHistory: [LoginHistoryEntry]
 	createdAt: String
 	updatedAt: String
 }
@@ -84,6 +92,7 @@ input CreateUserInput {
 	agreedToLiabilityWaiver: Boolean
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
+	currentPassword: String
 }
 
 input UpdateUserInput {

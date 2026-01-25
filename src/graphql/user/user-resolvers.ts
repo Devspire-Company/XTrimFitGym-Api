@@ -28,6 +28,7 @@ const mapUserToGraphQL = (
 		agreedToTermsAndConditions: user.agreedToTermsAndConditions,
 		agreedToPrivacyPolicy: user.agreedToPrivacyPolicy,
 		agreedToLiabilityWaiver: user.agreedToLiabilityWaiver,
+		attendanceId: user.attendanceId || null,
 		membershipDetails: user.membershipDetails
 			? {
 					membershipId: user.membershipDetails.membership_id?.toString(),
@@ -60,9 +61,39 @@ const mapUserToGraphQL = (
 					clientLimit: user.coachDetails.clientLimit || 999,
 			  }
 			: null,
+		loginHistory: user.loginHistory
+			? user.loginHistory.map((entry) => ({
+					ipAddress: entry.ipAddress || null,
+					userAgent: entry.userAgent || null,
+					loginAt: entry.loginAt?.toISOString() || new Date().toISOString(),
+			  }))
+			: [],
 		createdAt: user.createdAt?.toISOString(),
 		updatedAt: user.updatedAt?.toISOString(),
 	};
+};
+
+// Helper function to generate a unique 8-digit attendanceId
+const generateUniqueAttendanceId = async (): Promise<number> => {
+	const min = 10000000; // Minimum 8-digit number
+	const max = 99999999; // Maximum 8-digit number
+	const maxRetries = 100; // Maximum number of retries to avoid infinite loop
+
+	for (let attempt = 0; attempt < maxRetries; attempt++) {
+		// Generate a random 8-digit number
+		const attendanceId = Math.floor(Math.random() * (max - min + 1)) + min;
+
+		// Check if this attendanceId already exists
+		const existingUser = await User.findOne({ attendanceId }).lean();
+		if (!existingUser) {
+			return attendanceId;
+		}
+	}
+
+	// If we couldn't find a unique ID after maxRetries, throw an error
+	throw new Error(
+		'Unable to generate unique attendanceId. Please try again or contact support.'
+	);
 };
 
 const userResolvers: Resolvers = {
@@ -83,7 +114,7 @@ const userResolvers: Resolvers = {
 			const { email, password } = input;
 
 			// Find user by email
-			const user = await User.findOne({ email }).lean();
+			const user = await User.findOne({ email });
 			if (!user) {
 				throw new Error('Invalid email or password');
 			}
@@ -93,6 +124,27 @@ const userResolvers: Resolvers = {
 			if (!isPasswordValid) {
 				throw new Error('Invalid email or password');
 			}
+
+			// Get IP address and user agent from request
+			const ipAddress = context.req?.ip || context.req?.socket?.remoteAddress || 'Unknown';
+			const userAgent = context.req?.headers?.['user-agent'] || 'Unknown';
+
+			// Add login history entry
+			if (!user.loginHistory) {
+				user.loginHistory = [];
+			}
+			user.loginHistory.push({
+				ipAddress,
+				userAgent,
+				loginAt: new Date(),
+			});
+
+			// Keep only last 50 login entries
+			if (user.loginHistory.length > 50) {
+				user.loginHistory = user.loginHistory.slice(-50);
+			}
+
+			await user.save();
 
 			// Generate token
 			const token = jwt.sign(
@@ -109,8 +161,9 @@ const userResolvers: Resolvers = {
 				role: user.role,
 			});
 
+			const userObj = user.toObject();
 			return {
-				user: mapUserToGraphQL(user as any),
+				user: mapUserToGraphQL(userObj as any),
 				token, // Return token for React Native (cookies may not work)
 			};
 		},
@@ -131,7 +184,34 @@ const userResolvers: Resolvers = {
 				agreedToLiabilityWaiver,
 				membershipDetails,
 				coachDetails,
+				currentPassword,
 			} = input;
+
+			// Check if user is authenticated
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+
+			// Only admins can create admin accounts
+			if (role === 'admin') {
+				if (!userId || userRole !== 'admin') {
+					throw new Error('Unauthorized: Only admins can create admin accounts');
+				}
+
+				// Current password is required when creating admin accounts
+				if (!currentPassword) {
+					throw new Error('Current password is required to create an admin account');
+				}
+
+				// Verify current password
+				const currentUser = await User.findById(userId);
+				if (!currentUser) {
+					throw new Error('Current user not found');
+				}
+				const isPasswordValid = await bcrypt.compare(currentPassword, currentUser.password);
+				if (!isPasswordValid) {
+					throw new Error('Current password is incorrect');
+				}
+			}
 
 			// Check if user already exists
 			const existingUser = await User.findOne({ email });
@@ -141,6 +221,9 @@ const userResolvers: Resolvers = {
 
 			// Hash password
 			const hashedPassword = await bcrypt.hash(password, 10);
+
+			// Generate unique attendanceId
+			const attendanceId = await generateUniqueAttendanceId();
 
 			// Create user
 			const user = new User({
@@ -152,11 +235,12 @@ const userResolvers: Resolvers = {
 				role,
 				phoneNumber: phoneNumber ? parseInt(phoneNumber) : undefined,
 				dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-				gender,
+				gender: gender && gender.trim() !== '' ? gender : undefined,
 				heardFrom,
 				agreedToTermsAndConditions,
 				agreedToPrivacyPolicy,
 				agreedToLiabilityWaiver,
+				attendanceId,
 				membershipDetails: membershipDetails
 					? {
 							membership_id: membershipDetails.membershipId,
@@ -233,8 +317,14 @@ const userResolvers: Resolvers = {
 				throw new Error('User not found');
 			}
 
-			// Check email uniqueness if email is being changed
+			// Prevent users from updating their own email (only admins can update other users' emails)
 			if (input.email !== undefined && input.email !== currentUser.email) {
+				// If user is updating their own profile (not an admin updating another user), prevent email change
+				if (!isAdmin && isUpdatingOwnProfile) {
+					throw new Error('You cannot change your own email address');
+				}
+				
+				// Check email uniqueness if email is being changed (for admin updating another user)
 				const existingUser = await User.findOne({ email: input.email });
 				if (existingUser && existingUser._id.toString() !== id) {
 					throw new Error('Email is already in use');
@@ -242,13 +332,12 @@ const userResolvers: Resolvers = {
 			}
 
 			// Verify current password if password is being changed
-			// Admins can change passwords without providing current password
 			if (input.password) {
-				if (!isAdmin && !input.currentPassword) {
-					throw new Error('Current password is required to change password');
-				}
-				// Only verify current password if user is updating their own profile and not an admin
-				if (!isAdmin && isUpdatingOwnProfile && input.currentPassword) {
+				// If user is updating their own profile, current password is always required
+				if (isUpdatingOwnProfile) {
+					if (!input.currentPassword) {
+						throw new Error('Current password is required to change your password');
+					}
 					const isPasswordValid = await bcrypt.compare(
 						input.currentPassword,
 						currentUser.password
@@ -257,6 +346,8 @@ const userResolvers: Resolvers = {
 						throw new Error('Current password is incorrect');
 					}
 				}
+				// If admin is updating another user's password, current password is not required
+				// (admins can reset other users' passwords)
 			}
 
 			// Get the user document (not lean) so we can modify and save it
@@ -269,7 +360,10 @@ const userResolvers: Resolvers = {
 			if (input.firstName !== undefined) userDoc.firstName = input.firstName;
 			if (input.middleName !== undefined) userDoc.middleName = input.middleName;
 			if (input.lastName !== undefined) userDoc.lastName = input.lastName;
-			if (input.email !== undefined) userDoc.email = input.email;
+			// Only allow email update if admin is updating another user (not their own profile)
+			if (input.email !== undefined && (isAdmin && !isUpdatingOwnProfile)) {
+				userDoc.email = input.email;
+			}
 			if (input.password) {
 				userDoc.password = await bcrypt.hash(input.password, 10);
 			}

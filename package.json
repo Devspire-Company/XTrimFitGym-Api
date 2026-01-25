@@ -11,7 +11,8 @@
 		"start": "node --env-file=.env dist/server.js",
 		"seed:memberships": "tsx --env-file=.env src/database/seedMemberships.ts",
 		"migrate:monthDuration": "tsx --env-file=.env src/database/migrations/addMonthDurationToMemberships.ts",
-		"migrate:removeExpiredStatus": "tsx --env-file=.env src/database/migrations/removeExpiredStatusFromSubscriptionRequests.ts"
+		"migrate:removeExpiredStatus": "tsx --env-file=.env src/database/migrations/removeExpiredStatusFromSubscriptionRequests.ts",
+		"migrate:attendanceId": "tsx --env-file=.env src/database/migrations/addAttendanceIdToUsers.ts"
 	},
 	"keywords": [],
 	"author": "",

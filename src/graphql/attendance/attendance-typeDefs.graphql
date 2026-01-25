@@ -22,6 +22,7 @@ input AttendanceFilter {
 	startDate: String
 	endDate: String
 	deviceName: String
+	cardNo: String
 }
 
 input AttendancePagination {
