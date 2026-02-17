@@ -1,9 +1,9 @@
 // @ts-nocheck
 import mongoose from 'mongoose';
-import CoachRating from '../../database/models/coach/coachRating-schema';
-import SessionLog from '../../database/models/session/sessionLog-schema';
-import User from '../../database/models/user/user-schema';
-import { Context } from '../../types';
+import CoachRating from '../../database/models/coach/coachRating-schema.js';
+import SessionLog from '../../database/models/session/sessionLog-schema.js';
+import User from '../../database/models/user/user-schema.js';
+import type { IAuthContext } from '../../context/auth-context.js';
 
 // Map CoachRating to GraphQL type
 const mapCoachRatingToGraphQL = (rating: any): any => {
@@ -83,7 +83,7 @@ export default {
 		getCoachRatings: async (
 			_: any,
 			{ coachId }: { coachId: string },
-			context: Context
+			context: IAuthContext
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -107,7 +107,7 @@ export default {
 		getCoachRatingBySessionLog: async (
 			_: any,
 			{ sessionLogId }: { sessionLogId: string },
-			context: Context
+			context: IAuthContext
 		) => {
 			const userId = context.auth.user?.id;
 
@@ -131,7 +131,7 @@ export default {
 		createCoachRating: async (
 			_: any,
 			{ input }: { input: any },
-			context: Context
+			context: IAuthContext
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -210,7 +210,7 @@ export default {
 		updateCoachRating: async (
 			_: any,
 			{ id, rating, comment }: { id: string; rating?: number; comment?: string },
-			context: Context
+			context: IAuthContext
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -271,7 +271,7 @@ export default {
 		deleteCoachRating: async (
 			_: any,
 			{ id }: { id: string },
-			context: Context
+			context: IAuthContext
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;

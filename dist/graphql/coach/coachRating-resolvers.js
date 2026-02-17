@@ -1,8 +1,8 @@
 // @ts-nocheck
 import mongoose from 'mongoose';
-import CoachRating from '../../database/models/coach/coachRating-schema';
-import SessionLog from '../../database/models/session/sessionLog-schema';
-import User from '../../database/models/user/user-schema';
+import CoachRating from '../../database/models/coach/coachRating-schema.js';
+import SessionLog from '../../database/models/session/sessionLog-schema.js';
+import User from '../../database/models/user/user-schema.js';
 // Map CoachRating to GraphQL type
 const mapCoachRatingToGraphQL = (rating) => {
     if (!rating)
