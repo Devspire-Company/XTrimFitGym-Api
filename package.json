@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"build": "tsc && copyfiles -u 1 \"src/**/*.graphql\" dist",
+		"build": "npm install --include=dev && tsc && copyfiles -u 1 \"src/**/*.graphql\" dist",
 		"dev": "tsx --watch --env-file=.env src/server.ts",
 		"generate": "graphql-codegen",
 		"start": "node --env-file=.env dist/server.js",
