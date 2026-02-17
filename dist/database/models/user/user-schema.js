@@ -94,8 +94,25 @@ const userSchema = new Schema({
         type: Boolean,
         default: false,
     },
+    attendanceId: {
+        type: Number,
+        unique: true,
+        sparse: true, // Allows null/undefined values but enforces uniqueness for non-null values
+        min: 10000000, // Minimum 8-digit number
+        max: 99999999, // Maximum 8-digit number
+    },
     membershipDetails: memberSchema,
     coachDetails: coachSchema,
+    loginHistory: [
+        {
+            ipAddress: String,
+            userAgent: String,
+            loginAt: {
+                type: Date,
+                default: Date.now,
+            },
+        },
+    ],
 }, {
     timestamps: true,
 });

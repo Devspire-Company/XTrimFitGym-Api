@@ -26,24 +26,39 @@ async function startServer() {
     await server.start();
     await connectDb();
     // Connect to MySQL for attendance monitoring
+    // Store config even if connection fails initially - it can be retried later
+    const mysqlConfig = {
+        host: process.env.MYSQLHOST || 'mysql.railway.internal',
+        port: Number(process.env.MYSQLPORT) || 3306,
+        user: process.env.MYSQLUSER || 'root',
+        password: process.env.MYSQLPASSWORD || '',
+        database: process.env.MYSQLDATABASE || 'railway',
+    };
+    // Store config for potential reconnection attempts
+    const { setMySQLConfig } = await import('./database/mysql/connectMysql.js');
+    setMySQLConfig(mysqlConfig);
     try {
-        const mysqlConfig = {
-					host: process.env.MYSQLHOST || 'mysql.railway.internal',
-					port: Number(process.env.MYSQLPORT) || 3306,
-					user: process.env.MYSQLUSER || 'root',
-					password: process.env.MYSQLPASSWORD || '',
-					database: process.env.MYSQLDATABASE || 'railway',
-				};
         await connectMySQL(mysqlConfig);
-        console.log('MySQL connected for attendance monitoring');
+        console.log('✅ MySQL connected for attendance monitoring');
         // Initialize and start attendance monitoring
-        await attendanceMonitor.initialize();
-        attendanceMonitor.startPolling();
-        console.log('Attendance monitor started - listening for real-time updates');
+        // Don't throw if initialization fails - it might just be that the table doesn't exist yet
+        try {
+            await attendanceMonitor.initialize();
+            attendanceMonitor.startPolling();
+            console.log('✅ Attendance monitor started - listening for real-time updates');
+        }
+        catch (initError) {
+            // If initialization fails, still start polling - it will check for table existence
+            console.warn('⚠️  Attendance monitor initialization had issues, but polling will continue');
+            console.warn('   It will automatically detect when the attendance table is created.');
+            attendanceMonitor.startPolling();
+        }
     }
     catch (error) {
-        console.error('Failed to initialize MySQL or attendance monitor:', error);
-        console.error('Attendance monitoring will not be available');
+        console.error('⚠️  Failed to connect to MySQL at startup:', error?.message || error);
+        console.error('   The server will continue, but attendance features will not be available.');
+        console.error('   Connection will be retried when attendance queries are made.');
+        console.error(`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`);
     }
     // Middleware order matters! cookieParser must come before expressMiddleware
     app.use(cookieParser()); // Global cookie parser
@@ -70,7 +85,12 @@ async function startServer() {
                 headers: { authorization: `Bearer ${token}` },
             };
             const mockRes = {};
-            return authContext({ req: mockReq, res: mockRes });
+            const authCtx = await authContext({ req: mockReq, res: mockRes });
+            // Also add user directly for compatibility with subscription resolvers
+            return {
+                ...authCtx,
+                user: authCtx.auth.user, // Add user for backward compatibility
+            };
         },
     }, wsServer);
     // Listen on all network interfaces (0.0.0.0) to allow connections from devices

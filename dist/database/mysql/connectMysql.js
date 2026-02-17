@@ -1,8 +1,26 @@
 import mysql from 'mysql2/promise';
 let connection = null;
+let mysqlConfig = null;
+/**
+ * Set MySQL config (useful for storing config even if initial connection fails)
+ */
+export const setMySQLConfig = (config) => {
+    mysqlConfig = config;
+};
 export const connectMySQL = async (config) => {
-    if (connection && connection.state !== 'disconnected') {
-        return connection;
+    // Store config for potential reconnection
+    mysqlConfig = config;
+    // Check if connection exists and is still valid
+    if (connection) {
+        try {
+            // Try to ping the connection to see if it's still alive
+            await connection.ping();
+            return connection;
+        }
+        catch (error) {
+            // Connection is dead, reset it
+            connection = null;
+        }
     }
     try {
         connection = await mysql.createConnection({
@@ -13,16 +31,64 @@ export const connectMySQL = async (config) => {
             database: config.database,
             multipleStatements: false,
         });
-        console.log('MySQL database connected successfully');
+        // Verify we're connected to the correct database
+        const [dbRows] = await connection.execute('SELECT DATABASE() as current_db');
+        const currentDb = dbRows[0]?.current_db;
+        console.log(`MySQL database connected successfully`);
+        console.log(`   Database: ${currentDb || config.database}`);
+        console.log(`   Host: ${config.host}:${config.port}`);
         return connection;
     }
     catch (error) {
         console.error('Error connecting to MySQL:', error);
-        throw error;
+        const errorMessage = error?.message || 'Unknown error';
+        const errorCode = error?.code || 'UNKNOWN';
+        throw new Error(`Failed to connect to MySQL: ${errorMessage} (${errorCode}). Please check your database configuration.`);
     }
 };
 export const getMySQLConnection = () => {
     return connection;
+};
+/**
+ * Ensure MySQL connection is available, attempt to reconnect if needed
+ */
+export const ensureMySQLConnection = async () => {
+    if (connection) {
+        try {
+            await connection.ping();
+            return connection;
+        }
+        catch (error) {
+            // Connection is dead, reset it
+            connection = null;
+        }
+    }
+    // Try to reconnect if config is available
+    if (mysqlConfig) {
+        try {
+            return await connectMySQL(mysqlConfig);
+        }
+        catch (error) {
+            throw new Error('MySQL connection not available. Please check your database configuration and ensure MySQL is running.');
+        }
+    }
+    // If no config is stored, try to get it from environment variables
+    const fallbackConfig = {
+        host: process.env.MYSQLHOST || 'mysql.railway.internal',
+        port: Number(process.env.MYSQLPORT) || 3306,
+        user: process.env.MYSQLUSER || 'root',
+        password: process.env.MYSQLPASSWORD || '',
+        database: process.env.MYSQLDATABASE || 'railway',
+    };
+    try {
+        // Store the config for future use
+        mysqlConfig = fallbackConfig;
+        return await connectMySQL(fallbackConfig);
+    }
+    catch (error) {
+        const errorMessage = error?.message || 'Unknown error';
+        throw new Error(`MySQL connection failed: ${errorMessage}. Please check your database configuration and ensure MySQL is running.`);
+    }
 };
 export const closeMySQLConnection = async () => {
     if (connection) {

@@ -45,7 +45,6 @@ export var SessionStatus;
 export var SubscriptionRequestStatus;
 (function (SubscriptionRequestStatus) {
     SubscriptionRequestStatus["Approved"] = "APPROVED";
-    SubscriptionRequestStatus["Expired"] = "EXPIRED";
     SubscriptionRequestStatus["Pending"] = "PENDING";
     SubscriptionRequestStatus["Rejected"] = "REJECTED";
 })(SubscriptionRequestStatus || (SubscriptionRequestStatus = {}));

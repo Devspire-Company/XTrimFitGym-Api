@@ -1,7 +1,19 @@
-import { getMySQLConnection } from '../database/mysql/connectMysql.js';
+import { ensureMySQLConnection } from '../database/mysql/connectMysql.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
+import { createHash } from 'crypto';
+/**
+ * Generate a deterministic unique ID for an attendance record
+ * Uses a hash of MySQL ID + authDateTime + personName to ensure consistency
+ */
+function generateAttendanceId(mysqlId, authDateTime, personName) {
+    const data = `${mysqlId}-${authDateTime}-${personName}`;
+    const hash = createHash('sha256').update(data).digest('hex');
+    // Convert to UUID-like format (8-4-4-4-12)
+    return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-${hash.substring(12, 16)}-${hash.substring(16, 20)}-${hash.substring(20, 32)}`;
+}
 class AttendanceMonitor {
     lastCheckedId = null;
+    lastCheckedDateTime = null;
     pollingInterval = null;
     isPolling = false;
     pollIntervalMs = 2000; // Poll every 2 seconds for real-time updates
@@ -10,21 +22,37 @@ class AttendanceMonitor {
      */
     async initialize() {
         try {
-            const connection = getMySQLConnection();
-            if (!connection) {
-                throw new Error('MySQL connection not available');
+            const connection = await ensureMySQLConnection();
+            // First, check if the table exists
+            const [tableCheck] = await connection.execute(`SELECT COUNT(*) as count FROM information_schema.tables 
+				WHERE table_schema = DATABASE() AND table_name = 'attendance'`);
+            if (tableCheck.length === 0 || tableCheck[0].count === 0) {
+                console.warn('⚠️  Attendance table does not exist yet. Monitor will wait for table creation.');
+                console.warn('   The table will be checked again when polling starts.');
+                this.lastCheckedId = null;
+                return;
             }
-            // Get the latest record ID to start monitoring from
-            const [rows] = await connection.execute('SELECT id FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 1');
+            // Get the latest record ID and datetime to start monitoring from
+            const [rows] = await connection.execute('SELECT id, authDateTime FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 1');
             if (rows.length > 0) {
                 this.lastCheckedId = rows[0].id.toString();
-                console.log(`Attendance monitor initialized. Last record ID: ${this.lastCheckedId}`);
+                this.lastCheckedDateTime = rows[0].authDateTime
+                    ? new Date(rows[0].authDateTime).toISOString()
+                    : null;
+                console.log(`✅ Attendance monitor initialized. Last record ID: ${this.lastCheckedId}`);
             }
             else {
-                console.log('Attendance monitor initialized. No existing records found.');
+                console.log('✅ Attendance monitor initialized. No existing records found.');
             }
         }
         catch (error) {
+            // Check if it's a "table doesn't exist" error
+            if (error?.code === 'ER_NO_SUCH_TABLE' || error?.errno === 1146) {
+                console.warn('⚠️  Attendance table does not exist yet. Monitor will wait for table creation.');
+                console.warn('   The table will be checked again when polling starts.');
+                this.lastCheckedId = null;
+                return;
+            }
             console.error('Error initializing attendance monitor:', error);
             throw error;
         }
@@ -61,23 +89,45 @@ class AttendanceMonitor {
      */
     async checkForNewRecords() {
         try {
-            const connection = getMySQLConnection();
-            if (!connection) {
-                console.error('MySQL connection not available for polling');
-                return;
+            const connection = await ensureMySQLConnection();
+            // Check if table exists first (in case it was created after initialization)
+            if (this.lastCheckedId === null) {
+                const [tableCheck] = await connection.execute(`SELECT COUNT(*) as count FROM information_schema.tables 
+					WHERE table_schema = DATABASE() AND table_name = 'attendance'`);
+                if (tableCheck.length === 0 || tableCheck[0].count === 0) {
+                    // Table still doesn't exist, skip this check
+                    return;
+                }
+                // Table exists now, try to initialize
+                try {
+                    const [rows] = await connection.execute('SELECT id, authDateTime FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 1');
+                    if (rows.length > 0) {
+                        this.lastCheckedId = rows[0].id.toString();
+                        this.lastCheckedDateTime = rows[0].authDateTime
+                            ? new Date(rows[0].authDateTime).toISOString()
+                            : null;
+                        console.log(`✅ Attendance table found. Last record ID: ${this.lastCheckedId}`);
+                    }
+                    else {
+                        console.log('✅ Attendance table found. No existing records.');
+                    }
+                }
+                catch (initError) {
+                    // Table might have been created but is empty or has issues
+                    return;
+                }
             }
             let query;
             let params;
-            if (this.lastCheckedId) {
-                // Get records newer than the last checked ID
-                // Using authDateTime and id for more reliable ordering
+            if (this.lastCheckedId && this.lastCheckedDateTime) {
+                // Get records newer than the last checked record
+                // Use the stored authDateTime and id directly to avoid subquery issues
                 query = `
 					SELECT * FROM attendance 
-					WHERE (authDateTime > (SELECT authDateTime FROM attendance WHERE id = ?) 
-						OR (authDateTime = (SELECT authDateTime FROM attendance WHERE id = ?) AND id > ?))
+					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
 					ORDER BY authDateTime ASC, id ASC
 				`;
-                params = [this.lastCheckedId, this.lastCheckedId, this.lastCheckedId];
+                params = [this.lastCheckedDateTime, this.lastCheckedDateTime, this.lastCheckedId];
             }
             else {
                 // First check - get all records
@@ -86,34 +136,68 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const newRecords = rows.map((row) => ({
-                    id: row.id.toString(),
-                    authDateTime: row.authDateTime ? new Date(row.authDateTime).toISOString() : '',
-                    authDate: row.authDate ? row.authDate.toString() : '',
-                    authTime: row.authTime ? row.authTime.toString() : '',
-                    direction: row.direction || 'IN',
-                    deviceName: row.deviceName || '',
-                    deviceSerNum: row.deviceSerNum || '',
-                    personName: row.personName || '',
-                    cardNo: row.cardNo || null,
-                }));
-                // Update last checked ID to the most recent record
-                const lastRecord = newRecords[newRecords.length - 1];
-                this.lastCheckedId = lastRecord.id;
-                // Publish each new record to subscribers
+                const newRecords = rows.map((row) => {
+                    const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
+                    const personName = row.personName || '';
+                    return {
+                        id: generateAttendanceId(row.id, authDateTime, personName), // Generate unique ID instead of using MySQL ID
+                        authDateTime,
+                        authDate: row.authDate ? row.authDate.toString() : '',
+                        authTime: row.authTime ? row.authTime.toString() : '',
+                        direction: row.direction || 'IN',
+                        deviceName: row.deviceName || '',
+                        deviceSerNum: row.deviceSerNum || '',
+                        personName,
+                        cardNo: row.cardNo || null,
+                    };
+                });
+                // Update last checked ID and datetime to the most recent record
+                // Use MySQL ID for tracking, not the generated UUID
+                const lastRecord = rows[rows.length - 1];
+                this.lastCheckedId = lastRecord.id.toString();
+                this.lastCheckedDateTime = lastRecord.authDateTime
+                    ? new Date(lastRecord.authDateTime).toISOString()
+                    : null;
+                // Publish each new record to subscribers IMMEDIATELY
+                console.log(`[Attendance Monitor] 🔔 Found ${newRecords.length} new record(s), publishing immediately...`);
                 for (const record of newRecords) {
-                    pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, {
+                    const publishPayload = {
                         attendanceRecordAdded: record,
-                    });
-                    console.log(`New attendance record detected: ${record.personName} - ${record.direction} at ${record.authDateTime}`);
+                    };
+                    console.log(`[Attendance Monitor] 📢 Publishing ATTENDANCE_RECORD_ADDED for: ${record.personName} (${record.direction})`);
+                    try {
+                        pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, publishPayload);
+                        console.log(`[Attendance Monitor] ✅ Successfully published record: ${record.id}`);
+                    }
+                    catch (error) {
+                        console.error(`[Attendance Monitor] ❌ Error publishing record ${record.id}:`, error);
+                    }
+                    console.log(`✅ New attendance record detected: ${record.personName} - ${record.direction} at ${record.authDateTime}`);
                 }
                 // Also publish a batch update event
-                pubsub.publish(EVENTS.ATTENDANCE_UPDATED, {
+                const batchPayload = {
                     attendanceUpdated: newRecords,
-                });
+                };
+                console.log(`[Attendance Monitor] 📢 Publishing ATTENDANCE_UPDATED with ${newRecords.length} records`);
+                try {
+                    pubsub.publish(EVENTS.ATTENDANCE_UPDATED, batchPayload);
+                    console.log(`[Attendance Monitor] ✅ Successfully published batch update`);
+                }
+                catch (error) {
+                    console.error(`[Attendance Monitor] ❌ Error publishing batch update:`, error);
+                }
             }
         }
         catch (error) {
+            // Handle table not found errors gracefully
+            if (error?.code === 'ER_NO_SUCH_TABLE' || error?.errno === 1146) {
+                // Reset lastCheckedId and lastCheckedDateTime so we check for table existence on next poll
+                if (this.lastCheckedId !== null) {
+                    this.lastCheckedId = null;
+                    this.lastCheckedDateTime = null;
+                }
+                return;
+            }
             console.error('Error checking for new attendance records:', error);
             // Don't throw - continue polling even if one check fails
         }
@@ -123,21 +207,17 @@ class AttendanceMonitor {
      * Returns the new records that were found
      */
     async manualCheck() {
-        const connection = getMySQLConnection();
-        if (!connection) {
-            throw new Error('MySQL connection not available');
-        }
+        const connection = await ensureMySQLConnection();
         try {
             let query;
             let params;
-            if (this.lastCheckedId) {
+            if (this.lastCheckedId && this.lastCheckedDateTime) {
                 query = `
 					SELECT * FROM attendance 
-					WHERE (authDateTime > (SELECT authDateTime FROM attendance WHERE id = ?) 
-						OR (authDateTime = (SELECT authDateTime FROM attendance WHERE id = ?) AND id > ?))
+					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
 					ORDER BY authDateTime ASC, id ASC
 				`;
-                params = [this.lastCheckedId, this.lastCheckedId, this.lastCheckedId];
+                params = [this.lastCheckedDateTime, this.lastCheckedDateTime, this.lastCheckedId];
             }
             else {
                 query = 'SELECT * FROM attendance ORDER BY authDateTime ASC, id ASC';
@@ -145,20 +225,28 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const newRecords = rows.map((row) => ({
-                    id: row.id.toString(),
-                    authDateTime: row.authDateTime ? new Date(row.authDateTime).toISOString() : '',
-                    authDate: row.authDate ? row.authDate.toString() : '',
-                    authTime: row.authTime ? row.authTime.toString() : '',
-                    direction: row.direction || 'IN',
-                    deviceName: row.deviceName || '',
-                    deviceSerNum: row.deviceSerNum || '',
-                    personName: row.personName || '',
-                    cardNo: row.cardNo || null,
-                }));
+                const newRecords = rows.map((row) => {
+                    const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
+                    const personName = row.personName || '';
+                    return {
+                        id: generateAttendanceId(row.id, authDateTime, personName), // Generate unique ID instead of using MySQL ID
+                        authDateTime,
+                        authDate: row.authDate ? row.authDate.toString() : '',
+                        authTime: row.authTime ? row.authTime.toString() : '',
+                        direction: row.direction || 'IN',
+                        deviceName: row.deviceName || '',
+                        deviceSerNum: row.deviceSerNum || '',
+                        personName,
+                        cardNo: row.cardNo || null,
+                    };
+                });
                 if (newRecords.length > 0) {
-                    const lastRecord = newRecords[newRecords.length - 1];
-                    this.lastCheckedId = lastRecord.id;
+                    // Use MySQL ID for tracking, not the generated UUID
+                    const lastRecord = rows[rows.length - 1];
+                    this.lastCheckedId = lastRecord.id.toString();
+                    this.lastCheckedDateTime = lastRecord.authDateTime
+                        ? new Date(lastRecord.authDateTime).toISOString()
+                        : null;
                 }
                 return newRecords;
             }
