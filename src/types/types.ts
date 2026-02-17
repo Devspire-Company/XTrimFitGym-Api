@@ -221,6 +221,7 @@ export type CreateUserInput = {
   agreedToPrivacyPolicy?: InputMaybe<Scalars['Boolean']['input']>;
   agreedToTermsAndConditions?: InputMaybe<Scalars['Boolean']['input']>;
   coachDetails?: InputMaybe<CoachDetailsInput>;
+  currentPassword?: InputMaybe<Scalars['String']['input']>;
   dateOfBirth?: InputMaybe<Scalars['String']['input']>;
   email: Scalars['String']['input'];
   firstName: Scalars['String']['input'];
@@ -274,6 +275,13 @@ export enum GoalStatus {
   Completed = 'completed',
   Paused = 'paused'
 }
+
+export type LoginHistoryEntry = {
+  __typename?: 'LoginHistoryEntry';
+  ipAddress?: Maybe<Scalars['String']['output']>;
+  loginAt?: Maybe<Scalars['String']['output']>;
+  userAgent?: Maybe<Scalars['String']['output']>;
+};
 
 export type LoginInput = {
   email: Scalars['String']['input'];
@@ -1023,6 +1031,7 @@ export type User = {
   heardFrom?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
   id: Scalars['ID']['output'];
   lastName: Scalars['String']['output'];
+  loginHistory?: Maybe<Array<Maybe<LoginHistoryEntry>>>;
   membershipDetails?: Maybe<MemberDetails>;
   middleName?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
@@ -1143,6 +1152,7 @@ export type ResolversTypes = {
   GoalStatus: ResolverTypeWrapper<Partial<GoalStatus>>;
   ID: ResolverTypeWrapper<Partial<Scalars['ID']['output']>>;
   Int: ResolverTypeWrapper<Partial<Scalars['Int']['output']>>;
+  LoginHistoryEntry: ResolverTypeWrapper<Partial<LoginHistoryEntry>>;
   LoginInput: ResolverTypeWrapper<Partial<LoginInput>>;
   MemberDetails: ResolverTypeWrapper<Partial<MemberDetails>>;
   MemberDetailsInput: ResolverTypeWrapper<Partial<MemberDetailsInput>>;
@@ -1210,6 +1220,7 @@ export type ResolversParentTypes = {
   Goal: Partial<Goal>;
   ID: Partial<Scalars['ID']['output']>;
   Int: Partial<Scalars['Int']['output']>;
+  LoginHistoryEntry: Partial<LoginHistoryEntry>;
   LoginInput: Partial<LoginInput>;
   MemberDetails: Partial<MemberDetails>;
   MemberDetailsInput: Partial<MemberDetailsInput>;
@@ -1329,6 +1340,12 @@ export type GoalResolvers<ContextType = IAuthContext, ParentType extends Resolve
   targetWeight?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type LoginHistoryEntryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['LoginHistoryEntry'] = ResolversParentTypes['LoginHistoryEntry']> = {
+  ipAddress?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  loginAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  userAgent?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type MemberDetailsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['MemberDetails'] = ResolversParentTypes['MemberDetails']> = {
@@ -1577,6 +1594,7 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   heardFrom?: Resolver<Maybe<Array<Maybe<ResolversTypes['String']>>>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  loginHistory?: Resolver<Maybe<Array<Maybe<ResolversTypes['LoginHistoryEntry']>>>, ParentType, ContextType>;
   membershipDetails?: Resolver<Maybe<ResolversTypes['MemberDetails']>, ParentType, ContextType>;
   middleName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -1600,6 +1618,7 @@ export type Resolvers<ContextType = IAuthContext> = {
   CoachRating?: CoachRatingResolvers<ContextType>;
   CoachRequest?: CoachRequestResolvers<ContextType>;
   Goal?: GoalResolvers<ContextType>;
+  LoginHistoryEntry?: LoginHistoryEntryResolvers<ContextType>;
   MemberDetails?: MemberDetailsResolvers<ContextType>;
   Membership?: MembershipResolvers<ContextType>;
   MembershipRevenue?: MembershipRevenueResolvers<ContextType>;
