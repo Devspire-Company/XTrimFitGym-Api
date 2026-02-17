@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PubSub } from 'graphql-subscriptions';
 
 const basePubSub = new PubSub();

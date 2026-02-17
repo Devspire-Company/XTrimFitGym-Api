@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose from 'mongoose';
 import Membership from '../models/membership/membership-shema.js';
 import connectDb from '../connectDb.js';

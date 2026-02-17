@@ -1,0 +1,45 @@
+type AttendanceRecord {
+	id: String!
+	authDateTime: String!
+	authDate: String!
+	authTime: String!
+	direction: String!
+	deviceName: String!
+	deviceSerNum: String!
+	personName: String!
+	cardNo: String
+}
+
+type AttendanceConnection {
+	records: [AttendanceRecord!]!
+	totalCount: Int!
+	hasMore: Boolean!
+}
+
+input AttendanceFilter {
+	personName: String
+	direction: String
+	startDate: String
+	endDate: String
+	deviceName: String
+	cardNo: String
+}
+
+input AttendancePagination {
+	limit: Int
+	offset: Int
+}
+
+extend type Query {
+	getAttendanceRecords(
+		filter: AttendanceFilter
+		pagination: AttendancePagination
+	): AttendanceConnection!
+	getAttendanceRecord(id: String!): AttendanceRecord
+}
+
+extend type Subscription {
+	attendanceRecordAdded: AttendanceRecord!
+	attendanceUpdated: [AttendanceRecord!]!
+}
+

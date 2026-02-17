@@ -125,9 +125,10 @@ const userResolvers: Resolvers = {
 				throw new Error('Invalid email or password');
 			}
 
-			// Get IP address and user agent from request
-			const ipAddress = context.req?.ip || context.req?.socket?.remoteAddress || 'Unknown';
-			const userAgent = context.req?.headers?.['user-agent'] || 'Unknown';
+			// Get IP address and user agent from request (req is available at runtime from Apollo context)
+			const req = (context as { req?: { ip?: string; socket?: { remoteAddress?: string }; headers?: Record<string, string> } }).req;
+			const ipAddress = req?.ip || req?.socket?.remoteAddress || 'Unknown';
+			const userAgent = req?.headers?.['user-agent'] || 'Unknown';
 
 			// Add login history entry
 			if (!user.loginHistory) {
@@ -356,30 +357,30 @@ const userResolvers: Resolvers = {
 				throw new Error('User not found');
 			}
 
-			// Update top-level fields
-			if (input.firstName !== undefined) userDoc.firstName = input.firstName;
-			if (input.middleName !== undefined) userDoc.middleName = input.middleName;
-			if (input.lastName !== undefined) userDoc.lastName = input.lastName;
+			// Update top-level fields (InputMaybe = T | null; only assign when not null)
+			if (input.firstName != null) userDoc.firstName = input.firstName;
+			if (input.middleName !== undefined) userDoc.middleName = input.middleName ?? undefined;
+			if (input.lastName != null) userDoc.lastName = input.lastName;
 			// Only allow email update if admin is updating another user (not their own profile)
-			if (input.email !== undefined && (isAdmin && !isUpdatingOwnProfile)) {
+			if (input.email != null && (isAdmin && !isUpdatingOwnProfile)) {
 				userDoc.email = input.email;
 			}
 			if (input.password) {
 				userDoc.password = await bcrypt.hash(input.password, 10);
 			}
 			if (input.phoneNumber !== undefined) {
-				userDoc.phoneNumber = input.phoneNumber ? parseInt(input.phoneNumber) : undefined;
+				userDoc.phoneNumber = input.phoneNumber != null ? parseInt(input.phoneNumber) : undefined;
 			}
 			if (input.dateOfBirth !== undefined) {
-				userDoc.dateOfBirth = input.dateOfBirth ? new Date(input.dateOfBirth) : undefined;
+				userDoc.dateOfBirth = input.dateOfBirth != null ? new Date(input.dateOfBirth) : undefined;
 			}
-			if (input.gender !== undefined) userDoc.gender = input.gender;
-			if (input.heardFrom !== undefined) userDoc.heardFrom = input.heardFrom;
-			if (input.agreedToTermsAndConditions !== undefined)
+			if (input.gender != null) userDoc.gender = input.gender as IUser['gender'];
+			if (input.heardFrom !== undefined) userDoc.heardFrom = (input.heardFrom ?? []).filter((x): x is string => x != null);
+			if (input.agreedToTermsAndConditions !== undefined && input.agreedToTermsAndConditions !== null)
 				userDoc.agreedToTermsAndConditions = input.agreedToTermsAndConditions;
-			if (input.agreedToPrivacyPolicy !== undefined)
+			if (input.agreedToPrivacyPolicy !== undefined && input.agreedToPrivacyPolicy !== null)
 				userDoc.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
-			if (input.agreedToLiabilityWaiver !== undefined)
+			if (input.agreedToLiabilityWaiver !== undefined && input.agreedToLiabilityWaiver !== null)
 				userDoc.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
 
 			// Update membershipDetails if provided
@@ -387,18 +388,19 @@ const userResolvers: Resolvers = {
 				if (!userDoc.membershipDetails) {
 					userDoc.membershipDetails = {};
 				}
-				if (input.membershipDetails.membershipId !== undefined)
-					userDoc.membershipDetails.membership_id = input.membershipDetails.membershipId;
-				if (input.membershipDetails.physiqueGoalType !== undefined)
-					userDoc.membershipDetails.physiqueGoalType = input.membershipDetails.physiqueGoalType;
-				if (input.membershipDetails.fitnessGoal !== undefined)
-					userDoc.membershipDetails.fitnessGoal = input.membershipDetails.fitnessGoal;
-				if (input.membershipDetails.workOutTime !== undefined)
-					userDoc.membershipDetails.workOutTime = input.membershipDetails.workOutTime;
-				if (input.membershipDetails.coachesIds !== undefined)
-					userDoc.membershipDetails.coaches_ids = input.membershipDetails.coachesIds;
-				if (input.membershipDetails.hasEnteredDetails !== undefined)
-					userDoc.membershipDetails.hasEnteredDetails = input.membershipDetails.hasEnteredDetails;
+				const md = input.membershipDetails;
+				if (md.membershipId != null)
+					userDoc.membershipDetails.membership_id = new mongoose.Types.ObjectId(md.membershipId);
+				if (md.physiqueGoalType !== undefined)
+					userDoc.membershipDetails.physiqueGoalType = (md.physiqueGoalType ?? undefined) as any;
+				if (md.fitnessGoal !== undefined)
+					userDoc.membershipDetails.fitnessGoal = (md.fitnessGoal ?? []).filter((x): x is string => x != null);
+				if (md.workOutTime !== undefined)
+					userDoc.membershipDetails.workOutTime = (md.workOutTime ?? []).filter((x): x is string => x != null);
+				if (md.coachesIds !== undefined)
+					userDoc.membershipDetails.coaches_ids = (md.coachesIds ?? []).filter((id): id is string => id != null).map((id) => new mongoose.Types.ObjectId(id));
+				if (md.hasEnteredDetails !== undefined && md.hasEnteredDetails !== null)
+					userDoc.membershipDetails.hasEnteredDetails = md.hasEnteredDetails;
 				
 				// Mark the nested object as modified to ensure Mongoose saves it
 				userDoc.markModified('membershipDetails');
@@ -412,46 +414,47 @@ const userResolvers: Resolvers = {
 						clients_ids: [],
 						sessions_ids: [],
 						specialization: [],
-						ratings: [],
+						ratings: 0,
 						yearsOfExperience: undefined,
 						moreDetails: undefined,
 						teachingDate: [],
 						teachingTime: [],
 						clientLimit: 999,
-					};
+					} as NonNullable<IUser['coachDetails']>;
 				}
+				const cd = userDoc.coachDetails!;
 
 				// Update only the fields that are explicitly provided
 				if (input.coachDetails.specialization !== undefined) {
-					userDoc.coachDetails.specialization =
+					cd.specialization =
 						input.coachDetails.specialization === null
 							? []
-							: input.coachDetails.specialization;
+							: (input.coachDetails.specialization ?? []).filter((x): x is string => x != null);
 				}
 				if (input.coachDetails.yearsOfExperience !== undefined) {
-					userDoc.coachDetails.yearsOfExperience = input.coachDetails.yearsOfExperience;
+					cd.yearsOfExperience = input.coachDetails.yearsOfExperience ?? undefined;
 				}
 				if (input.coachDetails.moreDetails !== undefined) {
-					userDoc.coachDetails.moreDetails =
+					cd.moreDetails =
 						input.coachDetails.moreDetails === null ||
 						input.coachDetails.moreDetails === ''
 							? undefined
-							: input.coachDetails.moreDetails;
+							: input.coachDetails.moreDetails ?? undefined;
 				}
 				if (input.coachDetails.teachingDate !== undefined) {
-					userDoc.coachDetails.teachingDate =
+					cd.teachingDate =
 						input.coachDetails.teachingDate === null
 							? []
-							: input.coachDetails.teachingDate;
+							: (input.coachDetails.teachingDate ?? []).filter((x): x is string => x != null);
 				}
 				if (input.coachDetails.teachingTime !== undefined) {
-					userDoc.coachDetails.teachingTime =
+					cd.teachingTime =
 						input.coachDetails.teachingTime === null
 							? []
-							: input.coachDetails.teachingTime;
+							: (input.coachDetails.teachingTime ?? []).filter((x): x is string => x != null);
 				}
-				if (input.coachDetails.clientLimit !== undefined) {
-					userDoc.coachDetails.clientLimit = input.coachDetails.clientLimit;
+				if (input.coachDetails.clientLimit !== undefined && input.coachDetails.clientLimit !== null) {
+					cd.clientLimit = input.coachDetails.clientLimit;
 				}
 
 				// Mark the nested object as modified to ensure Mongoose saves it
@@ -548,17 +551,18 @@ const userResolvers: Resolvers = {
 			},
 		},
 		usersUpdated: {
-			subscribe: (_: any, { role }: { role?: string }, context: any) => {
+			subscribe: (_: any, args: { role?: string | null }, context: any) => {
 				// Authorization check
-				if (!context.user || context.user.role !== 'admin') {
+				if (!context.auth?.user || context.auth.user.role !== 'admin') {
 					throw new Error('Unauthorized: Only admins can subscribe to user updates');
 				}
 
 				// Return async iterator for the subscription
 				return pubsub.asyncIterator(EVENTS.USERS_UPDATED);
 			},
-			resolve: async (payload: any, { role }: { role?: string }) => {
+			resolve: async (payload: any, args: { role?: string | null }) => {
 				// Re-fetch users when event is published
+				const role = args.role ?? undefined;
 				const query = role ? { role } : {};
 				const users = await User.find(query).lean();
 				return users.map((user) => mapUserToGraphQL(user as any));

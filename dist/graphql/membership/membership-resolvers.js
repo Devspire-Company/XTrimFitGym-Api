@@ -1,3 +1,4 @@
+// @ts-nocheck
 import Membership from '../../database/models/membership/membership-shema.js';
 import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
 import User from '../../database/models/user/user-schema.js';

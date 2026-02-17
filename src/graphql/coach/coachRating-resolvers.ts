@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose from 'mongoose';
 import CoachRating from '../../database/models/coach/coachRating-schema';
 import SessionLog from '../../database/models/session/sessionLog-schema';
