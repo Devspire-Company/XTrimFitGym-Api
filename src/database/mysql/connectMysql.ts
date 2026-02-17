@@ -18,7 +18,9 @@ export const setMySQLConfig = (config: MySQLConfig): void => {
 	mysqlConfig = config;
 };
 
-export const connectMySQL = async (config: MySQLConfig): Promise<mysql.Connection> => {
+export const connectMySQL = async (
+	config: MySQLConfig,
+): Promise<mysql.Connection> => {
 	// Store config for potential reconnection
 	mysqlConfig = config;
 
@@ -46,20 +48,22 @@ export const connectMySQL = async (config: MySQLConfig): Promise<mysql.Connectio
 
 		// Verify we're connected to the correct database
 		const [dbRows] = await connection.execute<mysql.RowDataPacket[]>(
-			'SELECT DATABASE() as current_db'
+			'SELECT DATABASE() as current_db',
 		);
 		const currentDb = dbRows[0]?.current_db;
-		
+
 		console.log(`MySQL database connected successfully`);
 		console.log(`   Database: ${currentDb || config.database}`);
 		console.log(`   Host: ${config.host}:${config.port}`);
-		
+
 		return connection;
 	} catch (error: any) {
 		console.error('Error connecting to MySQL:', error);
 		const errorMessage = error?.message || 'Unknown error';
 		const errorCode = error?.code || 'UNKNOWN';
-		throw new Error(`Failed to connect to MySQL: ${errorMessage} (${errorCode}). Please check your database configuration.`);
+		throw new Error(
+			`Failed to connect to MySQL: ${errorMessage} (${errorCode}). Please check your database configuration.`,
+		);
 	}
 };
 
@@ -86,17 +90,19 @@ export const ensureMySQLConnection = async (): Promise<mysql.Connection> => {
 		try {
 			return await connectMySQL(mysqlConfig);
 		} catch (error) {
-			throw new Error('MySQL connection not available. Please check your database configuration and ensure MySQL is running.');
+			throw new Error(
+				'MySQL connection not available. Please check your database configuration and ensure MySQL is running.',
+			);
 		}
 	}
 
 	// If no config is stored, try to get it from environment variables
 	const fallbackConfig: MySQLConfig = {
-		host: process.env.MYSQL_HOST || '127.0.0.1',
-		port: Number(process.env.MYSQL_PORT) || 3307,
-		user: process.env.MYSQL_USER || 'root',
-		password: process.env.MYSQL_PASSWORD || '',
-		database: process.env.MYSQL_DATABASE || 'xtrimfitgym',
+		host: process.env.MYSQLHOST || 'mysql.railway.internal',
+		port: Number(process.env.MYSQLPORT) || 3306,
+		user: process.env.MYSQLUSER || 'root',
+		password: process.env.MYSQLPASSWORD || '',
+		database: process.env.MYSQLDATABASE || 'railway',
 	};
 
 	try {
@@ -105,7 +111,9 @@ export const ensureMySQLConnection = async (): Promise<mysql.Connection> => {
 		return await connectMySQL(fallbackConfig);
 	} catch (error: any) {
 		const errorMessage = error?.message || 'Unknown error';
-		throw new Error(`MySQL connection failed: ${errorMessage}. Please check your database configuration and ensure MySQL is running.`);
+		throw new Error(
+			`MySQL connection failed: ${errorMessage}. Please check your database configuration and ensure MySQL is running.`,
+		);
 	}
 };
 
@@ -116,4 +124,3 @@ export const closeMySQLConnection = async (): Promise<void> => {
 		console.log('MySQL connection closed');
 	}
 };
-

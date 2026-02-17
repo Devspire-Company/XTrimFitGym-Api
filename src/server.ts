@@ -25,7 +25,7 @@ app.use(
 		credentials: true, // Allow cookies
 		methods: ['GET', 'POST', 'OPTIONS'],
 		allowedHeaders: ['Content-Type', 'Authorization'],
-	})
+	}),
 );
 
 async function startServer() {
@@ -35,11 +35,11 @@ async function startServer() {
 	// Connect to MySQL for attendance monitoring
 	// Store config even if connection fails initially - it can be retried later
 	const mysqlConfig = {
-		host: process.env.MYSQL_HOST || '127.0.0.1',
-		port: Number(process.env.MYSQL_PORT) || 3307,
-		user: process.env.MYSQL_USER || 'root',
-		password: process.env.MYSQL_PASSWORD || '',
-		database: process.env.MYSQL_DATABASE || 'xtrimfitgym',
+		host: process.env.MYSQLHOST || 'mysql.railway.internal',
+		port: Number(process.env.MYSQLPORT) || 3306,
+		user: process.env.MYSQLUSER || 'root',
+		password: process.env.MYSQLPASSWORD || '',
+		database: process.env.MYSQLDATABASE || 'railway',
 	};
 
 	// Store config for potential reconnection attempts
@@ -56,31 +56,31 @@ async function startServer() {
 			await attendanceMonitor.initialize();
 			attendanceMonitor.startPolling();
 			console.log(
-				'✅ Attendance monitor started - listening for real-time updates'
+				'✅ Attendance monitor started - listening for real-time updates',
 			);
 		} catch (initError) {
 			// If initialization fails, still start polling - it will check for table existence
 			console.warn(
-				'⚠️  Attendance monitor initialization had issues, but polling will continue'
+				'⚠️  Attendance monitor initialization had issues, but polling will continue',
 			);
 			console.warn(
-				'   It will automatically detect when the attendance table is created.'
+				'   It will automatically detect when the attendance table is created.',
 			);
 			attendanceMonitor.startPolling();
 		}
 	} catch (error: any) {
 		console.error(
 			'⚠️  Failed to connect to MySQL at startup:',
-			error?.message || error
+			error?.message || error,
 		);
 		console.error(
-			'   The server will continue, but attendance features will not be available.'
+			'   The server will continue, but attendance features will not be available.',
 		);
 		console.error(
-			'   Connection will be retried when attendance queries are made.'
+			'   Connection will be retried when attendance queries are made.',
 		);
 		console.error(
-			`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`
+			`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`,
 		);
 	}
 
@@ -96,7 +96,7 @@ async function startServer() {
 		'/graphql',
 		expressMiddleware(server, {
 			context: ({ req, res }) => authContext({ req, res }),
-		})
+		}),
 	);
 
 	// WebSocket server for subscriptions
@@ -127,14 +127,14 @@ async function startServer() {
 				};
 			},
 		},
-		wsServer
+		wsServer,
 	);
 
 	// Listen on all network interfaces (0.0.0.0) to allow connections from devices
 	httpServer.listen(port, '0.0.0.0', () => {
 		console.log(`Server is up and running @ http://localhost:${port}/graphql`);
 		console.log(
-			`Server accessible from network @ http://0.0.0.0:${port}/graphql`
+			`Server accessible from network @ http://0.0.0.0:${port}/graphql`,
 		);
 		console.log(`WebSocket server running @ ws://localhost:${port}/graphql`);
 		console.log('\nTo connect from devices:');

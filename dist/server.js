@@ -28,12 +28,12 @@ async function startServer() {
     // Connect to MySQL for attendance monitoring
     try {
         const mysqlConfig = {
-            host: process.env.MYSQL_HOST || '127.0.0.1',
-            port: Number(process.env.MYSQL_PORT) || 3307,
-            user: process.env.MYSQL_USER || 'root',
-            password: process.env.MYSQL_PASSWORD || '',
-            database: process.env.MYSQL_DATABASE || 'xtrimfitgym',
-        };
+					host: process.env.MYSQLHOST || 'mysql.railway.internal',
+					port: Number(process.env.MYSQLPORT) || 3306,
+					user: process.env.MYSQLUSER || 'root',
+					password: process.env.MYSQLPASSWORD || '',
+					database: process.env.MYSQLDATABASE || 'railway',
+				};
         await connectMySQL(mysqlConfig);
         console.log('MySQL connected for attendance monitoring');
         // Initialize and start attendance monitoring
