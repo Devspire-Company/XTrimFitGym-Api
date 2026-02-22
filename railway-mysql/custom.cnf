@@ -1,0 +1,3 @@
+# iVMS-4200 compatibility: disable SSL (client does not support it)
+[mysqld]
+skip-ssl

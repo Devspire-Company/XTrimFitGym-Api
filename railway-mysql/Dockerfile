@@ -1,7 +1,10 @@
-# MySQL 5.7 - uses mysql_native_password by default (compatible with iVMS-4200)
-FROM mysql:5.7
+# MySQL 5.5 - documented compatible with iVMS-4200 3.13.x (SSL off, old protocol)
+FROM mysql:5.5
 
 EXPOSE 3306
+
+# Disable SSL so iVMS client can connect (it does not support SSL)
+COPY custom.cnf /etc/mysql/conf.d/custom.cnf
 
 # Init scripts run in alphabetical order on first start only
 COPY 01-attendance.sql /docker-entrypoint-initdb.d/

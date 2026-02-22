@@ -1,6 +1,6 @@
-# Step-by-Step: MySQL 5.7 on Railway for iVMS-4200
+# Step-by-Step: MySQL 5.5 on Railway for iVMS-4200
 
-This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so iVMS can connect. Your API (on Render) and iVMS both point to this database.
+This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy auth, matching compatibility for **iVMS-4200 Client 3.13.x** (documented to work with MySQL 5.0.45; 5.5 is the closest available in Docker). Your API (on Render) and iVMS both point to this database.
 
 ---
 
@@ -15,19 +15,20 @@ This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so
 
 1. **Confirm the folder contents** (in your repo):
    - `railway-mysql/Dockerfile`
+   - `railway-mysql/custom.cnf`
    - `railway-mysql/01-attendance.sql`
    - `railway-mysql/02-init-user.sh`
 
 2. **Commit and push** to your GitHub repo (e.g. `XTrimFitGym-Api`):
    ```bash
    git add railway-mysql/
-   git commit -m "Add Railway MySQL 5.7 Docker for iVMS"
+   git commit -m "Add Railway MySQL 5.5 Docker for iVMS compatibility"
    git push origin main
    ```
 
 ---
 
-## Part 2: Create the MySQL 5.7 service on Railway
+## Part 2: Create the MySQL 5.5 service on Railway
 
 1. Go to [Railway Dashboard](https://railway.app/dashboard) and open your project (or create a new one).
 
@@ -43,7 +44,7 @@ This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so
 4. **Configure build**
    - In the same service, go to **Settings** → **Build**.
    - **Builder**: set to **Dockerfile**.
-   - **Dockerfile path**: leave default (e.g. `Dockerfile` or `railway-mysql/Dockerfile` depending on Root Directory; if Root Directory is `railway-mysql`, use `Dockerfile`).
+   - **Dockerfile path**: leave default (e.g. `Dockerfile` when Root Directory is `railway-mysql`).
 
 5. **Set environment variables**
    - In the service, open the **Variables** tab.
@@ -60,12 +61,13 @@ This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so
 6. **Deploy**
    - Save and let Railway **deploy** the service (or trigger **Deploy** from the **Deployments** tab).
    - Wait until the deployment is **Success** and the service is **Running**.
+   - **If you had a previous MySQL 5.7 service:** This is a new stack (5.5). Use a new service or redeploy; the first run will create a fresh database and `attendance` table via the init scripts.
 
 ---
 
 ## Part 3: Expose MySQL on the public TCP proxy
 
-1. Open the **MySQL 5.7 service** you just deployed.
+1. Open the **MySQL 5.5 service** you just deployed.
 
 2. Go to **Settings** (or **Variables** / **Networking**, depending on Railway’s UI).
 
@@ -116,7 +118,7 @@ This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so
 
 1. In **Render** → your **API service** → **Environment**.
 
-2. Set (or update) these variables to the **same** MySQL 5.7 instance:
+2. Set (or update) these variables to the **same** MySQL 5.5 instance:
 
    | Variable         | Value |
    |------------------|--------|
@@ -132,9 +134,9 @@ This runs a **MySQL 5.7** container on Railway with **mysql_native_password** so
 
 ## Summary
 
-- **Railway** runs MySQL 5.7 in Docker; init creates the `railway` database, `attendance` table, and `ivms` user.
+- **Railway** runs **MySQL 5.5** in Docker (iVMS 3.13.x compatible; SSL disabled). Init creates the `railway` database, `attendance` table, and `ivms` user.
 - **TCP Proxy** exposes that MySQL publicly; you use the proxy host/port (and optionally the resolved IP for iVMS).
 - **iVMS** writes to this MySQL using `ivms` + the chosen password.
 - **Render API** reads from the same MySQL using the same host, port, user, and database.
 
-If iVMS still fails, double-check: **Port** in iVMS is the **TCP proxy port**, not 3306. If your plan doesn’t show TCP Proxy for this service, use the same Docker setup on **Fly.io** or a **VPS** and expose 3306 there instead.
+If iVMS still fails, confirm in iVMS: **Port** in iVMS is the **TCP proxy port**, not 3306. If your plan doesn’t show TCP Proxy for this service, use the same Docker setup on **Fly.io** or a **VPS** and expose 3306 there instead.
