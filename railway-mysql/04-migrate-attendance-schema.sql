@@ -1,10 +1,11 @@
--- Migration: old attendance table (id INT AUTO_INCREMENT, authDateTime VARCHAR) -> corrected schema (id VARCHAR(50) PK, authDateTime DATETIME)
+-- Migration: old attendance table (id INT AUTO_INCREMENT, authDateTime VARCHAR) -> corrected schema with composite PK (id, authDateTime)
 -- Run this ONCE on an existing database that already has the old attendance table.
 -- Backup your data before running.
+-- Composite PK (id, authDateTime) allows multiple rows per person so second scan (OUT) is stored and IVMS stays connected.
 
 USE railway;
 
--- 1) Create new table with corrected schema (original field names, improved types)
+-- 1) Create new table with corrected schema (composite PK so same person can have multiple records)
 CREATE TABLE IF NOT EXISTS attendance_new (
   id             VARCHAR(50)  NOT NULL,
   authDateTime   DATETIME     NOT NULL,
@@ -15,7 +16,7 @@ CREATE TABLE IF NOT EXISTS attendance_new (
   direction      VARCHAR(10)  DEFAULT 'IN',
   deviceName     VARCHAR(255) DEFAULT '',
   deviceSerNum   VARCHAR(255) DEFAULT '',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id, authDateTime)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2) Create log table if not exists

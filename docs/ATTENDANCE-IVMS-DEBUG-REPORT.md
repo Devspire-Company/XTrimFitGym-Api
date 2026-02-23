@@ -93,4 +93,29 @@ That would be a **display-side filter** only; it would not stop IVMS from writin
 
 ---
 
-**Summary:** The wrong data is written by IVMS-4200 when it reconnects to MySQL; the API only reads. No code changes were made in this codebase. Use the IVMS/MySQL steps and references above to address the disconnect and the bad data at the source (IVMS configuration, MySQL version/settings, and/or Hikvision support).
+---
+
+## 5. Root cause and fix applied (second scan not stored)
+
+**Observed:** When a user scans their fingerprint a second time, IVMS disconnects from MySQL; after reconnect the **second attendance log is not stored** (so OUT is missing). This repeats for any user who scans more than once.
+
+**Root cause (see also [Kapothi Tech Blog](https://kapothi.com/the-console-handshake-validating-hikvision-ivms-4200-sql-sync/)):**
+
+- iVMS sends the **same `id`** (employee/card identifier) for every scan by that person, not a unique ID per event.
+- The table had **PRIMARY KEY (id)** only. The first INSERT (first scan) succeeds; the second INSERT (same `id`, new `authDateTime`) **fails with duplicate key**.
+- IVMS treats the insert error as a connection failure → disconnects → second log is never stored.
+
+**Fix applied in this project:**
+
+1. **Composite PRIMARY KEY (id, authDateTime)** in `railway-mysql/01-attendance.sql` and `04-migrate-attendance-schema.sql`. Each (person, time) is one row; first scan (IN) and second scan (OUT) both insert successfully.
+2. **MySQL timeouts** in `railway-mysql/custom.cnf` (`wait_timeout`, `interactive_timeout` = 86400 s) so the server does not close idle connections between scans.
+
+**Next steps:**
+
+- If the DB already exists with the old schema, run **`railway-mysql/04-migrate-attendance-schema.sql`** once (after backup).
+- Restart/redeploy MySQL so `custom.cnf` is applied.
+- Full schema and rationale: **`railway-mysql/ATTENDANCE-SCHEMA.md`**.
+
+---
+
+**Summary:** The wrong data is written by IVMS-4200 when it reconnects to MySQL; the API only reads. The “second scan → disconnect → second log not stored” issue was fixed by changing the attendance table to a **composite PRIMARY KEY (id, authDateTime)** and adding MySQL timeouts. See ATTENDANCE-SCHEMA.md and the IVMS/MySQL steps above for details.

@@ -1,6 +1,8 @@
 -- Attendance table for iVMS-4200 Third-Party Database (DS-K1A802AMF)
--- Schema designed to avoid insert failures that cause IVMS to disconnect and retry stale/corrupt data.
--- Charset: utf8mb4. Primary key: id (VARCHAR). No strict constraints.
+-- Schema designed to avoid insert failures that cause IVMS to disconnect and second scan not stored.
+-- iVMS sends the same id (employee/card ID) for every scan; only (id + authDateTime) is unique per event.
+-- Composite PRIMARY KEY (id, authDateTime) allows multiple rows per person (1st scan IN, 2nd scan OUT, etc.).
+-- Charset: utf8mb4. No strict constraints.
 
 USE railway;
 
@@ -16,7 +18,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   direction      VARCHAR(10)  DEFAULT 'IN',
   deviceName     VARCHAR(255) DEFAULT '',
   deviceSerNum   VARCHAR(255) DEFAULT '',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id, authDateTime)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Log table: every insert attempt (BEFORE INSERT trigger logs here; includes attempts that later fail on duplicate)

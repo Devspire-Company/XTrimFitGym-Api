@@ -2,46 +2,64 @@
 
 ## Corrected `CREATE TABLE` (01-attendance.sql)
 
-- **id** `VARCHAR(50)` **PRIMARY KEY** (not INT; IVMS can send string event IDs).
-- **authDateTime** `DATETIME` **NOT NULL** (canonical event time; no numeric-only type).
+- **Composite PRIMARY KEY (id, authDateTime)** — iVMS sends the same `id` (employee/card identifier) for every scan by that person. A single-column PK on `id` would make the **second insert** (same person, second scan) fail with duplicate key, so IVMS disconnects and the second log is never stored. With composite PK, each (person, time) is one row: 1st scan = IN, 2nd scan = OUT, etc.
+- **id** `VARCHAR(50)` — employee/card/record identifier from IVMS (same value for each scan by that person).
+- **authDateTime** `DATETIME` **NOT NULL** — event time; with `id` forms the unique row.
 - All text fields **VARCHAR**: personName, cardNo, direction, deviceName, deviceSerNum; authDate/authTime kept as VARCHAR for IVMS mapping.
 - **No strict constraints**: DEFAULT '' or NULL so normal inserts do not fail.
-- **UNIQUE** only on id (PK implies uniqueness).
 - **Charset** `utf8mb4` (table and database).
-- **Insert logging**: `attendance_insert_log` + `BEFORE INSERT` trigger log every attempt (including attempts that later fail on duplicate key).
+- **Insert logging**: `attendance_insert_log` + `BEFORE INSERT` trigger.
+- **Stable connection**: `custom.cnf` sets `wait_timeout` and `interactive_timeout` (e.g. 86400 s) so the server does not close the connection between scans.
 
 Defensive options (see `03-defensive-insert-examples.sql`):
 
-- **INSERT IGNORE** – duplicate id is skipped; no error, connection stays up.
-- **ON DUPLICATE KEY UPDATE** – overwrite row on duplicate id.
-- **Stored procedure** `SP_Attendance_Insert` – logs and uses INSERT IGNORE (use from proxy/middleware if IVMS cannot call it).
+- **INSERT IGNORE** – duplicate (id, authDateTime) is skipped; no error, connection stays up.
+- **ON DUPLICATE KEY UPDATE** – overwrite row on duplicate (id, authDateTime).
+- **Stored procedure** `SP_Attendance_Insert` – logs and uses INSERT IGNORE.
 
 ---
 
-## Why schema mismatch or constraint failure causes IVMS to disconnect and retry stale data
+## Why second scan disconnects and second log is not stored (same issue online)
+
+1. **iVMS sends the same `id` per person**  
+   The field mapped to `id` is typically an employee/card identifier, not a unique event ID. So the first scan (IN) and the second scan (OUT) for the same person both send the same `id`, with different `authDateTime`.
+
+2. **Single-column PRIMARY KEY (id)**  
+   With `PRIMARY KEY (id)`, the first INSERT succeeds. The second INSERT (same `id`, new `authDateTime`) fails with **duplicate key** because `id` is already in the table.
+
+3. **IVMS treats insert error as connection failure**  
+   Many clients, including iVMS-4200, do not cleanly separate “statement error” from “connection lost.” On duplicate key (or other SQL error), the client may close the socket and show “disconnected.”
+
+4. **Second log never stored**  
+   After “reconnect,” the client may not retry the failed insert, or the retry may be dropped. So the second attendance log (OUT) is never written.
+
+**Fix (applied in this project):**
+
+- **Composite PRIMARY KEY (id, authDateTime)** so each (person, time) is one row. First and second (and later) scans all succeed; each gets a row with correct direction (IN/OUT).
+- **MySQL timeouts** in `custom.cnf` (`wait_timeout`, `interactive_timeout`) so the server does not close idle connections between scans (stable connection).
+
+Reference: [The Console Handshake — Validating Hikvision iVMS-4200 SQL Sync](https://kapothi.com/the-console-handshake-validating-hikvision-ivms-4200-sql-sync/) (Kapothi Tech Blog), which documents the same duplicate-key behaviour and the composite-key fix for SQL Server; the same logic applies to MySQL.
+
+---
+
+## Why schema mismatch or constraint failure causes IVMS to disconnect
 
 1. **Insert failure**  
-   When the table uses types or constraints that reject IVMS's payload (e.g. INT PK with overflow, NOT NULL on an empty string, wrong type for a column), MySQL returns an error to the client (IVMS).
+   When the table rejects the payload (wrong type for `id`, NOT NULL violation, or **duplicate key**), MySQL returns an error to the client (IVMS).
 
 2. **Client treats error as connection failure**  
-   Many clients, including iVMS-4200, do not always distinguish "statement error" from "connection lost." On error they may close the socket and report "disconnected."
+   IVMS may close the socket and report “disconnected” instead of only reporting an insert error.
 
-3. **Buffered / retry behaviour**  
-   After "reconnecting," the client may:
-   - Retry the same failed insert again, and/or  
-   - Flush a buffer of events that was built before or during the disconnect.  
-   That can mean:
-   - The same event (e.g. second scan) is sent again.
-   - Stale or default data (e.g. wrong person name like "Jack Williams", direction OUT, wrong metadata) that was in the buffer or from a bad internal state is sent.
-
-4. **Result**  
-   You see: disconnect on second scan → reconnect → one or more wrong/non-existent rows (e.g. "Jack Williams", OUT) written. The root cause is the **first** insert failing (schema/constraint), not the reconnect itself.
+3. **Result**  
+   You see: disconnect on second scan, second log not stored. The root cause is the **first** failing insert (e.g. duplicate key on second scan), not the reconnect itself.
 
 **Fix on the database side:**
 
-- Use a **permissive schema** (VARCHAR for text, DATETIME for time, VARCHAR(50) PK, DEFAULTs, no unnecessary NOT NULL).
-- Use **defensive inserts** (INSERT IGNORE or ON DUPLICATE KEY UPDATE, or a procedure that does so) so duplicate or retry inserts do not cause another error and another disconnect.
-- Use **insert logging** (`attendance_insert_log` + trigger) to see every attempt and spot duplicates/corrupt payloads.
+- Use **composite PK (id, authDateTime)** so every scan inserts a new row.
+- Use a **permissive schema** (VARCHAR for text, DATETIME for time, DEFAULTs).
+- Use **defensive inserts** (INSERT IGNORE or ON DUPLICATE KEY UPDATE) if you need to tolerate duplicate (id, authDateTime).
+- Use **insert logging** (`attendance_insert_log` + trigger) to inspect attempts.
+- Use **longer timeouts** in `custom.cnf` so the connection is not closed between scans.
 
 ---
 
@@ -49,12 +67,13 @@ Defensive options (see `03-defensive-insert-examples.sql`):
 
 | File | Purpose |
 |------|---------|
-| `01-attendance.sql` | Corrected schema + log table + trigger (fresh installs). |
+| `01-attendance.sql` | Corrected schema (composite PK) + log table + trigger (fresh installs). |
+| `custom.cnf` | MySQL timeouts for stable connection (wait_timeout, interactive_timeout). |
 | `03-defensive-insert-examples.sql` | INSERT IGNORE / ON DUPLICATE KEY UPDATE examples + `SP_Attendance_Insert`. |
-| `04-migrate-attendance-schema.sql` | One-time migration from old table (id INT AUTO_INCREMENT, authDateTime VARCHAR) to corrected (id VARCHAR(50) PK, authDateTime DATETIME). **Run this before using the updated API** if your database still has the old schema. |
+| `04-migrate-attendance-schema.sql` | One-time migration from old table to corrected schema with composite PK. Run if your database still has the old schema. |
 
 In iVMS-4200 Third-Party Database, map fields to:
 
-- **id** (Event ID / primary key, VARCHAR 50)
+- **id** (employee/card/record identifier from IVMS; same for each scan by that person)
 - **authDateTime** (event time as DATETIME)
 - **authDate**, **authTime**, **personName**, **cardNo**, **direction**, **deviceName**, **deviceSerNum**
