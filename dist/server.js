@@ -63,6 +63,13 @@ async function startServer() {
     // Middleware order matters! cookieParser must come before expressMiddleware
     app.use(cookieParser()); // Global cookie parser
     app.use(express.json()); // Global JSON parser
+    // Log incoming GraphQL requests (so Render/logs show traffic)
+    app.use('/graphql', (req, _res, next) => {
+        if (req.method !== 'OPTIONS') {
+            console.log(`[API] ${req.method} /graphql`);
+        }
+        next();
+    });
     // Upload routes (must come before GraphQL)
     const uploadRouter = await import('./routes/upload.js');
     app.use('/api/upload', uploadRouter.default);

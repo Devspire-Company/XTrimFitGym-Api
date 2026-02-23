@@ -1,12 +1,11 @@
--- Attendance table for iVMS-4200 Third-Party Database (DS-K1A802AMF)
--- Schema designed to avoid insert failures that cause IVMS to disconnect and retry stale/corrupt data.
--- Charset: utf8mb4. Primary key: ATTENDANCE_id (VARCHAR). No strict constraints.
+-- Migration: old attendance table (id INT, authDateTime VARCHAR) -> new schema (ATTENDANCE_id VARCHAR, eventTime DATETIME)
+-- Run this ONCE on an existing database that already has the old attendance table.
+-- Backup your data before running.
 
 USE railway;
 
-ALTER DATABASE railway CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS attendance (
+-- 1) Create new table with corrected schema (if not exists)
+CREATE TABLE IF NOT EXISTS attendance_new (
   ATTENDANCE_id   VARCHAR(50)  NOT NULL,
   eventTime       DATETIME     NOT NULL,
   authDate        VARCHAR(20)  DEFAULT '',
@@ -19,7 +18,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   PRIMARY KEY (ATTENDANCE_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Log table: every insert attempt (BEFORE INSERT trigger logs here; includes attempts that later fail on duplicate)
+-- 2) Create log table if not exists
 CREATE TABLE IF NOT EXISTS attendance_insert_log (
   id             INT          AUTO_INCREMENT PRIMARY KEY,
   attempted_at   DATETIME     NOT NULL,
@@ -32,7 +31,31 @@ CREATE TABLE IF NOT EXISTS attendance_insert_log (
   deviceSerNum   VARCHAR(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Trigger: log each attempt before it is applied (runs even if the insert later fails on duplicate key)
+-- 3) Copy data from old table (id, authDateTime, authDate, authTime, direction, deviceName, deviceSerNum, personName, cardNo)
+--    Generate ATTENDANCE_id as string from id + authDateTime to keep uniqueness
+INSERT IGNORE INTO attendance_new (
+  ATTENDANCE_id, eventTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
+)
+SELECT
+  CONCAT('mig-', id, '-', REPLACE(REPLACE(REPLACE(authDateTime, ' ', '-'), ':', ''), '-', '')),
+  CASE
+    WHEN authDateTime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN STR_TO_DATE(LEFT(authDateTime, 19), '%Y-%m-%d %H:%i:%s')
+    ELSE NOW()
+  END,
+  IFNULL(authDate, ''),
+  IFNULL(authTime, ''),
+  IFNULL(personName, ''),
+  cardNo,
+  IFNULL(direction, 'IN'),
+  IFNULL(deviceName, ''),
+  IFNULL(deviceSerNum, '')
+FROM attendance
+WHERE 1=1;
+
+-- 4) Replace old table with new
+RENAME TABLE attendance TO attendance_old_backup, attendance_new TO attendance;
+
+-- 5) Recreate trigger on new attendance table
 DROP TRIGGER IF EXISTS tr_attendance_before_insert;
 DELIMITER ;;
 CREATE TRIGGER tr_attendance_before_insert
@@ -46,3 +69,6 @@ BEGIN
   );
 END;;
 DELIMITER ;
+
+-- 6) Optional: drop backup after verifying
+-- DROP TABLE attendance_old_backup;

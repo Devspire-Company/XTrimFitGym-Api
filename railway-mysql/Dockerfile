@@ -9,4 +9,5 @@ COPY custom.cnf /etc/mysql/conf.d/custom.cnf
 # Init scripts run in alphabetical order on first start only
 COPY 01-attendance.sql /docker-entrypoint-initdb.d/
 COPY 02-init-user.sh /docker-entrypoint-initdb.d/
+COPY 03-defensive-insert-examples.sql /docker-entrypoint-initdb.d/
 RUN chmod +x /docker-entrypoint-initdb.d/02-init-user.sh

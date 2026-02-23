@@ -50,12 +50,11 @@ This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy 
    - In the service, open the **Variables** tab.
    - Add these (replace with your own secure values):
 
-   | Variable               | Value (example)        | Required |
-   |------------------------|------------------------|----------|
-   | `MYSQL_ROOT_PASSWORD`  | Your strong root password | Yes   |
-   | `MYSQL_DATABASE`       | `railway`              | Yes      |
-   | `MYSQL_IVMS_PASSWORD`  | Password for iVMS user | Yes      |
-
+   | Variable              | Value (example)           | Required |
+   | --------------------- | ------------------------- | -------- |
+   | `MYSQL_ROOT_PASSWORD` | Your strong root password | Yes      |
+   | `MYSQL_DATABASE`      | `railway`                 | Yes      |
+   | `MYSQL_IVMS_PASSWORD` | Password for iVMS user    | Yes      |
    - **Important:** The init script creates user `ivms` with `MYSQL_IVMS_PASSWORD`. Use a strong password you’ll also enter in iVMS and (optionally) in Render.
 
 6. **Deploy**
@@ -98,17 +97,22 @@ This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy 
 
 2. Use these values:
 
-   | Field              | Value |
-   |--------------------|--------|
-   | Database Type      | MySQL |
-   | Server IP Address  | Numeric IP from step 3.6 above (or the TCP proxy hostname if iVMS accepts it) |
-   | Port               | The **TCP proxy port** from step 3.5 (e.g. `12345`), **not** 3306 |
-   | Database Name      | `railway` |
-   | User Name          | `ivms` |
-   | User Password      | The value you set for `MYSQL_IVMS_PASSWORD` |
-   | Table Name         | `attendance` |
+   | Field             | Value                                                                         |
+   | ----------------- | ----------------------------------------------------------------------------- |
+   | Database Type     | MySQL                                                                         |
+   | Server IP Address | Numeric IP from step 3.6 above (or the TCP proxy hostname if iVMS accepts it) |
+   | Port              | The **TCP proxy port** from step 3.5 (e.g. `12345`), **not** 3306             |
+   | Database Name     | `railway`                                                                     |
+   | User Name         | `ivms`                                                                        |
+   | User Password     | The value you set for `MYSQL_IVMS_PASSWORD`                                   |
+   | Table Name        | `attendance`                                                                  |
 
-3. Keep your existing **Table Field** mapping (id, authDateTime, authDate, authTime, direction, deviceName, deviceSerNum, personName, cardNo).
+3. Keep your **Table Field** mapping in iVMS to match the attendance table:
+   - **ATTENDANCE_id** (Event ID / primary key, VARCHAR 50)
+   - **eventTime** (event time, DATETIME)
+   - **authDate**, **authTime**, **personName**, **cardNo**, **direction**, **deviceName**, **deviceSerNum**
+
+   See `railway-mysql/ATTENDANCE-SCHEMA.md` and `railway-mysql/03-defensive-insert-examples.sql` for schema details and defensive insert options (INSERT IGNORE / ON DUPLICATE KEY UPDATE) to avoid disconnect on duplicate or retry inserts.
 
 4. Click **Save**. The connection should succeed because MySQL 5.7 uses **mysql_native_password** by default.
 
@@ -120,13 +124,13 @@ This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy 
 
 2. Set (or update) these variables to the **same** MySQL 5.5 instance:
 
-   | Variable         | Value |
-   |------------------|--------|
-   | `MYSQLHOST`      | `RAILWAY_TCP_PROXY_DOMAIN` (e.g. `xxx.proxy.rlwy.net`) or its numeric IP |
-   | `MYSQLPORT`      | `RAILWAY_TCP_PROXY_PORT` (e.g. `12345`) |
-   | `MYSQLUSER`      | `ivms` |
-   | `MYSQLPASSWORD`  | Same as `MYSQL_IVMS_PASSWORD` |
-   | `MYSQLDATABASE`  | `railway` |
+   | Variable        | Value                                                                    |
+   | --------------- | ------------------------------------------------------------------------ |
+   | `MYSQLHOST`     | `RAILWAY_TCP_PROXY_DOMAIN` (e.g. `xxx.proxy.rlwy.net`) or its numeric IP |
+   | `MYSQLPORT`     | `RAILWAY_TCP_PROXY_PORT` (e.g. `12345`)                                  |
+   | `MYSQLUSER`     | `ivms`                                                                   |
+   | `MYSQLPASSWORD` | Same as `MYSQL_IVMS_PASSWORD`                                            |
+   | `MYSQLDATABASE` | `railway`                                                                |
 
 3. **Redeploy** the API on Render so it uses the new env.
 

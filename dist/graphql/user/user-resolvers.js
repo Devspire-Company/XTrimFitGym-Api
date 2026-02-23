@@ -88,8 +88,12 @@ const userResolvers = {
     Mutation: {
         login: async (_, { input }, context) => {
             const { email, password } = input;
-            // Find user by email
-            const user = await User.findOne({ email });
+            const normalizedEmail = (email || '').trim().toLowerCase();
+            console.log('[API] Login attempt for:', normalizedEmail ? `${normalizedEmail.slice(0, 3)}***` : '(no email)');
+            // Find user by email (case-insensitive so Admin@x.com and admin@x.com match)
+            const user = await User.findOne({
+                email: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+            });
             if (!user) {
                 throw new Error('Invalid email or password');
             }

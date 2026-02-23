@@ -1,6 +1,7 @@
 import { ensureMySQLConnection } from '../database/mysql/connectMysql.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
 import { createHash } from 'crypto';
+import { getValidAttendanceIdentifiers, isAttendanceRecordValid, correctPersonNameFromCardNo, } from './attendance-validation.js';
 /**
  * Generate a deterministic unique ID for an attendance record
  * Uses a hash of MySQL ID + authDateTime + personName to ensure consistency
@@ -39,10 +40,6 @@ class AttendanceMonitor {
                 this.lastCheckedDateTime = rows[0].authDateTime
                     ? new Date(rows[0].authDateTime).toISOString()
                     : null;
-                console.log(`✅ Attendance monitor initialized. Last record ID: ${this.lastCheckedId}`);
-            }
-            else {
-                console.log('✅ Attendance monitor initialized. No existing records found.');
             }
         }
         catch (error) {
@@ -61,12 +58,9 @@ class AttendanceMonitor {
      * Start polling for new attendance records
      */
     startPolling() {
-        if (this.isPolling) {
-            console.log('Attendance monitor is already polling');
+        if (this.isPolling)
             return;
-        }
         this.isPolling = true;
-        console.log('Starting attendance monitor polling...');
         // Poll immediately, then set up interval
         this.checkForNewRecords();
         this.pollingInterval = setInterval(() => {
@@ -81,7 +75,6 @@ class AttendanceMonitor {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
             this.isPolling = false;
-            console.log('Attendance monitor polling stopped');
         }
     }
     /**
@@ -106,10 +99,6 @@ class AttendanceMonitor {
                         this.lastCheckedDateTime = rows[0].authDateTime
                             ? new Date(rows[0].authDateTime).toISOString()
                             : null;
-                        console.log(`✅ Attendance table found. Last record ID: ${this.lastCheckedId}`);
-                    }
-                    else {
-                        console.log('✅ Attendance table found. No existing records.');
                     }
                 }
                 catch (initError) {
@@ -136,55 +125,50 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const newRecords = rows.map((row) => {
+                const validIds = await getValidAttendanceIdentifiers();
+                const newRecords = rows
+                    .map((row) => {
                     const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
                     const personName = row.personName || '';
                     return {
-                        id: generateAttendanceId(row.id, authDateTime, personName), // Generate unique ID instead of using MySQL ID
+                        id: generateAttendanceId(row.id, authDateTime, personName),
                         authDateTime,
                         authDate: row.authDate ? row.authDate.toString() : '',
                         authTime: row.authTime ? row.authTime.toString() : '',
-                        direction: row.direction || 'IN',
+                        direction: (row.direction || 'IN'),
                         deviceName: row.deviceName || '',
                         deviceSerNum: row.deviceSerNum || '',
                         personName,
                         cardNo: row.cardNo || null,
                     };
-                });
-                // Update last checked ID and datetime to the most recent record
-                // Use MySQL ID for tracking, not the generated UUID
+                })
+                    .filter((rec) => isAttendanceRecordValid(rec, validIds))
+                    .map((rec) => ({
+                    ...rec,
+                    personName: correctPersonNameFromCardNo(rec, validIds),
+                }));
+                // Update last checked ID and datetime to the most recent record (so we don't re-read same rows)
                 const lastRecord = rows[rows.length - 1];
                 this.lastCheckedId = lastRecord.id.toString();
                 this.lastCheckedDateTime = lastRecord.authDateTime
                     ? new Date(lastRecord.authDateTime).toISOString()
                     : null;
-                // Publish each new record to subscribers IMMEDIATELY
-                console.log(`[Attendance Monitor] 🔔 Found ${newRecords.length} new record(s), publishing immediately...`);
+                // Publish only valid records (skip IVMS ghost/corrupt e.g. "Jack Williams")
                 for (const record of newRecords) {
-                    const publishPayload = {
-                        attendanceRecordAdded: record,
-                    };
-                    console.log(`[Attendance Monitor] 📢 Publishing ATTENDANCE_RECORD_ADDED for: ${record.personName} (${record.direction})`);
                     try {
-                        pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, publishPayload);
-                        console.log(`[Attendance Monitor] ✅ Successfully published record: ${record.id}`);
+                        pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, { attendanceRecordAdded: record });
                     }
                     catch (error) {
-                        console.error(`[Attendance Monitor] ❌ Error publishing record ${record.id}:`, error);
+                        console.error('[Attendance Monitor] Error publishing record:', error);
                     }
-                    console.log(`✅ New attendance record detected: ${record.personName} - ${record.direction} at ${record.authDateTime}`);
                 }
-                // Also publish a batch update event
-                const batchPayload = {
-                    attendanceUpdated: newRecords,
-                };
-                console.log(`[Attendance Monitor] 📢 Publishing ATTENDANCE_UPDATED with ${newRecords.length} records`);
-                try {
-                    pubsub.publish(EVENTS.ATTENDANCE_UPDATED, batchPayload);
-                    console.log(`[Attendance Monitor] ✅ Successfully published batch update`);
-                }
-                catch (error) {
-                    console.error(`[Attendance Monitor] ❌ Error publishing batch update:`, error);
+                if (newRecords.length > 0) {
+                    try {
+                        pubsub.publish(EVENTS.ATTENDANCE_UPDATED, { attendanceUpdated: newRecords });
+                    }
+                    catch (error) {
+                        console.error('[Attendance Monitor] Error publishing batch update:', error);
+                    }
                 }
             }
         }
@@ -225,23 +209,30 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const newRecords = rows.map((row) => {
+                const validIds = await getValidAttendanceIdentifiers();
+                const newRecords = rows
+                    .map((row) => {
                     const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
                     const personName = row.personName || '';
                     return {
-                        id: generateAttendanceId(row.id, authDateTime, personName), // Generate unique ID instead of using MySQL ID
+                        id: generateAttendanceId(row.id, authDateTime, personName),
                         authDateTime,
                         authDate: row.authDate ? row.authDate.toString() : '',
                         authTime: row.authTime ? row.authTime.toString() : '',
-                        direction: row.direction || 'IN',
+                        direction: (row.direction || 'IN'),
                         deviceName: row.deviceName || '',
                         deviceSerNum: row.deviceSerNum || '',
                         personName,
                         cardNo: row.cardNo || null,
                     };
-                });
-                if (newRecords.length > 0) {
-                    // Use MySQL ID for tracking, not the generated UUID
+                })
+                    .filter((rec) => isAttendanceRecordValid(rec, validIds))
+                    .map((rec) => ({
+                    ...rec,
+                    personName: correctPersonNameFromCardNo(rec, validIds),
+                }));
+                // Advance cursor whenever we read rows (so we don't re-read ghost records next time)
+                if (rows.length > 0) {
                     const lastRecord = rows[rows.length - 1];
                     this.lastCheckedId = lastRecord.id.toString();
                     this.lastCheckedDateTime = lastRecord.authDateTime
