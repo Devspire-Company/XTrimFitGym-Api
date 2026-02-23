@@ -3,24 +3,24 @@
 -- IVMS may send raw INSERT; if your setup can use a stored procedure or proxy, use SP_Attendance_Insert.
 
 -- ---------------------------------------------------------------------------
--- 1) INSERT IGNORE: duplicate ATTENDANCE_id is ignored (no error, connection stays up)
+-- 1) INSERT IGNORE: duplicate id is ignored (no error, connection stays up)
 -- ---------------------------------------------------------------------------
 -- INSERT IGNORE INTO attendance (
---   ATTENDANCE_id, eventTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
+--   id, authDateTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
 -- ) VALUES (
 --   ?, ?, ?, ?, ?, ?, ?, ?, ?
 -- );
 
 -- ---------------------------------------------------------------------------
--- 2) ON DUPLICATE KEY UPDATE: duplicate ATTENDANCE_id updates the row instead of failing
+-- 2) ON DUPLICATE KEY UPDATE: duplicate id updates the row instead of failing
 -- ---------------------------------------------------------------------------
 -- INSERT INTO attendance (
---   ATTENDANCE_id, eventTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
+--   id, authDateTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
 -- ) VALUES (
 --   ?, ?, ?, ?, ?, ?, ?, ?, ?
 -- )
 -- ON DUPLICATE KEY UPDATE
---   eventTime    = VALUES(eventTime),
+--   authDateTime = VALUES(authDateTime),
 --   authDate     = VALUES(authDate),
 --   authTime     = VALUES(authTime),
 --   personName   = VALUES(personName),
@@ -39,31 +39,29 @@ DROP PROCEDURE IF EXISTS SP_Attendance_Insert;
 
 DELIMITER ;;
 CREATE PROCEDURE SP_Attendance_Insert(
-  IN p_ATTENDANCE_id VARCHAR(50),
-  IN p_eventTime     DATETIME,
-  IN p_authDate      VARCHAR(20),
-  IN p_authTime      VARCHAR(20),
-  IN p_personName    VARCHAR(255),
-  IN p_cardNo        VARCHAR(255),
-  IN p_direction     VARCHAR(10),
-  IN p_deviceName    VARCHAR(255),
-  IN p_deviceSerNum  VARCHAR(255)
+  IN p_id           VARCHAR(50),
+  IN p_authDateTime DATETIME,
+  IN p_authDate     VARCHAR(20),
+  IN p_authTime     VARCHAR(20),
+  IN p_personName   VARCHAR(255),
+  IN p_cardNo       VARCHAR(255),
+  IN p_direction    VARCHAR(10),
+  IN p_deviceName   VARCHAR(255),
+  IN p_deviceSerNum VARCHAR(255)
 )
 BEGIN
-  DECLARE v_dup INT DEFAULT 0;
-
   -- Log every attempt (including duplicates)
   INSERT INTO attendance_insert_log (
-    attempted_at, ATTENDANCE_id, eventTime, personName, cardNo, direction, deviceName, deviceSerNum
+    attempted_at, attendance_id, authDateTime, personName, cardNo, direction, deviceName, deviceSerNum
   ) VALUES (
-    NOW(), p_ATTENDANCE_id, p_eventTime, p_personName, p_cardNo, p_direction, p_deviceName, p_deviceSerNum
+    NOW(), p_id, p_authDateTime, p_personName, p_cardNo, p_direction, p_deviceName, p_deviceSerNum
   );
 
   -- Defensive insert: ignore duplicate key so connection is not dropped
   INSERT IGNORE INTO attendance (
-    ATTENDANCE_id, eventTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
+    id, authDateTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
   ) VALUES (
-    p_ATTENDANCE_id, p_eventTime, IFNULL(p_authDate,''), IFNULL(p_authTime,''),
+    p_id, p_authDateTime, IFNULL(p_authDate,''), IFNULL(p_authTime,''),
     IFNULL(p_personName,''), p_cardNo, IFNULL(p_direction,'IN'), IFNULL(p_deviceName,''), IFNULL(p_deviceSerNum,'')
   );
 

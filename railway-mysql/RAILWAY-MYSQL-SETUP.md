@@ -108,9 +108,7 @@ This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy 
    | Table Name        | `attendance`                                                                  |
 
 3. Keep your **Table Field** mapping in iVMS to match the attendance table:
-   - **ATTENDANCE_id** (Event ID / primary key, VARCHAR 50)
-   - **eventTime** (event time, DATETIME)
-   - **authDate**, **authTime**, **personName**, **cardNo**, **direction**, **deviceName**, **deviceSerNum**
+   - **id**, **authDateTime**, **authDate**, **authTime**, **direction**, **deviceName**, **deviceSerNum**, **personName**, **cardNo**
 
    See `railway-mysql/ATTENDANCE-SCHEMA.md` and `railway-mysql/03-defensive-insert-examples.sql` for schema details and defensive insert options (INSERT IGNORE / ON DUPLICATE KEY UPDATE) to avoid disconnect on duplicate or retry inserts.
 

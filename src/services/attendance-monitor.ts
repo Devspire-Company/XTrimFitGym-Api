@@ -62,17 +62,15 @@ class AttendanceMonitor {
 				return;
 			}
 
-			// Get the latest record ID and datetime to start monitoring from (schema: ATTENDANCE_id, eventTime)
+			// Get the latest record ID and datetime to start monitoring from
 			const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-				'SELECT ATTENDANCE_id, eventTime, id, authDateTime FROM attendance ORDER BY eventTime DESC, ATTENDANCE_id DESC LIMIT 1',
+				'SELECT id, authDateTime FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 1',
 			);
 
 			if (rows.length > 0) {
-				const r = rows[0];
-				this.lastCheckedId = (r.ATTENDANCE_id ?? r.id)?.toString() ?? null;
-				const eventTime = r.eventTime ?? r.authDateTime;
-				this.lastCheckedDateTime = eventTime
-					? new Date(eventTime).toISOString()
+				this.lastCheckedId = rows[0].id.toString();
+				this.lastCheckedDateTime = rows[0].authDateTime
+					? new Date(rows[0].authDateTime).toISOString()
 					: null;
 			}
 		} catch (error: any) {
@@ -136,17 +134,15 @@ class AttendanceMonitor {
 					return;
 				}
 
-				// Table exists now, try to initialize (support both new and old schema)
+				// Table exists now, try to initialize
 				try {
 					const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-						'SELECT ATTENDANCE_id, eventTime, id, authDateTime FROM attendance ORDER BY eventTime DESC, ATTENDANCE_id DESC LIMIT 1',
+						'SELECT id, authDateTime FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 1',
 					);
 					if (rows.length > 0) {
-						const r = rows[0];
-						this.lastCheckedId = (r.ATTENDANCE_id ?? r.id)?.toString() ?? null;
-						const eventTime = r.eventTime ?? r.authDateTime;
-						this.lastCheckedDateTime = eventTime
-							? new Date(eventTime).toISOString()
+						this.lastCheckedId = rows[0].id.toString();
+						this.lastCheckedDateTime = rows[0].authDateTime
+							? new Date(rows[0].authDateTime).toISOString()
 							: null;
 					}
 				} catch (initError) {
@@ -159,11 +155,11 @@ class AttendanceMonitor {
 			let params: any[];
 
 			if (this.lastCheckedId && this.lastCheckedDateTime) {
-				// Get records newer than the last checked (schema: eventTime DATETIME, ATTENDANCE_id VARCHAR)
+				// Get records newer than the last checked record
 				query = `
 					SELECT * FROM attendance 
-					WHERE (eventTime > ? OR (eventTime = ? AND ATTENDANCE_id > ?))
-					ORDER BY eventTime ASC, ATTENDANCE_id ASC
+					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
+					ORDER BY authDateTime ASC, id ASC
 				`;
 				params = [
 					this.lastCheckedDateTime,
@@ -172,7 +168,7 @@ class AttendanceMonitor {
 				];
 			} else {
 				// First check - get all records
-				query = 'SELECT * FROM attendance ORDER BY eventTime ASC, ATTENDANCE_id ASC';
+				query = 'SELECT * FROM attendance ORDER BY authDateTime ASC, id ASC';
 				params = [];
 			}
 
@@ -183,14 +179,12 @@ class AttendanceMonitor {
 
 			if (rows.length > 0) {
 				const newRecords: AttendanceRecord[] = rows.map((row) => {
-					const eventTime = row.eventTime ?? row.authDateTime;
-					const authDateTime = eventTime
-						? new Date(eventTime).toISOString()
+					const authDateTime = row.authDateTime
+						? new Date(row.authDateTime).toISOString()
 						: '';
 					const personName = row.personName || '';
-					const pk = row.ATTENDANCE_id ?? row.id;
 					return {
-						id: generateAttendanceId(pk, authDateTime, personName),
+						id: generateAttendanceId(row.id, authDateTime, personName),
 						authDateTime,
 						authDate: row.authDate ? row.authDate.toString() : '',
 						authTime: row.authTime ? row.authTime.toString() : '',
@@ -204,10 +198,9 @@ class AttendanceMonitor {
 
 				// Update last checked ID and datetime to the most recent record
 				const lastRecord = rows[rows.length - 1];
-				this.lastCheckedId = (lastRecord.ATTENDANCE_id ?? lastRecord.id)?.toString() ?? null;
-				const lastEventTime = lastRecord.eventTime ?? lastRecord.authDateTime;
-				this.lastCheckedDateTime = lastEventTime
-					? new Date(lastEventTime).toISOString()
+				this.lastCheckedId = lastRecord.id.toString();
+				this.lastCheckedDateTime = lastRecord.authDateTime
+					? new Date(lastRecord.authDateTime).toISOString()
 					: null;
 
 				// Publish each new record to subscribers
@@ -265,8 +258,8 @@ class AttendanceMonitor {
 			if (this.lastCheckedId && this.lastCheckedDateTime) {
 				query = `
 					SELECT * FROM attendance 
-					WHERE (eventTime > ? OR (eventTime = ? AND ATTENDANCE_id > ?))
-					ORDER BY eventTime ASC, ATTENDANCE_id ASC
+					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
+					ORDER BY authDateTime ASC, id ASC
 				`;
 				params = [
 					this.lastCheckedDateTime,
@@ -274,7 +267,7 @@ class AttendanceMonitor {
 					this.lastCheckedId,
 				];
 			} else {
-				query = 'SELECT * FROM attendance ORDER BY eventTime ASC, ATTENDANCE_id ASC';
+				query = 'SELECT * FROM attendance ORDER BY authDateTime ASC, id ASC';
 				params = [];
 			}
 
@@ -285,14 +278,12 @@ class AttendanceMonitor {
 
 			if (rows.length > 0) {
 				const newRecords: AttendanceRecord[] = rows.map((row) => {
-					const eventTime = row.eventTime ?? row.authDateTime;
-					const authDateTime = eventTime
-						? new Date(eventTime).toISOString()
+					const authDateTime = row.authDateTime
+						? new Date(row.authDateTime).toISOString()
 						: '';
 					const personName = row.personName || '';
-					const pk = row.ATTENDANCE_id ?? row.id;
 					return {
-						id: generateAttendanceId(pk, authDateTime, personName),
+						id: generateAttendanceId(row.id, authDateTime, personName),
 						authDateTime,
 						authDate: row.authDate ? row.authDate.toString() : '',
 						authTime: row.authTime ? row.authTime.toString() : '',
@@ -306,10 +297,9 @@ class AttendanceMonitor {
 
 				if (newRecords.length > 0) {
 					const lastRecord = rows[rows.length - 1];
-					this.lastCheckedId = (lastRecord.ATTENDANCE_id ?? lastRecord.id)?.toString() ?? null;
-					const lastEventTime = lastRecord.eventTime ?? lastRecord.authDateTime;
-					this.lastCheckedDateTime = lastEventTime
-						? new Date(lastEventTime).toISOString()
+					this.lastCheckedId = lastRecord.id.toString();
+					this.lastCheckedDateTime = lastRecord.authDateTime
+						? new Date(lastRecord.authDateTime).toISOString()
 						: null;
 				}
 

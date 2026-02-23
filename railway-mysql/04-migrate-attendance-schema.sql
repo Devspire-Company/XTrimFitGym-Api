@@ -1,29 +1,29 @@
--- Migration: old attendance table (id INT, authDateTime VARCHAR) -> new schema (ATTENDANCE_id VARCHAR, eventTime DATETIME)
+-- Migration: old attendance table (id INT AUTO_INCREMENT, authDateTime VARCHAR) -> corrected schema (id VARCHAR(50) PK, authDateTime DATETIME)
 -- Run this ONCE on an existing database that already has the old attendance table.
 -- Backup your data before running.
 
 USE railway;
 
--- 1) Create new table with corrected schema (if not exists)
+-- 1) Create new table with corrected schema (original field names, improved types)
 CREATE TABLE IF NOT EXISTS attendance_new (
-  ATTENDANCE_id   VARCHAR(50)  NOT NULL,
-  eventTime       DATETIME     NOT NULL,
-  authDate        VARCHAR(20)  DEFAULT '',
-  authTime        VARCHAR(20)  DEFAULT '',
-  personName      VARCHAR(255) DEFAULT '',
-  cardNo          VARCHAR(255) DEFAULT NULL,
-  direction       VARCHAR(10)  DEFAULT 'IN',
-  deviceName      VARCHAR(255) DEFAULT '',
-  deviceSerNum    VARCHAR(255) DEFAULT '',
-  PRIMARY KEY (ATTENDANCE_id)
+  id             VARCHAR(50)  NOT NULL,
+  authDateTime   DATETIME     NOT NULL,
+  authDate       VARCHAR(20)  DEFAULT '',
+  authTime       VARCHAR(20)  DEFAULT '',
+  personName     VARCHAR(255) DEFAULT '',
+  cardNo         VARCHAR(255) DEFAULT NULL,
+  direction      VARCHAR(10)  DEFAULT 'IN',
+  deviceName     VARCHAR(255) DEFAULT '',
+  deviceSerNum   VARCHAR(255) DEFAULT '',
+  PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2) Create log table if not exists
 CREATE TABLE IF NOT EXISTS attendance_insert_log (
   id             INT          AUTO_INCREMENT PRIMARY KEY,
   attempted_at   DATETIME     NOT NULL,
-  ATTENDANCE_id  VARCHAR(50)  NOT NULL,
-  eventTime      DATETIME     NULL,
+  attendance_id  VARCHAR(50)  NOT NULL,
+  authDateTime   DATETIME     NULL,
   personName     VARCHAR(255) DEFAULT NULL,
   cardNo         VARCHAR(255) DEFAULT NULL,
   direction      VARCHAR(10)  DEFAULT NULL,
@@ -31,10 +31,9 @@ CREATE TABLE IF NOT EXISTS attendance_insert_log (
   deviceSerNum   VARCHAR(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3) Copy data from old table (id, authDateTime, authDate, authTime, direction, deviceName, deviceSerNum, personName, cardNo)
---    Generate ATTENDANCE_id as string from id + authDateTime to keep uniqueness
+-- 3) Copy data from old table; generate string id from old id + authDateTime for uniqueness
 INSERT IGNORE INTO attendance_new (
-  ATTENDANCE_id, eventTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
+  id, authDateTime, authDate, authTime, personName, cardNo, direction, deviceName, deviceSerNum
 )
 SELECT
   CONCAT('mig-', id, '-', REPLACE(REPLACE(REPLACE(authDateTime, ' ', '-'), ':', ''), '-', '')),
@@ -55,7 +54,7 @@ WHERE 1=1;
 -- 4) Replace old table with new
 RENAME TABLE attendance TO attendance_old_backup, attendance_new TO attendance;
 
--- 5) Recreate trigger on new attendance table
+-- 5) Recreate trigger on attendance table
 DROP TRIGGER IF EXISTS tr_attendance_before_insert;
 DELIMITER ;;
 CREATE TRIGGER tr_attendance_before_insert
@@ -63,9 +62,9 @@ BEFORE INSERT ON attendance
 FOR EACH ROW
 BEGIN
   INSERT INTO attendance_insert_log (
-    attempted_at, ATTENDANCE_id, eventTime, personName, cardNo, direction, deviceName, deviceSerNum
+    attempted_at, attendance_id, authDateTime, personName, cardNo, direction, deviceName, deviceSerNum
   ) VALUES (
-    NOW(), NEW.ATTENDANCE_id, NEW.eventTime, NEW.personName, NEW.cardNo, NEW.direction, NEW.deviceName, NEW.deviceSerNum
+    NOW(), NEW.id, NEW.authDateTime, NEW.personName, NEW.cardNo, NEW.direction, NEW.deviceName, NEW.deviceSerNum
   );
 END;;
 DELIMITER ;

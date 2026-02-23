@@ -195,7 +195,7 @@ export default {
 				const limit = pagination?.limit || 50;
 				const offset = pagination?.offset || 0;
 
-				const dataQuery = `SELECT * FROM attendance ${whereClause} ORDER BY eventTime DESC, ATTENDANCE_id DESC LIMIT ? OFFSET ?`;
+				const dataQuery = `SELECT * FROM attendance ${whereClause} ORDER BY authDateTime DESC, id DESC LIMIT ? OFFSET ?`;
 				const dataParams = [...params, limit, offset];
 				const [rows] = await connection.execute<mysql.RowDataPacket[]>(
 					dataQuery,
@@ -203,14 +203,12 @@ export default {
 				);
 
 				const records: AttendanceRecord[] = rows.map((row) => {
-					const eventTime = row.eventTime ?? row.authDateTime;
-					const authDateTime = eventTime
-						? new Date(eventTime).toISOString()
+					const authDateTime = row.authDateTime
+						? new Date(row.authDateTime).toISOString()
 						: '';
 					const personName = row.personName || '';
-					const pk = row.ATTENDANCE_id ?? row.id;
 					return {
-						id: generateAttendanceId(pk, authDateTime, personName),
+						id: generateAttendanceId(row.id, authDateTime, personName),
 						authDateTime,
 						authDate: row.authDate ? row.authDate.toString() : '',
 						authTime: row.authTime ? row.authTime.toString() : '',
@@ -250,9 +248,8 @@ export default {
 			const connection = await ensureMySQLConnection();
 
 			try {
-				// Schema: ATTENDANCE_id VARCHAR(50) PK, eventTime DATETIME (fallback to old id/authDateTime)
 				const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-					'SELECT * FROM attendance ORDER BY eventTime DESC, ATTENDANCE_id DESC LIMIT 1',
+					'SELECT * FROM attendance ORDER BY authDateTime DESC LIMIT 1',
 					[],
 				);
 
@@ -261,14 +258,12 @@ export default {
 				}
 
 				const row = rows[0];
-				const eventTime = row.eventTime ?? row.authDateTime;
-				const authDateTime = eventTime
-					? new Date(eventTime).toISOString()
+				const authDateTime = row.authDateTime
+					? new Date(row.authDateTime).toISOString()
 					: '';
 				const personName = row.personName || '';
-				const pk = row.ATTENDANCE_id ?? row.id;
 				return {
-					id: generateAttendanceId(pk, authDateTime, personName),
+					id: generateAttendanceId(row.id, authDateTime, personName),
 					authDateTime,
 					authDate: row.authDate ? row.authDate.toString() : '',
 					authTime: row.authTime ? row.authTime.toString() : '',
