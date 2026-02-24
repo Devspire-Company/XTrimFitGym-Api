@@ -38,7 +38,7 @@ class AttendanceMonitor {
 	private lastCheckedDateTime: string | null = null;
 	private pollingInterval: NodeJS.Timeout | null = null;
 	private isPolling: boolean = false;
-	private pollIntervalMs: number = 2000; // Poll every 2 seconds for real-time updates
+	private pollIntervalMs: number = 1000; // Poll every 1 second for near real-time updates
 
 	/**
 	 * Initialize the monitor by getting the latest record ID

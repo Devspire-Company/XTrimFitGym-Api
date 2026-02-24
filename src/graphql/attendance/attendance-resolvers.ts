@@ -135,13 +135,17 @@ export default {
 					params.push(filter.direction);
 				}
 
-				if (filter?.startDate) {
-					conditions.push('authDate >= ?');
+				// Filter by authDateTime (DATETIME) so date range is reliable; authDate is VARCHAR and format varies
+				if (filter?.startDate && filter?.endDate) {
+					conditions.push(
+						"authDateTime >= CONCAT(?, ' 00:00:00') AND authDateTime < CONCAT(DATE_ADD(?, INTERVAL 1 DAY), ' 00:00:00')"
+					);
+					params.push(filter.startDate, filter.endDate);
+				} else if (filter?.startDate) {
+					conditions.push("authDateTime >= CONCAT(?, ' 00:00:00')");
 					params.push(filter.startDate);
-				}
-
-				if (filter?.endDate) {
-					conditions.push('authDate <= ?');
+				} else if (filter?.endDate) {
+					conditions.push("authDateTime < CONCAT(DATE_ADD(?, INTERVAL 1 DAY), ' 00:00:00')");
 					params.push(filter.endDate);
 				}
 
