@@ -1,7 +1,6 @@
-import { ensureMySQLConnection } from '../database/mysql/connectMysql.js';
+import { ensureMySQLConnection, } from '../database/mysql/connectMysql.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
 import { createHash } from 'crypto';
-import { getValidAttendanceIdentifiers, isAttendanceRecordValid, correctPersonNameFromCardNo, } from './attendance-validation.js';
 /**
  * Generate a deterministic unique ID for an attendance record
  * Uses a hash of MySQL ID + authDateTime + personName to ensure consistency
@@ -17,7 +16,7 @@ class AttendanceMonitor {
     lastCheckedDateTime = null;
     pollingInterval = null;
     isPolling = false;
-    pollIntervalMs = 2000; // Poll every 2 seconds for real-time updates
+    pollIntervalMs = 1000; // Poll every 1 second for near real-time updates
     /**
      * Initialize the monitor by getting the latest record ID
      */
@@ -110,13 +109,16 @@ class AttendanceMonitor {
             let params;
             if (this.lastCheckedId && this.lastCheckedDateTime) {
                 // Get records newer than the last checked record
-                // Use the stored authDateTime and id directly to avoid subquery issues
                 query = `
 					SELECT * FROM attendance 
 					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
 					ORDER BY authDateTime ASC, id ASC
 				`;
-                params = [this.lastCheckedDateTime, this.lastCheckedDateTime, this.lastCheckedId];
+                params = [
+                    this.lastCheckedDateTime,
+                    this.lastCheckedDateTime,
+                    this.lastCheckedId,
+                ];
             }
             else {
                 // First check - get all records
@@ -125,50 +127,48 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const validIds = await getValidAttendanceIdentifiers();
-                const newRecords = rows
-                    .map((row) => {
-                    const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
+                const newRecords = rows.map((row) => {
+                    const authDateTime = row.authDateTime
+                        ? new Date(row.authDateTime).toISOString()
+                        : '';
                     const personName = row.personName || '';
                     return {
                         id: generateAttendanceId(row.id, authDateTime, personName),
                         authDateTime,
                         authDate: row.authDate ? row.authDate.toString() : '',
                         authTime: row.authTime ? row.authTime.toString() : '',
-                        direction: (row.direction || 'IN'),
+                        direction: row.direction || 'IN',
                         deviceName: row.deviceName || '',
                         deviceSerNum: row.deviceSerNum || '',
                         personName,
-                        cardNo: row.cardNo || null,
+                        cardNo: row.cardNo ?? null,
                     };
-                })
-                    .filter((rec) => isAttendanceRecordValid(rec, validIds))
-                    .map((rec) => ({
-                    ...rec,
-                    personName: correctPersonNameFromCardNo(rec, validIds),
-                }));
-                // Update last checked ID and datetime to the most recent record (so we don't re-read same rows)
+                });
+                // Update last checked ID and datetime to the most recent record
                 const lastRecord = rows[rows.length - 1];
                 this.lastCheckedId = lastRecord.id.toString();
                 this.lastCheckedDateTime = lastRecord.authDateTime
                     ? new Date(lastRecord.authDateTime).toISOString()
                     : null;
-                // Publish only valid records (skip IVMS ghost/corrupt e.g. "Jack Williams")
+                // Publish each new record to subscribers
                 for (const record of newRecords) {
                     try {
-                        pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, { attendanceRecordAdded: record });
+                        pubsub.publish(EVENTS.ATTENDANCE_RECORD_ADDED, {
+                            attendanceRecordAdded: record,
+                        });
                     }
                     catch (error) {
                         console.error('[Attendance Monitor] Error publishing record:', error);
                     }
                 }
-                if (newRecords.length > 0) {
-                    try {
-                        pubsub.publish(EVENTS.ATTENDANCE_UPDATED, { attendanceUpdated: newRecords });
-                    }
-                    catch (error) {
-                        console.error('[Attendance Monitor] Error publishing batch update:', error);
-                    }
+                // Also publish a batch update event
+                try {
+                    pubsub.publish(EVENTS.ATTENDANCE_UPDATED, {
+                        attendanceUpdated: newRecords,
+                    });
+                }
+                catch (error) {
+                    console.error('[Attendance Monitor] Error publishing batch update:', error);
                 }
             }
         }
@@ -201,7 +201,11 @@ class AttendanceMonitor {
 					WHERE (authDateTime > ? OR (authDateTime = ? AND id > ?))
 					ORDER BY authDateTime ASC, id ASC
 				`;
-                params = [this.lastCheckedDateTime, this.lastCheckedDateTime, this.lastCheckedId];
+                params = [
+                    this.lastCheckedDateTime,
+                    this.lastCheckedDateTime,
+                    this.lastCheckedId,
+                ];
             }
             else {
                 query = 'SELECT * FROM attendance ORDER BY authDateTime ASC, id ASC';
@@ -209,30 +213,24 @@ class AttendanceMonitor {
             }
             const [rows] = await connection.execute(query, params);
             if (rows.length > 0) {
-                const validIds = await getValidAttendanceIdentifiers();
-                const newRecords = rows
-                    .map((row) => {
-                    const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
+                const newRecords = rows.map((row) => {
+                    const authDateTime = row.authDateTime
+                        ? new Date(row.authDateTime).toISOString()
+                        : '';
                     const personName = row.personName || '';
                     return {
                         id: generateAttendanceId(row.id, authDateTime, personName),
                         authDateTime,
                         authDate: row.authDate ? row.authDate.toString() : '',
                         authTime: row.authTime ? row.authTime.toString() : '',
-                        direction: (row.direction || 'IN'),
+                        direction: row.direction || 'IN',
                         deviceName: row.deviceName || '',
                         deviceSerNum: row.deviceSerNum || '',
                         personName,
-                        cardNo: row.cardNo || null,
+                        cardNo: row.cardNo ?? null,
                     };
-                })
-                    .filter((rec) => isAttendanceRecordValid(rec, validIds))
-                    .map((rec) => ({
-                    ...rec,
-                    personName: correctPersonNameFromCardNo(rec, validIds),
-                }));
-                // Advance cursor whenever we read rows (so we don't re-read ghost records next time)
-                if (rows.length > 0) {
+                });
+                if (newRecords.length > 0) {
                     const lastRecord = rows[rows.length - 1];
                     this.lastCheckedId = lastRecord.id.toString();
                     this.lastCheckedDateTime = lastRecord.authDateTime

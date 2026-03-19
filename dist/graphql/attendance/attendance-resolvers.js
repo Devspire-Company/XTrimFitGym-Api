@@ -2,7 +2,6 @@ import { ensureMySQLConnection } from '../../database/mysql/connectMysql.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import User from '../../database/models/user/user-schema.js';
 import { createHash } from 'crypto';
-import { getValidAttendanceIdentifiers, correctPersonNameFromCardNo, } from '../../services/attendance-validation.js';
 /**
  * Generate a deterministic unique ID for an attendance record
  * Uses a hash of MySQL ID + authDateTime + personName to ensure consistency
@@ -15,7 +14,7 @@ function generateAttendanceId(mysqlId, authDateTime, personName) {
 }
 export default {
     Query: {
-        getAttendanceRecords: async (_, { filter, pagination }, context) => {
+        getAttendanceRecords: async (_, { filter, pagination, }, context) => {
             // Authorization: Admin can view all records, users can only view their own
             const authUser = context.auth.user;
             if (!authUser) {
@@ -25,7 +24,9 @@ export default {
             let userAttendanceId;
             // If not admin, fetch the full user to match by name or cardNo
             if (userRole !== 'admin') {
-                const fullUser = await User.findById(authUser.id).select('attendanceId firstName lastName middleName').lean();
+                const fullUser = await User.findById(authUser.id)
+                    .select('attendanceId firstName lastName middleName')
+                    .lean();
                 if (!fullUser) {
                     throw new Error('Unauthorized: User not found');
                 }
@@ -41,7 +42,7 @@ export default {
                     `${lastName}, ${firstName}`.trim(), // "Doe, John"
                     firstName, // Just first name
                     lastName, // Just last name
-                ].filter(name => name.length > 0);
+                ].filter((name) => name.length > 0);
                 // Initialize filter if needed
                 filter = filter || {};
                 // Try to match by cardNo first if available, otherwise use personName
@@ -74,12 +75,17 @@ export default {
                     conditions.push('direction = ?');
                     params.push(filter.direction);
                 }
-                if (filter?.startDate) {
-                    conditions.push('authDate >= ?');
+                // Filter by authDateTime (DATETIME) so date range is reliable; authDate is VARCHAR and format varies
+                if (filter?.startDate && filter?.endDate) {
+                    conditions.push("authDateTime >= CONCAT(?, ' 00:00:00') AND authDateTime < CONCAT(DATE_ADD(?, INTERVAL 1 DAY), ' 00:00:00')");
+                    params.push(filter.startDate, filter.endDate);
+                }
+                else if (filter?.startDate) {
+                    conditions.push("authDateTime >= CONCAT(?, ' 00:00:00')");
                     params.push(filter.startDate);
                 }
-                if (filter?.endDate) {
-                    conditions.push('authDate <= ?');
+                else if (filter?.endDate) {
+                    conditions.push("authDateTime < CONCAT(DATE_ADD(?, INTERVAL 1 DAY), ' 00:00:00')");
                     params.push(filter.endDate);
                 }
                 if (filter?.deviceName) {
@@ -115,27 +121,6 @@ export default {
                     conditions.push('CAST(cardNo AS CHAR) = CAST(? AS CHAR)');
                     params.push(filter.cardNo);
                 }
-                // Restrict to registered users only (exclude IVMS ghost/corrupt records e.g. "Jack Williams" on reconnect)
-                let validIds = null;
-                if (userRole === 'admin') {
-                    validIds = await getValidAttendanceIdentifiers();
-                    const cardList = Array.from(validIds.validCardNos);
-                    const nameList = Array.from(validIds.validPersonNames);
-                    if (cardList.length > 0 || nameList.length > 0) {
-                        const cardPlaceholders = cardList.length ? cardList.map(() => '?').join(',') : '';
-                        const namePlaceholders = nameList.length ? nameList.map(() => '?').join(',') : '';
-                        const parts = [];
-                        if (cardList.length)
-                            parts.push(`(CAST(cardNo AS CHAR) IN (${cardPlaceholders}))`);
-                        if (nameList.length)
-                            parts.push(`(LOWER(TRIM(personName)) IN (${namePlaceholders}))`);
-                        conditions.push(`(${parts.join(' OR ')})`);
-                        params.push(...cardList, ...nameList.map((n) => n.toLowerCase()));
-                    }
-                    else {
-                        conditions.push('0 = 1');
-                    }
-                }
                 const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
                 // Get total count
                 const countQuery = `SELECT COUNT(*) as total FROM attendance ${whereClause}`;
@@ -148,13 +133,12 @@ export default {
                 const dataParams = [...params, limit, offset];
                 const [rows] = await connection.execute(dataQuery, dataParams);
                 const records = rows.map((row) => {
-                    const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
-                    const rawPersonName = row.personName || '';
-                    const personName = validIds != null
-                        ? correctPersonNameFromCardNo({ personName: rawPersonName, cardNo: row.cardNo }, validIds)
-                        : rawPersonName;
+                    const authDateTime = row.authDateTime
+                        ? new Date(row.authDateTime).toISOString()
+                        : '';
+                    const personName = row.personName || '';
                     return {
-                        id: generateAttendanceId(row.id, authDateTime, personName), // Generate unique ID instead of using MySQL ID
+                        id: generateAttendanceId(row.id, authDateTime, personName),
                         authDateTime,
                         authDate: row.authDate ? row.authDate.toString() : '',
                         authTime: row.authTime ? row.authTime.toString() : '',
@@ -162,7 +146,7 @@ export default {
                         deviceName: row.deviceName || '',
                         deviceSerNum: row.deviceSerNum || '',
                         personName,
-                        cardNo: row.cardNo || null,
+                        cardNo: row.cardNo ?? null,
                     };
                 });
                 return {
@@ -185,28 +169,15 @@ export default {
             // Ensure MySQL connection is available
             const connection = await ensureMySQLConnection();
             try {
-                const validIds = await getValidAttendanceIdentifiers();
-                const cardList = Array.from(validIds.validCardNos);
-                const nameList = Array.from(validIds.validPersonNames);
-                if (cardList.length === 0 && nameList.length === 0) {
-                    return null;
-                }
-                const cardPlaceholders = cardList.length ? cardList.map(() => '?').join(',') : '';
-                const namePlaceholders = nameList.length ? nameList.map(() => '?').join(',') : '';
-                const parts = [];
-                if (cardList.length)
-                    parts.push(`(CAST(cardNo AS CHAR) IN (${cardPlaceholders}))`);
-                if (nameList.length)
-                    parts.push(`(LOWER(TRIM(personName)) IN (${namePlaceholders}))`);
-                const validCondition = `(${parts.join(' OR ')})`;
-                const [rows] = await connection.execute(`SELECT * FROM attendance WHERE ${validCondition} ORDER BY authDateTime DESC LIMIT 1`, [...cardList, ...nameList.map((n) => n.toLowerCase())]);
+                const [rows] = await connection.execute('SELECT * FROM attendance ORDER BY authDateTime DESC LIMIT 1', []);
                 if (rows.length === 0) {
                     return null;
                 }
                 const row = rows[0];
-                const authDateTime = row.authDateTime ? new Date(row.authDateTime).toISOString() : '';
-                const rawPersonName = row.personName || '';
-                const personName = correctPersonNameFromCardNo({ personName: rawPersonName, cardNo: row.cardNo }, validIds);
+                const authDateTime = row.authDateTime
+                    ? new Date(row.authDateTime).toISOString()
+                    : '';
+                const personName = row.personName || '';
                 return {
                     id: generateAttendanceId(row.id, authDateTime, personName),
                     authDateTime,
@@ -216,7 +187,7 @@ export default {
                     deviceName: row.deviceName || '',
                     deviceSerNum: row.deviceSerNum || '',
                     personName,
-                    cardNo: row.cardNo || null,
+                    cardNo: row.cardNo ?? null,
                 };
             }
             catch (error) {
@@ -236,10 +207,14 @@ export default {
             },
             resolve: (payload) => {
                 let result = payload;
-                if (payload && typeof payload === 'object' && 'attendanceRecordAdded' in payload) {
+                if (payload &&
+                    typeof payload === 'object' &&
+                    'attendanceRecordAdded' in payload) {
                     result = payload.attendanceRecordAdded;
                 }
-                else if (payload && typeof payload === 'object' && !('id' in payload)) {
+                else if (payload &&
+                    typeof payload === 'object' &&
+                    !('id' in payload)) {
                     result = payload;
                 }
                 return result;

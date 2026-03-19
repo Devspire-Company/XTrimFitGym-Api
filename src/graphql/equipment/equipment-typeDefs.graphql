@@ -1,0 +1,40 @@
+# Equipment types (gym equipment catalog, managed by admin)
+type Equipment {
+	id: ID!
+	name: String!
+	imageUrl: String!
+	description: String
+	sortOrder: Int!
+	createdAt: String
+	updatedAt: String
+}
+
+input CreateEquipmentInput {
+	name: String!
+	imageUrl: String!
+	description: String
+	sortOrder: Int
+}
+
+input UpdateEquipmentInput {
+	name: String
+	imageUrl: String
+	description: String
+	sortOrder: Int
+}
+
+extend type Query {
+	# Get all equipment (public / any authenticated user for app)
+	getEquipments: [Equipment!]!
+	# Get single equipment by ID
+	getEquipment(id: ID!): Equipment
+}
+
+extend type Mutation {
+	# Create equipment (admin only)
+	createEquipment(input: CreateEquipmentInput!): Equipment!
+	# Update equipment (admin only)
+	updateEquipment(id: ID!, input: UpdateEquipmentInput!): Equipment!
+	# Delete equipment (admin only)
+	deleteEquipment(id: ID!): Boolean!
+}
