@@ -3,6 +3,7 @@ const equipmentSchema = new Schema({
     name: { type: String, required: true, trim: true },
     imageUrl: { type: String, required: true },
     description: { type: String, trim: true },
+    notes: { type: String, trim: true },
     sortOrder: { type: Number, default: 0 },
     status: {
         type: String,

@@ -15,6 +15,7 @@ const mapEquipmentToGraphQL = (doc: any) => ({
 	name: doc.name,
 	imageUrl: doc.imageUrl,
 	description: doc.description ?? null,
+	notes: doc.notes?.trim() ? doc.notes.trim() : null,
 	sortOrder: doc.sortOrder ?? 0,
 	status: normalizeStatus(doc.status),
 	createdAt: doc.createdAt?.toISOString() ?? null,
@@ -56,6 +57,7 @@ export default {
 				name: input.name?.trim(),
 				imageUrl: input.imageUrl?.trim(),
 				description: input.description?.trim() || undefined,
+				notes: input.notes?.trim() || undefined,
 				sortOrder,
 				status: normalizeStatus(input.status ?? 'AVAILABLE'),
 			});
@@ -76,6 +78,8 @@ export default {
 			if (input.imageUrl !== undefined) update.imageUrl = input.imageUrl.trim();
 			if (input.description !== undefined)
 				update.description = input.description?.trim() ?? null;
+			if (input.notes !== undefined)
+				update.notes = input.notes?.trim() ? input.notes.trim() : null;
 			if (input.sortOrder !== undefined) update.sortOrder = input.sortOrder;
 			if (input.status !== undefined) update.status = normalizeStatus(input.status);
 			const updated = await Equipment.findByIdAndUpdate(

@@ -10,6 +10,7 @@ type Equipment {
 	name: String!
 	imageUrl: String!
 	description: String
+	notes: String
 	sortOrder: Int!
 	status: EquipmentStatus!
 	createdAt: String
@@ -20,6 +21,7 @@ input CreateEquipmentInput {
 	name: String!
 	imageUrl: String!
 	description: String
+	notes: String
 	sortOrder: Int
 	status: EquipmentStatus
 }
@@ -28,6 +30,7 @@ input UpdateEquipmentInput {
 	name: String
 	imageUrl: String
 	description: String
+	notes: String
 	sortOrder: Int
 	status: EquipmentStatus
 }
