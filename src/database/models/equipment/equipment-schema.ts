@@ -1,11 +1,14 @@
 import mongoose, { Schema } from 'mongoose';
 
+export type EquipmentStatusValue = 'AVAILABLE' | 'DAMAGED' | 'UNDERMAINTENANCE';
+
 export interface IEquipment {
 	_id?: mongoose.Types.ObjectId;
 	name: string;
 	imageUrl: string;
 	description?: string;
 	sortOrder?: number;
+	status: EquipmentStatusValue;
 	createdAt?: Date;
 	updatedAt?: Date;
 }
@@ -16,6 +19,11 @@ const equipmentSchema = new Schema(
 		imageUrl: { type: String, required: true },
 		description: { type: String, trim: true },
 		sortOrder: { type: Number, default: 0 },
+		status: {
+			type: String,
+			enum: ['AVAILABLE', 'DAMAGED', 'UNDERMAINTENANCE'],
+			default: 'AVAILABLE',
+		},
 	},
 	{ timestamps: true }
 );

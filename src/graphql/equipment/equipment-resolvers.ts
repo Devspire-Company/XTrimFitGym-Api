@@ -4,12 +4,19 @@ import mongoose from 'mongoose';
 
 type Context = IAuthContext;
 
+const normalizeStatus = (raw: unknown): 'AVAILABLE' | 'DAMAGED' | 'UNDERMAINTENANCE' => {
+	const s = String(raw || 'AVAILABLE').toUpperCase();
+	if (s === 'DAMAGED' || s === 'UNDERMAINTENANCE') return s;
+	return 'AVAILABLE';
+};
+
 const mapEquipmentToGraphQL = (doc: any) => ({
 	id: doc._id.toString(),
 	name: doc.name,
 	imageUrl: doc.imageUrl,
 	description: doc.description ?? null,
 	sortOrder: doc.sortOrder ?? 0,
+	status: normalizeStatus(doc.status),
 	createdAt: doc.createdAt?.toISOString() ?? null,
 	updatedAt: doc.updatedAt?.toISOString() ?? null,
 });
@@ -50,6 +57,7 @@ export default {
 				imageUrl: input.imageUrl?.trim(),
 				description: input.description?.trim() || undefined,
 				sortOrder,
+				status: normalizeStatus(input.status ?? 'AVAILABLE'),
 			});
 			await equipment.save();
 			return mapEquipmentToGraphQL(equipment.toObject());
@@ -69,6 +77,7 @@ export default {
 			if (input.description !== undefined)
 				update.description = input.description?.trim() ?? null;
 			if (input.sortOrder !== undefined) update.sortOrder = input.sortOrder;
+			if (input.status !== undefined) update.status = normalizeStatus(input.status);
 			const updated = await Equipment.findByIdAndUpdate(
 				id,
 				update,
