@@ -41,6 +41,16 @@ input CreateWalkInClientInput {
 	notes: String
 }
 
+input UpdateWalkInClientInput {
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+}
+
 input WalkInLogsFilter {
 	"""YYYY-MM-DD (Asia/Manila calendar date)"""
 	date: String!
@@ -74,5 +84,9 @@ extend type Mutation {
 		input: CreateWalkInClientInput!
 		timeInNow: Boolean!
 	): CreateWalkInClientResult!
+	updateWalkInClient(
+		walkInClientId: ID!
+		input: UpdateWalkInClientInput!
+	): WalkInClient!
 	walkInTimeIn(walkInClientId: ID!, at: String): WalkInAttendanceLog!
 }

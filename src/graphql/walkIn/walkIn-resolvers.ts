@@ -238,6 +238,55 @@ export default {
 			};
 		},
 
+		updateWalkInClient: async (
+			_: unknown,
+			{
+				walkInClientId,
+				input,
+			}: {
+				walkInClientId: string;
+				input: {
+					firstName: string;
+					middleName?: string | null;
+					lastName: string;
+					phoneNumber?: string | null;
+					email?: string | null;
+					gender: WalkInGenderValue;
+					notes?: string | null;
+				};
+			},
+			context: Context,
+		) => {
+			requireAdmin(context);
+			if (!mongoose.Types.ObjectId.isValid(walkInClientId)) {
+				throw new Error('Invalid walk-in client id');
+			}
+			if (!input.firstName?.trim() || !input.lastName?.trim()) {
+				throw new Error('First name and last name are required');
+			}
+			const updated = await WalkInClient.findByIdAndUpdate(
+				walkInClientId,
+				{
+					$set: {
+						firstName: input.firstName.trim(),
+						middleName: input.middleName?.trim() || undefined,
+						lastName: input.lastName.trim(),
+						phoneNumber: input.phoneNumber?.trim() || undefined,
+						email: input.email?.trim() || undefined,
+						gender: input.gender,
+						notes: input.notes?.trim() || undefined,
+					},
+				},
+				{ new: true, runValidators: true },
+			).lean();
+			if (!updated) {
+				throw new Error('Walk-in client not found');
+			}
+			return mapClient(
+				updated as IWalkInClient & { _id: mongoose.Types.ObjectId },
+			);
+		},
+
 		walkInTimeIn: async (
 			_: unknown,
 			{ walkInClientId, at }: { walkInClientId: string; at?: string | null },
