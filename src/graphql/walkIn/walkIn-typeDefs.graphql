@@ -1,0 +1,78 @@
+enum WalkInGender {
+	MALE
+	FEMALE
+	NON_BINARY
+	PREFER_NOT_TO_SAY
+}
+
+type WalkInClient {
+	id: ID!
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+type WalkInAttendanceLog {
+	id: ID!
+	walkInClient: WalkInClient!
+	timedInAt: String!
+	localDate: String!
+	createdAt: String!
+}
+
+type WalkInLogsConnection {
+	logs: [WalkInAttendanceLog!]!
+	totalCount: Int!
+}
+
+input CreateWalkInClientInput {
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+}
+
+input WalkInLogsFilter {
+	"""YYYY-MM-DD (Asia/Manila calendar date)"""
+	date: String!
+}
+
+input WalkInPagination {
+	limit: Int
+	offset: Int
+}
+
+type CreateWalkInClientResult {
+	client: WalkInClient!
+	log: WalkInAttendanceLog
+}
+
+extend type Query {
+	searchWalkInClients(query: String!, limit: Int): [WalkInClient!]!
+	walkInAttendanceLogs(
+		filter: WalkInLogsFilter!
+		pagination: WalkInPagination
+	): WalkInLogsConnection!
+	"""All time-in logs for one walk-in client (newest first)."""
+	walkInLogsByClient(
+		walkInClientId: ID!
+		pagination: WalkInPagination
+	): WalkInLogsConnection!
+}
+
+extend type Mutation {
+	createWalkInClient(
+		input: CreateWalkInClientInput!
+		timeInNow: Boolean!
+	): CreateWalkInClientResult!
+	walkInTimeIn(walkInClientId: ID!, at: String): WalkInAttendanceLog!
+}
