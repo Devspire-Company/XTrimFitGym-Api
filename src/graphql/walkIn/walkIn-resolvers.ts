@@ -50,17 +50,31 @@ export default {
 	Query: {
 		searchWalkInClients: async (
 			_: unknown,
-			{ query, limit }: { query: string; limit?: number },
+			{
+				query,
+				limit,
+				offset,
+			}: { query?: string | null; limit?: number; offset?: number },
 			context: Context,
 		) => {
 			requireAdmin(context);
 			const q = query?.trim() ?? '';
+			const lim = Math.min(Math.max(limit ?? 25, 1), 200);
+			const off = Math.max(offset ?? 0, 0);
+
 			if (q.length < 1) {
-				return [];
+				const docs = await WalkInClient.find({})
+					.sort({ updatedAt: -1 })
+					.skip(off)
+					.limit(lim)
+					.lean();
+				return docs.map((d) =>
+					mapClient(d as IWalkInClient & { _id: mongoose.Types.ObjectId }),
+				);
 			}
+
 			const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 			const regex = new RegExp(esc, 'i');
-			const lim = Math.min(Math.max(limit ?? 25, 1), 50);
 			const docs = await WalkInClient.find({
 				$or: [
 					{ firstName: regex },
@@ -71,11 +85,21 @@ export default {
 				],
 			})
 				.sort({ updatedAt: -1 })
+				.skip(off)
 				.limit(lim)
 				.lean();
 			return docs.map((d) =>
 				mapClient(d as IWalkInClient & { _id: mongoose.Types.ObjectId }),
 			);
+		},
+
+		walkInStats: async (_: unknown, __: unknown, context: Context) => {
+			requireAdmin(context);
+			const [totalWalkInAccounts, totalTimeInRecords] = await Promise.all([
+				WalkInClient.countDocuments(),
+				WalkInAttendanceLog.countDocuments(),
+			]);
+			return { totalWalkInAccounts, totalTimeInRecords };
 		},
 
 		walkInAttendanceLogs: async (
@@ -168,6 +192,56 @@ export default {
 			);
 
 			return { logs, totalCount };
+		},
+
+		walkInAccountsOverview: async (
+			_: unknown,
+			{
+				pagination,
+			}: { pagination?: { limit?: number; offset?: number } },
+			context: Context,
+		) => {
+			requireAdmin(context);
+			const limit = Math.min(Math.max(pagination?.limit ?? 50, 1), 200);
+			const offset = Math.max(pagination?.offset ?? 0, 0);
+
+			const [totalWalkInAccounts, totalTimeInRecords, clients] = await Promise.all([
+				WalkInClient.countDocuments(),
+				WalkInAttendanceLog.countDocuments(),
+				WalkInClient.find({})
+					.sort({ updatedAt: -1 })
+					.skip(offset)
+					.limit(limit)
+					.lean(),
+			]);
+
+			const ids = clients.map(
+				(c) => (c as IWalkInClient & { _id: mongoose.Types.ObjectId })._id,
+			);
+			const agg =
+				ids.length > 0
+					? await WalkInAttendanceLog.aggregate<{ _id: mongoose.Types.ObjectId; c: number }>([
+							{ $match: { walkInClientId: { $in: ids } } },
+							{ $group: { _id: '$walkInClientId', c: { $sum: 1 } } },
+						])
+					: [];
+			const countMap = new Map(
+				agg.map((a) => [a._id.toString(), a.c]),
+			);
+
+			const rows = clients.map((doc) => {
+				const c = doc as IWalkInClient & { _id: mongoose.Types.ObjectId };
+				return {
+					client: mapClient(c),
+					timeInCount: countMap.get(c._id.toString()) ?? 0,
+				};
+			});
+
+			return {
+				totalWalkInAccounts,
+				totalTimeInRecords,
+				rows,
+			};
 		},
 	},
 

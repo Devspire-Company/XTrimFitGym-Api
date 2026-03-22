@@ -31,6 +31,25 @@ type WalkInLogsConnection {
 	totalCount: Int!
 }
 
+type WalkInAccountRow {
+	client: WalkInClient!
+	"""Total number of time-in attendance records for this walk-in profile."""
+	timeInCount: Int!
+}
+
+type WalkInAccountsOverview {
+	"""Total walk-in profiles in the system."""
+	totalWalkInAccounts: Int!
+	"""Total time-in log rows across all walk-ins."""
+	totalTimeInRecords: Int!
+	rows: [WalkInAccountRow!]!
+}
+
+type WalkInStats {
+	totalWalkInAccounts: Int!
+	totalTimeInRecords: Int!
+}
+
 input CreateWalkInClientInput {
 	firstName: String!
 	middleName: String
@@ -67,7 +86,10 @@ type CreateWalkInClientResult {
 }
 
 extend type Query {
-	searchWalkInClients(query: String!, limit: Int): [WalkInClient!]!
+	"""Search by name/phone/email, or pass an empty query to list all walk-ins (admin, paginated)."""
+	searchWalkInClients(query: String, limit: Int, offset: Int): [WalkInClient!]!
+	"""System-wide walk-in profile and time-in counts (admin)."""
+	walkInStats: WalkInStats!
 	walkInAttendanceLogs(
 		filter: WalkInLogsFilter!
 		pagination: WalkInPagination
@@ -77,6 +99,8 @@ extend type Query {
 		walkInClientId: ID!
 		pagination: WalkInPagination
 	): WalkInLogsConnection!
+	"""All walk-in profiles with per-profile time-in counts (paginated, newest updated first)."""
+	walkInAccountsOverview(pagination: WalkInPagination): WalkInAccountsOverview!
 }
 
 extend type Mutation {
