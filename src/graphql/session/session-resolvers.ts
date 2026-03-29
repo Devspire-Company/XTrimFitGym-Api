@@ -57,14 +57,6 @@ async function assertClientsBelongToCoach(coachIdStr: string, clientIds: string[
 	}
 }
 
-async function memberHasCoach(memberIdStr: string, coachIdStr: string) {
-	const m = await User.findById(memberIdStr)
-		.select('membershipDetails.coaches_ids')
-		.lean();
-	const ids = m?.membershipDetails?.coaches_ids || [];
-	return ids.some((id: any) => id.toString() === coachIdStr);
-}
-
 function getEnrollmentForClient(session: any, clientIdStr: string) {
 	return (session.enrollments || []).find(
 		(e: any) => e.client_id?.toString() === clientIdStr
@@ -427,18 +419,10 @@ export default {
 			if (!userId || userRole !== 'member') {
 				throw new Error('Unauthorized: Only members can browse joinable classes');
 			}
-			const member = await User.findById(userId)
-				.select('membershipDetails.coaches_ids')
-				.lean();
-			const coachIds = member?.membershipDetails?.coaches_ids || [];
-			if (coachIds.length === 0) {
-				return [];
-			}
 			const memberOid = new mongoose.Types.ObjectId(userId);
 			const now = new Date();
 			now.setHours(0, 0, 0, 0);
 			const sessions = await Session.find({
-				coach_id: { $in: coachIds },
 				sessionKind: 'group_class',
 				status: 'scheduled',
 				date: { $gte: now },
@@ -1445,10 +1429,6 @@ export default {
 			if (!session) throw new Error('Session not found');
 			if (session.sessionKind !== 'group_class' || session.status !== 'scheduled') {
 				throw new Error('This class is not available to join');
-			}
-			const coachStr = session.coach_id.toString();
-			if (!(await memberHasCoach(String(userId), coachStr))) {
-				throw new Error('You can only join classes from your assigned coaches');
 			}
 			const cid = String(userId);
 			const doc = await Session.findById(sessionId);
