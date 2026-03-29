@@ -1,5 +1,19 @@
 import mongoose, { Schema } from 'mongoose';
 
+export type SessionKindType = 'personal' | 'group_class';
+export type ClassEnrollmentStatusType =
+	| 'invited'
+	| 'pending'
+	| 'accepted'
+	| 'declined'
+	| 'rejected';
+
+export interface IClassEnrollment {
+	client_id: mongoose.Types.ObjectId;
+	status: ClassEnrollmentStatusType;
+	createdAt?: Date;
+}
+
 export interface ISession {
 	_id?: mongoose.Types.ObjectId;
 	coach_id: mongoose.Types.ObjectId;
@@ -16,9 +30,32 @@ export interface ISession {
 	templateId?: mongoose.Types.ObjectId; // Reference to template session if this was created from a template
 	goalId?: mongoose.Types.ObjectId; // Link to goal this session is helping achieve
 	isTemplate?: boolean; // Whether this session is a reusable template
+	sessionKind?: SessionKindType;
+	maxParticipants?: number;
+	enrollments?: IClassEnrollment[];
 	createdAt?: Date;
 	updatedAt?: Date;
 }
+
+const classEnrollmentSchema = new Schema(
+	{
+		client_id: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'User',
+			required: true,
+		},
+		status: {
+			type: String,
+			enum: ['invited', 'pending', 'accepted', 'declined', 'rejected'],
+			required: true,
+		},
+		createdAt: {
+			type: Date,
+			default: Date.now,
+		},
+	},
+	{ _id: false }
+);
 
 const sessionSchema = new Schema(
 	{
@@ -77,6 +114,19 @@ const sessionSchema = new Schema(
 		isTemplate: {
 			type: Boolean,
 			default: false,
+		},
+		sessionKind: {
+			type: String,
+			enum: ['personal', 'group_class'],
+			default: 'personal',
+		},
+		maxParticipants: {
+			type: Number,
+			min: 1,
+		},
+		enrollments: {
+			type: [classEnrollmentSchema],
+			default: [],
 		},
 	},
 	{

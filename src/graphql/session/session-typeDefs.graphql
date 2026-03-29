@@ -18,8 +18,31 @@ type Session {
 	goalId: ID # Link to goal this session is helping achieve
 	goal: Goal # Populated goal details
 	isTemplate: Boolean # Whether this session is a reusable template
+	sessionKind: SessionKind!
+	maxParticipants: Int
+	enrollments: [ClassEnrollment!]!
 	createdAt: String
 	updatedAt: String
+}
+
+enum SessionKind {
+	personal
+	group_class
+}
+
+enum ClassEnrollmentStatus {
+	invited
+	pending
+	accepted
+	declined
+	rejected
+}
+
+type ClassEnrollment {
+	clientId: ID!
+	client: User
+	status: ClassEnrollmentStatus!
+	createdAt: String
 }
 
 enum SessionStatus {
@@ -30,7 +53,7 @@ enum SessionStatus {
 
 # Session input
 input CreateSessionInput {
-	clientsIds: [ID!]!
+	clientsIds: [ID!] # Required for personal sessions; optional for group_class (use invitedClientIds)
 	name: String!
 	workoutType: String
 	date: String!
@@ -41,6 +64,9 @@ input CreateSessionInput {
 	templateId: ID # If creating from template, reference template session
 	goalId: ID # Link to goal this session is helping achieve
 	isTemplate: Boolean # Whether to create as a reusable template
+	sessionKind: SessionKind # Defaults to personal
+	maxParticipants: Int # Required for group_class (defaults to 20)
+	invitedClientIds: [ID!] # Optional invites when creating a group_class
 }
 
 input UpdateSessionInput {
@@ -52,6 +78,7 @@ input UpdateSessionInput {
 	gymArea: String
 	note: String
 	status: SessionStatus
+	maxParticipants: Int
 }
 
 # Progress Images type
@@ -120,6 +147,8 @@ extend type Query {
 	getSessionLogBySessionId(sessionId: ID!): SessionLog
 	# Get weight progress for a client
 	getWeightProgress(clientId: ID!, goalId: ID): [SessionLog!]!
+	# Upcoming group classes from the member's coaches the member can request to join
+	getJoinableGroupClasses: [Session!]!
 }
 
 # Extend Mutation type
@@ -138,6 +167,14 @@ extend type Mutation {
 	confirmSessionCompletion(input: ConfirmSessionCompletionInput!): SessionLog!
 	# Client confirms they entered weight
 	clientConfirmWeight(sessionLogId: ID!): SessionLog!
+	# Coach invites members to a group_class session (must be assigned clients)
+	inviteClientsToClassSession(sessionId: ID!, clientIds: [ID!]!): Session!
+	# Member requests to join a group_class (coach must be one of their coaches)
+	requestToJoinClassSession(sessionId: ID!): Session!
+	# Member accepts or declines a coach invitation
+	respondToClassInvitation(sessionId: ID!, accept: Boolean!): Session!
+	# Coach accepts or rejects a member's join request
+	coachRespondToJoinRequest(sessionId: ID!, clientId: ID!, accept: Boolean!): Session!
 }
 
 # Input for creating session from template
