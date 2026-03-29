@@ -3,6 +3,63 @@ import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import User from '../../database/models/user/user-schema.js';
 import Goal from '../../database/models/goal/goal-schema.js';
 import mongoose from 'mongoose';
+const sessionPopulatePaths = [
+    { path: 'coach_id', select: 'firstName lastName email' },
+    { path: 'clients_ids', select: 'firstName lastName email' },
+    { path: 'enrollments.client_id', select: 'firstName lastName email' },
+    { path: 'goalId', select: 'title goalType' },
+];
+async function fetchSessionDocument(sessionId) {
+    return Session.findById(sessionId)
+        .populate([...sessionPopulatePaths])
+        .lean();
+}
+function mapEnrollmentToGraphQL(e) {
+    const rawCid = e.client_id;
+    const clientId = rawCid?._id?.toString() ||
+        (rawCid instanceof mongoose.Types.ObjectId ? rawCid.toString() : String(rawCid || ''));
+    let client = null;
+    if (rawCid && typeof rawCid === 'object' && rawCid.firstName !== undefined) {
+        client = {
+            id: clientId,
+            firstName: rawCid.firstName || '',
+            lastName: rawCid.lastName || '',
+            email: rawCid.email || '',
+        };
+    }
+    return {
+        clientId,
+        client,
+        status: e.status,
+        createdAt: e.createdAt?.toISOString?.() || null,
+    };
+}
+async function assertClientsBelongToCoach(coachIdStr, clientIds) {
+    if (clientIds.length === 0)
+        return;
+    const coach = await User.findById(coachIdStr)
+        .select('coachDetails.clients_ids')
+        .lean();
+    const allowed = new Set((coach?.coachDetails?.clients_ids || []).map((id) => id.toString()));
+    for (const cid of clientIds) {
+        if (!allowed.has(String(cid))) {
+            throw new Error('One or more clients are not assigned to you');
+        }
+    }
+}
+async function memberHasCoach(memberIdStr, coachIdStr) {
+    const m = await User.findById(memberIdStr)
+        .select('membershipDetails.coaches_ids')
+        .lean();
+    const ids = m?.membershipDetails?.coaches_ids || [];
+    return ids.some((id) => id.toString() === coachIdStr);
+}
+function getEnrollmentForClient(session, clientIdStr) {
+    return (session.enrollments || []).find((e) => e.client_id?.toString() === clientIdStr);
+}
+function acceptedCount(session) {
+    return (session.clients_ids || []).length;
+}
 const mapSessionToGraphQL = (session) => {
     // Handle coach_id - it might be an ObjectId or a populated object
     let coachId;
@@ -75,6 +132,8 @@ const mapSessionToGraphQL = (session) => {
             templateId = String(session.templateId);
         }
     }
+    const sessionKind = session.sessionKind === 'group_class' ? 'group_class' : 'personal';
+    const enrollments = (session.enrollments || []).map(mapEnrollmentToGraphQL);
     return {
         id: session._id.toString(),
         coachId: coachId,
@@ -95,6 +154,11 @@ const mapSessionToGraphQL = (session) => {
         goalId: goalId,
         goal: goal, // Use the properly mapped goal object
         isTemplate: session.isTemplate || false,
+        sessionKind,
+        maxParticipants: sessionKind === 'group_class' && session.maxParticipants != null
+            ? session.maxParticipants
+            : null,
+        enrollments,
         createdAt: session.createdAt?.toISOString(),
         updatedAt: session.updatedAt?.toISOString(),
     };
@@ -204,6 +268,7 @@ export default {
             const allSessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .populate('goalId', 'title goalType')
                 .sort({ date: 1, startTime: 1 })
                 .lean();
@@ -236,8 +301,12 @@ export default {
             if (userId !== clientId && userRole !== 'admin') {
                 throw new Error('Unauthorized: You can only view your own sessions');
             }
+            const clientOid = new mongoose.Types.ObjectId(clientId);
             const query = {
-                clients_ids: new mongoose.Types.ObjectId(clientId),
+                $or: [
+                    { clients_ids: clientOid },
+                    { enrollments: { $elemMatch: { client_id: clientOid } } },
+                ],
             };
             if (status) {
                 query.status = status;
@@ -246,6 +315,7 @@ export default {
             const allSessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .populate('goalId', 'title goalType')
                 .sort({ date: 1, startTime: 1 })
                 .lean();
@@ -282,18 +352,63 @@ export default {
                 date: { $gte: now },
                 status: 'scheduled',
             };
-            // Get sessions where user is either coach or client
+            const userOid = new mongoose.Types.ObjectId(userId);
             if (userRole === 'coach') {
-                query.coach_id = new mongoose.Types.ObjectId(userId);
+                query.coach_id = userOid;
             }
             else {
-                query.clients_ids = new mongoose.Types.ObjectId(userId);
+                query.$or = [
+                    { clients_ids: userOid },
+                    { enrollments: { $elemMatch: { client_id: userOid } } },
+                ];
             }
             const sessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .sort({ date: 1, startTime: 1 })
                 .limit(10)
+                .lean();
+            return sessions.map(mapSessionToGraphQL);
+        },
+        getJoinableGroupClasses: async (_, __, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || userRole !== 'member') {
+                throw new Error('Unauthorized: Only members can browse joinable classes');
+            }
+            const member = await User.findById(userId)
+                .select('membershipDetails.coaches_ids')
+                .lean();
+            const coachIds = member?.membershipDetails?.coaches_ids || [];
+            if (coachIds.length === 0) {
+                return [];
+            }
+            const memberOid = new mongoose.Types.ObjectId(userId);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const sessions = await Session.find({
+                coach_id: { $in: coachIds },
+                sessionKind: 'group_class',
+                status: 'scheduled',
+                date: { $gte: now },
+                clients_ids: { $nin: [memberOid] },
+                $nor: [
+                    {
+                        enrollments: {
+                            $elemMatch: {
+                                client_id: memberOid,
+                                status: { $in: ['invited', 'pending', 'accepted'] },
+                            },
+                        },
+                    },
+                ],
+            })
+                .populate('coach_id', 'firstName lastName')
+                .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate('goalId', 'title goalType')
+                .sort({ date: 1, startTime: 1 })
                 .lean();
             return sessions.map(mapSessionToGraphQL);
         },
@@ -306,6 +421,7 @@ export default {
             const session = await Session.findById(id)
                 .populate('coach_id', 'firstName lastName email')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .populate('goalId', 'title goalType')
                 .lean();
             if (!session) {
@@ -314,8 +430,9 @@ export default {
             // Authorization: Only coach, clients, or admin can view
             const isCoach = session.coach_id.toString() === userId;
             const isClient = session.clients_ids?.some((clientId) => clientId.toString() === userId);
+            const hasEnrollment = (session.enrollments || []).some((e) => e.client_id?.toString() === userId);
             const isAdmin = userRole === 'admin';
-            if (!isCoach && !isClient && !isAdmin) {
+            if (!isCoach && !isClient && !hasEnrollment && !isAdmin) {
                 throw new Error('Unauthorized: You cannot view this session');
             }
             return mapSessionToGraphQL(session);
@@ -511,15 +628,37 @@ export default {
                     throw new Error('Unauthorized: You can only use your own templates');
                 }
             }
+            const sessionKind = input.sessionKind === 'group_class' ? 'group_class' : 'personal';
+            const isGroupClass = sessionKind === 'group_class';
+            if (input.isTemplate && isGroupClass) {
+                throw new Error('Group class sessions cannot be created as templates');
+            }
             // For templates, allow empty clients_ids array
-            // For regular sessions, ensure at least one client is provided
+            // For personal sessions, ensure at least one client is provided
             if (!input.isTemplate &&
+                !isGroupClass &&
                 (!input.clientsIds || input.clientsIds.length === 0)) {
                 throw new Error('At least one client must be selected for a session');
             }
-            const clientsIds = input.isTemplate
+            if (isGroupClass &&
+                input.maxParticipants != null &&
+                input.maxParticipants < 1) {
+                throw new Error('maxParticipants must be at least 1');
+            }
+            const invitedIds = (input.invitedClientIds || []).map((x) => String(x));
+            if (isGroupClass && invitedIds.length > 0) {
+                await assertClientsBelongToCoach(userIdString, invitedIds);
+            }
+            const clientsIds = input.isTemplate || isGroupClass
                 ? []
-                : input.clientsIds.map((id) => new mongoose.Types.ObjectId(id));
+                : (input.clientsIds || []).map((id) => new mongoose.Types.ObjectId(id));
+            const enrollments = isGroupClass && invitedIds.length > 0
+                ? invitedIds.map((cid) => ({
+                    client_id: new mongoose.Types.ObjectId(cid),
+                    status: 'invited',
+                    createdAt: new Date(),
+                }))
+                : [];
             const session = new Session({
                 coach_id: new mongoose.Types.ObjectId(userIdString),
                 clients_ids: clientsIds,
@@ -543,6 +682,9 @@ export default {
                     : undefined,
                 isTemplate: input.isTemplate === true, // Explicitly check for true
                 status: input.isTemplate ? 'scheduled' : 'scheduled',
+                sessionKind,
+                maxParticipants: isGroupClass ? input.maxParticipants ?? 20 : undefined,
+                enrollments,
             });
             await session.save();
             // Update coach's sessions_ids
@@ -559,6 +701,7 @@ export default {
             const populatedSession = await Session.findById(session._id)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .populate('goalId', 'title goalType')
                 .lean();
             return mapSessionToGraphQL(populatedSession);
@@ -656,6 +799,8 @@ export default {
                     : undefined,
                 isTemplate: false,
                 status: 'scheduled',
+                sessionKind: 'personal',
+                enrollments: [],
             });
             await session.save();
             // Update coach's sessions_ids
@@ -674,6 +819,11 @@ export default {
             })
                 .populate({
                 path: 'clients_ids',
+                select: 'firstName lastName email',
+                model: 'User',
+            })
+                .populate({
+                path: 'enrollments.client_id',
                 select: 'firstName lastName email',
                 model: 'User',
             })
@@ -739,6 +889,15 @@ export default {
                 updateData.note = input.note;
             if (input.status !== undefined)
                 updateData.status = input.status;
+            if (input.maxParticipants !== undefined) {
+                if (session.sessionKind !== 'group_class') {
+                    throw new Error('maxParticipants applies only to group class sessions');
+                }
+                if (input.maxParticipants < acceptedCount(session)) {
+                    throw new Error('maxParticipants cannot be below current accepted count');
+                }
+                updateData.maxParticipants = input.maxParticipants;
+            }
             if (input.startTime || input.endTime) {
                 updateData.time = input.endTime
                     ? `${input.startTime || session.startTime} - ${input.endTime}`
@@ -749,6 +908,7 @@ export default {
             })
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
+                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                 .lean();
             return mapSessionToGraphQL(updatedSession);
         },
@@ -960,6 +1120,179 @@ export default {
                 .lean();
             return mapSessionLogToGraphQL(updatedLog);
         },
+        inviteClientsToClassSession: async (_, { sessionId, clientIds }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || (userRole !== 'coach' && userRole !== 'admin')) {
+                throw new Error('Unauthorized');
+            }
+            const session = await Session.findById(sessionId).lean();
+            if (!session)
+                throw new Error('Session not found');
+            if (session.coach_id.toString() !== userId && userRole !== 'admin') {
+                throw new Error('Unauthorized');
+            }
+            if (session.sessionKind !== 'group_class') {
+                throw new Error('Not a group class session');
+            }
+            if (session.status !== 'scheduled') {
+                throw new Error('Session is not open for invites');
+            }
+            const coachStr = session.coach_id.toString();
+            const ids = clientIds.map((x) => String(x));
+            await assertClientsBelongToCoach(coachStr, ids);
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            for (const cid of ids) {
+                const oid = new mongoose.Types.ObjectId(cid);
+                const existing = (doc.enrollments || []).find((e) => e.client_id.toString() === cid);
+                if (existing) {
+                    if (existing.status === 'accepted' || existing.status === 'invited') {
+                        continue;
+                    }
+                    if (existing.status === 'pending') {
+                        throw new Error('Member already has a pending request for this class');
+                    }
+                    if (existing.status === 'declined' || existing.status === 'rejected') {
+                        existing.status = 'invited';
+                        existing.createdAt = new Date();
+                    }
+                }
+                else {
+                    doc.enrollments = doc.enrollments || [];
+                    doc.enrollments.push({
+                        client_id: oid,
+                        status: 'invited',
+                        createdAt: new Date(),
+                    });
+                }
+            }
+            await doc.save();
+            const out = await fetchSessionDocument(sessionId);
+            return mapSessionToGraphQL(out);
+        },
+        requestToJoinClassSession: async (_, { sessionId }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || userRole !== 'member') {
+                throw new Error('Unauthorized: Only members can request to join');
+            }
+            const session = await Session.findById(sessionId).lean();
+            if (!session)
+                throw new Error('Session not found');
+            if (session.sessionKind !== 'group_class' || session.status !== 'scheduled') {
+                throw new Error('This class is not available to join');
+            }
+            const coachStr = session.coach_id.toString();
+            if (!(await memberHasCoach(String(userId), coachStr))) {
+                throw new Error('You can only join classes from your assigned coaches');
+            }
+            const cid = String(userId);
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            const existing = getEnrollmentForClient(doc, cid);
+            if (existing) {
+                if (existing.status === 'accepted' || doc.clients_ids?.some((x) => x.toString() === cid)) {
+                    throw new Error('You are already in this class');
+                }
+                if (existing.status === 'invited') {
+                    throw new Error('You have an invitation — accept it from your schedule');
+                }
+                if (existing.status === 'pending') {
+                    throw new Error('Join request already pending');
+                }
+                if (existing.status === 'declined' || existing.status === 'rejected') {
+                    existing.status = 'pending';
+                    existing.createdAt = new Date();
+                }
+            }
+            else {
+                doc.enrollments = doc.enrollments || [];
+                doc.enrollments.push({
+                    client_id: new mongoose.Types.ObjectId(cid),
+                    status: 'pending',
+                    createdAt: new Date(),
+                });
+            }
+            await doc.save();
+            const out = await fetchSessionDocument(sessionId);
+            return mapSessionToGraphQL(out);
+        },
+        respondToClassInvitation: async (_, { sessionId, accept }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || userRole !== 'member') {
+                throw new Error('Unauthorized');
+            }
+            const cid = String(userId);
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            if (doc.sessionKind !== 'group_class') {
+                throw new Error('Not a group class');
+            }
+            const en = getEnrollmentForClient(doc, cid);
+            if (!en || en.status !== 'invited') {
+                throw new Error('No pending invitation for this class');
+            }
+            if (!accept) {
+                en.status = 'declined';
+                await doc.save();
+                return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+            }
+            const max = doc.maxParticipants ?? 20;
+            if (acceptedCount(doc) >= max) {
+                throw new Error('This class is full');
+            }
+            en.status = 'accepted';
+            const oid = new mongoose.Types.ObjectId(cid);
+            if (!doc.clients_ids?.some((x) => x.toString() === cid)) {
+                doc.clients_ids = doc.clients_ids || [];
+                doc.clients_ids.push(oid);
+            }
+            await doc.save();
+            return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+        },
+        coachRespondToJoinRequest: async (_, { sessionId, clientId, accept }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || (userRole !== 'coach' && userRole !== 'admin')) {
+                throw new Error('Unauthorized');
+            }
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            if (doc.coach_id.toString() !== userId && userRole !== 'admin') {
+                throw new Error('Unauthorized');
+            }
+            if (doc.sessionKind !== 'group_class') {
+                throw new Error('Not a group class');
+            }
+            const cid = String(clientId);
+            const en = getEnrollmentForClient(doc, cid);
+            if (!en || en.status !== 'pending') {
+                throw new Error('No pending join request for this member');
+            }
+            if (!accept) {
+                en.status = 'rejected';
+                await doc.save();
+                return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+            }
+            const max = doc.maxParticipants ?? 20;
+            if (acceptedCount(doc) >= max) {
+                throw new Error('Class is full — increase capacity or reject the request');
+            }
+            en.status = 'accepted';
+            const oid = new mongoose.Types.ObjectId(cid);
+            if (!doc.clients_ids?.some((x) => x.toString() === cid)) {
+                doc.clients_ids = doc.clients_ids || [];
+                doc.clients_ids.push(oid);
+            }
+            await doc.save();
+            return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+        },
     },
     Session: {
         coach: async (parent) => {
@@ -1168,6 +1501,7 @@ export default {
                 const session = await Session.findById(parent.session)
                     .populate('coach_id', 'firstName lastName')
                     .populate('clients_ids', 'firstName lastName email')
+                    .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
                     .lean();
                 return session ? mapSessionToGraphQL(session) : null;
             }

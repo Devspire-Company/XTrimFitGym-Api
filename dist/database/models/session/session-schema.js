@@ -1,4 +1,20 @@
 import mongoose, { Schema } from 'mongoose';
+const classEnrollmentSchema = new Schema({
+    client_id: {
+        type: mongoose.SchemaTypes.ObjectId,
+        ref: 'User',
+        required: true,
+    },
+    status: {
+        type: String,
+        enum: ['invited', 'pending', 'accepted', 'declined', 'rejected'],
+        required: true,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+}, { _id: false });
 const sessionSchema = new Schema({
     coach_id: {
         type: mongoose.SchemaTypes.ObjectId,
@@ -55,6 +71,19 @@ const sessionSchema = new Schema({
     isTemplate: {
         type: Boolean,
         default: false,
+    },
+    sessionKind: {
+        type: String,
+        enum: ['personal', 'group_class'],
+        default: 'personal',
+    },
+    maxParticipants: {
+        type: Number,
+        min: 1,
+    },
+    enrollments: {
+        type: [classEnrollmentSchema],
+        default: [],
     },
 }, {
     timestamps: true,
