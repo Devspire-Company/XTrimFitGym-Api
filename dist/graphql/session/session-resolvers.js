@@ -17,7 +17,9 @@ async function fetchSessionDocument(sessionId) {
 function mapEnrollmentToGraphQL(e) {
     const rawCid = e.client_id;
     const clientId = rawCid?._id?.toString() ||
-        (rawCid instanceof mongoose.Types.ObjectId ? rawCid.toString() : String(rawCid || ''));
+        (rawCid instanceof mongoose.Types.ObjectId
+            ? rawCid.toString()
+            : String(rawCid || ''));
     let client = null;
     if (rawCid && typeof rawCid === 'object' && rawCid.firstName !== undefined) {
         client = {
@@ -34,17 +36,21 @@ function mapEnrollmentToGraphQL(e) {
         createdAt: e.createdAt?.toISOString?.() || null,
     };
 }
-async function assertClientsBelongToCoach(coachIdStr, clientIds) {
+/** Ensures IDs exist. Invites are not limited to the coach's assigned client list. */
+async function assertInviteUserIdsExist(clientIds) {
     if (clientIds.length === 0)
         return;
-    const coach = await User.findById(coachIdStr)
-        .select('coachDetails.clients_ids')
-        .lean();
-    const allowed = new Set((coach?.coachDetails?.clients_ids || []).map((id) => id.toString()));
-    for (const cid of clientIds) {
-        if (!allowed.has(String(cid))) {
-            throw new Error('One or more clients are not assigned to you');
+    const unique = [...new Set(clientIds.map((x) => String(x)))];
+    const oids = [];
+    for (const id of unique) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            throw new Error('One or more invalid user ids');
         }
+        oids.push(new mongoose.Types.ObjectId(id));
+    }
+    const n = await User.countDocuments({ _id: { $in: oids } });
+    if (n !== unique.length) {
+        throw new Error('One or more users were not found');
     }
 }
 function getEnrollmentForClient(session, clientIdStr) {
@@ -261,7 +267,10 @@ export default {
             const allSessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .populate('goalId', 'title goalType')
                 .sort({ date: 1, startTime: 1 })
                 .lean();
@@ -308,7 +317,10 @@ export default {
             const allSessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .populate('goalId', 'title goalType')
                 .sort({ date: 1, startTime: 1 })
                 .lean();
@@ -358,7 +370,10 @@ export default {
             const sessions = await Session.find(query)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .sort({ date: 1, startTime: 1 })
                 .limit(10)
                 .lean();
@@ -391,7 +406,10 @@ export default {
             })
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .populate('goalId', 'title goalType')
                 .sort({ date: 1, startTime: 1 })
                 .lean();
@@ -406,7 +424,10 @@ export default {
             const session = await Session.findById(id)
                 .populate('coach_id', 'firstName lastName email')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .populate('goalId', 'title goalType')
                 .lean();
             if (!session) {
@@ -632,7 +653,7 @@ export default {
             }
             const invitedIds = (input.invitedClientIds || []).map((x) => String(x));
             if (isGroupClass && invitedIds.length > 0) {
-                await assertClientsBelongToCoach(userIdString, invitedIds);
+                await assertInviteUserIdsExist(invitedIds);
             }
             const clientsIds = input.isTemplate || isGroupClass
                 ? []
@@ -668,7 +689,9 @@ export default {
                 isTemplate: input.isTemplate === true, // Explicitly check for true
                 status: input.isTemplate ? 'scheduled' : 'scheduled',
                 sessionKind,
-                maxParticipants: isGroupClass ? input.maxParticipants ?? 20 : undefined,
+                maxParticipants: isGroupClass
+                    ? (input.maxParticipants ?? 20)
+                    : undefined,
                 enrollments,
             });
             await session.save();
@@ -686,7 +709,10 @@ export default {
             const populatedSession = await Session.findById(session._id)
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .populate('goalId', 'title goalType')
                 .lean();
             return mapSessionToGraphQL(populatedSession);
@@ -706,7 +732,9 @@ export default {
             const templateIdString = String(input.templateId);
             const goalIdString = input.goalId ? String(input.goalId) : null;
             // Validate and convert client IDs
-            if (!input.clientsIds || !Array.isArray(input.clientsIds) || input.clientsIds.length === 0) {
+            if (!input.clientsIds ||
+                !Array.isArray(input.clientsIds) ||
+                input.clientsIds.length === 0) {
                 throw new Error('At least one client must be selected');
             }
             const clientsIds = input.clientsIds.map((id) => {
@@ -825,7 +853,8 @@ export default {
             if (!populatedSession.coach_id || !populatedSession.coach_id._id) {
                 throw new Error('Failed to populate coach: Coach not found');
             }
-            if (!populatedSession.clients_ids || populatedSession.clients_ids.length === 0) {
+            if (!populatedSession.clients_ids ||
+                populatedSession.clients_ids.length === 0) {
                 throw new Error('Failed to populate clients: No valid clients found');
             }
             // Validate all clients have valid IDs
@@ -893,7 +922,10 @@ export default {
             })
                 .populate('coach_id', 'firstName lastName')
                 .populate('clients_ids', 'firstName lastName email')
-                .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                .populate({
+                path: 'enrollments.client_id',
+                select: 'firstName lastName email',
+            })
                 .lean();
             return mapSessionToGraphQL(updatedSession);
         },
@@ -965,7 +997,9 @@ export default {
                     String(goal.goalType).trim() === 'Muscle building');
             // Validate weight if goal is weight-related - THIS IS REQUIRED
             if (isWeightRelated) {
-                if (!input.weight || input.weight === null || input.weight === undefined) {
+                if (!input.weight ||
+                    input.weight === null ||
+                    input.weight === undefined) {
                     throw new Error(`Weight is required for weight-related goals. This session is associated with a "${goal.goalType}" goal, and weight tracking is mandatory.`);
                 }
                 const weightNum = parseFloat(String(input.weight));
@@ -1123,9 +1157,8 @@ export default {
             if (session.status !== 'scheduled') {
                 throw new Error('Session is not open for invites');
             }
-            const coachStr = session.coach_id.toString();
             const ids = clientIds.map((x) => String(x));
-            await assertClientsBelongToCoach(coachStr, ids);
+            await assertInviteUserIdsExist(ids);
             const doc = await Session.findById(sessionId);
             if (!doc)
                 throw new Error('Session not found');
@@ -1139,7 +1172,8 @@ export default {
                     if (existing.status === 'pending') {
                         throw new Error('Member already has a pending request for this class');
                     }
-                    if (existing.status === 'declined' || existing.status === 'rejected') {
+                    if (existing.status === 'declined' ||
+                        existing.status === 'rejected') {
                         existing.status = 'invited';
                         existing.createdAt = new Date();
                     }
@@ -1166,7 +1200,8 @@ export default {
             const session = await Session.findById(sessionId).lean();
             if (!session)
                 throw new Error('Session not found');
-            if (session.sessionKind !== 'group_class' || session.status !== 'scheduled') {
+            if (session.sessionKind !== 'group_class' ||
+                session.status !== 'scheduled') {
                 throw new Error('This class is not available to join');
             }
             const cid = String(userId);
@@ -1175,7 +1210,8 @@ export default {
                 throw new Error('Session not found');
             const existing = getEnrollmentForClient(doc, cid);
             if (existing) {
-                if (existing.status === 'accepted' || doc.clients_ids?.some((x) => x.toString() === cid)) {
+                if (existing.status === 'accepted' ||
+                    doc.clients_ids?.some((x) => x.toString() === cid)) {
                     throw new Error('You are already in this class');
                 }
                 if (existing.status === 'invited') {
@@ -1236,7 +1272,7 @@ export default {
             await doc.save();
             return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
         },
-        coachRespondToJoinRequest: async (_, { sessionId, clientId, accept }, context) => {
+        coachRespondToJoinRequest: async (_, { sessionId, clientId, accept, }, context) => {
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
             if (!userId || (userRole !== 'coach' && userRole !== 'admin')) {
@@ -1278,7 +1314,9 @@ export default {
     Session: {
         coach: async (parent) => {
             // If coach is already populated (object), return it
-            if (parent.coach && typeof parent.coach === 'object' && parent.coach._id) {
+            if (parent.coach &&
+                typeof parent.coach === 'object' &&
+                parent.coach._id) {
                 const coachId = parent.coach._id.toString();
                 if (!coachId) {
                     return null;
@@ -1312,7 +1350,9 @@ export default {
         },
         clients: async (parent) => {
             // If clients are already populated (array of objects), return them
-            if (parent.clients && Array.isArray(parent.clients) && parent.clients.length > 0) {
+            if (parent.clients &&
+                Array.isArray(parent.clients) &&
+                parent.clients.length > 0) {
                 return parent.clients
                     .filter((client) => client && client._id) // Filter out null/undefined clients
                     .map((client) => {
@@ -1482,7 +1522,10 @@ export default {
                 const session = await Session.findById(parent.session)
                     .populate('coach_id', 'firstName lastName')
                     .populate('clients_ids', 'firstName lastName email')
-                    .populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+                    .populate({
+                    path: 'enrollments.client_id',
+                    select: 'firstName lastName email',
+                })
                     .lean();
                 return session ? mapSessionToGraphQL(session) : null;
             }

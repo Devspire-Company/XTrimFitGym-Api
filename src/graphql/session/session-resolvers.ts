@@ -24,7 +24,9 @@ function mapEnrollmentToGraphQL(e: any) {
 	const rawCid = e.client_id;
 	const clientId =
 		rawCid?._id?.toString() ||
-		(rawCid instanceof mongoose.Types.ObjectId ? rawCid.toString() : String(rawCid || ''));
+		(rawCid instanceof mongoose.Types.ObjectId
+			? rawCid.toString()
+			: String(rawCid || ''));
 	let client: any = null;
 	if (rawCid && typeof rawCid === 'object' && rawCid.firstName !== undefined) {
 		client = {
@@ -42,24 +44,26 @@ function mapEnrollmentToGraphQL(e: any) {
 	};
 }
 
-async function assertClientsBelongToCoach(coachIdStr: string, clientIds: string[]) {
+/** Ensures IDs exist. Invites are not limited to the coach's assigned client list. */
+async function assertInviteUserIdsExist(clientIds: string[]) {
 	if (clientIds.length === 0) return;
-	const coach = await User.findById(coachIdStr)
-		.select('coachDetails.clients_ids')
-		.lean();
-	const allowed = new Set(
-		(coach?.coachDetails?.clients_ids || []).map((id: any) => id.toString())
-	);
-	for (const cid of clientIds) {
-		if (!allowed.has(String(cid))) {
-			throw new Error('One or more clients are not assigned to you');
+	const unique = [...new Set(clientIds.map((x) => String(x)))];
+	const oids: mongoose.Types.ObjectId[] = [];
+	for (const id of unique) {
+		if (!mongoose.Types.ObjectId.isValid(id)) {
+			throw new Error('One or more invalid user ids');
 		}
+		oids.push(new mongoose.Types.ObjectId(id));
+	}
+	const n = await User.countDocuments({ _id: { $in: oids } });
+	if (n !== unique.length) {
+		throw new Error('One or more users were not found');
 	}
 }
 
 function getEnrollmentForClient(session: any, clientIdStr: string) {
 	return (session.enrollments || []).find(
-		(e: any) => e.client_id?.toString() === clientIdStr
+		(e: any) => e.client_id?.toString() === clientIdStr,
 	);
 }
 
@@ -135,7 +139,8 @@ const mapSessionToGraphQL = (session: any) => {
 		}
 	}
 
-	const sessionKind = session.sessionKind === 'group_class' ? 'group_class' : 'personal';
+	const sessionKind =
+		session.sessionKind === 'group_class' ? 'group_class' : 'personal';
 	const enrollments = (session.enrollments || []).map(mapEnrollmentToGraphQL);
 
 	return {
@@ -268,7 +273,7 @@ export default {
 		getCoachSessions: async (
 			_: any,
 			{ coachId, status }: { coachId: string; status?: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coach can view their own sessions
 			const userId = context.auth.user?.id;
@@ -286,7 +291,10 @@ export default {
 			const allSessions = await Session.find(query)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.populate('goalId', 'title goalType')
 				.sort({ date: 1, startTime: 1 })
 				.lean();
@@ -305,9 +313,9 @@ export default {
 					return sessionId instanceof mongoose.Types.ObjectId
 						? sessionId.toString()
 						: sessionId._id
-						? sessionId._id.toString()
-						: String(sessionId);
-				})
+							? sessionId._id.toString()
+							: String(sessionId);
+				}),
 			);
 
 			// Filter out completed sessions
@@ -322,7 +330,7 @@ export default {
 		getClientSessions: async (
 			_: any,
 			{ clientId, status }: { clientId: string; status?: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only client can view their own sessions
 			const userId = context.auth.user?.id;
@@ -346,7 +354,10 @@ export default {
 			const allSessions = await Session.find(query)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.populate('goalId', 'title goalType')
 				.sort({ date: 1, startTime: 1 })
 				.lean();
@@ -365,9 +376,9 @@ export default {
 					return sessionId instanceof mongoose.Types.ObjectId
 						? sessionId.toString()
 						: sessionId._id
-						? sessionId._id.toString()
-						: String(sessionId);
-				})
+							? sessionId._id.toString()
+							: String(sessionId);
+				}),
 			);
 
 			// Filter out completed sessions
@@ -405,7 +416,10 @@ export default {
 			const sessions = await Session.find(query)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.sort({ date: 1, startTime: 1 })
 				.limit(10)
 				.lean();
@@ -417,7 +431,9 @@ export default {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (!userId || userRole !== 'member') {
-				throw new Error('Unauthorized: Only members can browse joinable classes');
+				throw new Error(
+					'Unauthorized: Only members can browse joinable classes',
+				);
 			}
 			const memberOid = new mongoose.Types.ObjectId(userId);
 			const now = new Date();
@@ -440,7 +456,10 @@ export default {
 			})
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.populate('goalId', 'title goalType')
 				.sort({ date: 1, startTime: 1 })
 				.lean();
@@ -458,7 +477,10 @@ export default {
 			const session = await Session.findById(id)
 				.populate('coach_id', 'firstName lastName email')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.populate('goalId', 'title goalType')
 				.lean();
 
@@ -469,10 +491,10 @@ export default {
 			// Authorization: Only coach, clients, or admin can view
 			const isCoach = session.coach_id.toString() === userId;
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId,
 			);
 			const hasEnrollment = (session.enrollments || []).some(
-				(e: any) => e.client_id?.toString() === userId
+				(e: any) => e.client_id?.toString() === userId,
 			);
 			const isAdmin = userRole === 'admin';
 
@@ -486,7 +508,7 @@ export default {
 		getSessionTemplates: async (
 			_: any,
 			{ coachId }: { coachId: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coach can view their own templates
 			const userId = context.auth.user?.id;
@@ -498,7 +520,7 @@ export default {
 
 			if (userIdString !== coachIdString && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: You can only view your own session templates'
+					'Unauthorized: You can only view your own session templates',
 				);
 			}
 
@@ -517,14 +539,14 @@ export default {
 		getSessionLogs: async (
 			_: any,
 			{ clientId }: { clientId: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only client or admin can view session logs
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userId !== clientId && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: You can only view your own session logs'
+					'Unauthorized: You can only view your own session logs',
 				);
 			}
 
@@ -538,7 +560,8 @@ export default {
 						{ path: 'clients_ids', select: 'id firstName lastName email' },
 						{
 							path: 'goalId',
-							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							select:
+								'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
 							populate: [
 								{ path: 'client_id', select: 'id firstName lastName email' },
 								{ path: 'coach_id', select: 'id firstName lastName email' },
@@ -557,14 +580,14 @@ export default {
 		getCoachSessionLogs: async (
 			_: any,
 			{ coachId }: { coachId: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coach or admin can view their session logs
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userId !== coachId && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: You can only view your own session logs'
+					'Unauthorized: You can only view your own session logs',
 				);
 			}
 
@@ -578,7 +601,8 @@ export default {
 						{ path: 'clients_ids', select: 'id firstName lastName email' },
 						{
 							path: 'goalId',
-							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							select:
+								'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
 							populate: [
 								{ path: 'client_id', select: 'id firstName lastName email' },
 								{ path: 'coach_id', select: 'id firstName lastName email' },
@@ -597,7 +621,7 @@ export default {
 		getSessionLogBySessionId: async (
 			_: any,
 			{ sessionId }: { sessionId: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coach of the session, client, or admin can view
 			const userId = context.auth.user?.id;
@@ -616,12 +640,12 @@ export default {
 
 			const isCoach = sessionCoachId === userId;
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId
+				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userId,
 			);
 
 			if (!isCoach && !isClient && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: You can only view session logs for your own sessions'
+					'Unauthorized: You can only view session logs for your own sessions',
 				);
 			}
 
@@ -635,7 +659,8 @@ export default {
 						{ path: 'clients_ids', select: 'id firstName lastName email' },
 						{
 							path: 'goalId',
-							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							select:
+								'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
 							populate: [
 								{ path: 'client_id', select: 'id firstName lastName email' },
 								{ path: 'coach_id', select: 'id firstName lastName email' },
@@ -657,7 +682,7 @@ export default {
 		getWeightProgress: async (
 			_: any,
 			{ clientId, goalId }: { clientId: string; goalId?: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only client or admin can view weight progress
 			const userId = context.auth.user?.id;
@@ -686,7 +711,8 @@ export default {
 						{ path: 'clients_ids', select: 'id firstName lastName email' },
 						{
 							path: 'goalId',
-							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							select:
+								'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
 							populate: [
 								{ path: 'client_id', select: 'id firstName lastName email' },
 								{ path: 'coach_id', select: 'id firstName lastName email' },
@@ -707,7 +733,7 @@ export default {
 		createSession: async (
 			_: any,
 			{ input }: { input: any },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coaches can create sessions
 			const userId = context.auth.user?.id;
@@ -762,17 +788,19 @@ export default {
 				throw new Error('maxParticipants must be at least 1');
 			}
 
-			const invitedIds: string[] = (input.invitedClientIds || []).map((x: string) =>
-				String(x)
+			const invitedIds: string[] = (input.invitedClientIds || []).map(
+				(x: string) => String(x),
 			);
 			if (isGroupClass && invitedIds.length > 0) {
-				await assertClientsBelongToCoach(userIdString, invitedIds);
+				await assertInviteUserIdsExist(invitedIds);
 			}
 
 			const clientsIds =
 				input.isTemplate || isGroupClass
 					? []
-					: (input.clientsIds || []).map((id: string) => new mongoose.Types.ObjectId(id));
+					: (input.clientsIds || []).map(
+							(id: string) => new mongoose.Types.ObjectId(id),
+						);
 
 			const enrollments =
 				isGroupClass && invitedIds.length > 0
@@ -780,7 +808,7 @@ export default {
 							client_id: new mongoose.Types.ObjectId(cid),
 							status: 'invited' as const,
 							createdAt: new Date(),
-					  }))
+						}))
 					: [];
 
 			const session = new Session({
@@ -807,7 +835,9 @@ export default {
 				isTemplate: input.isTemplate === true, // Explicitly check for true
 				status: input.isTemplate ? 'scheduled' : 'scheduled',
 				sessionKind,
-				maxParticipants: isGroupClass ? input.maxParticipants ?? 20 : undefined,
+				maxParticipants: isGroupClass
+					? (input.maxParticipants ?? 20)
+					: undefined,
 				enrollments,
 			});
 
@@ -829,7 +859,10 @@ export default {
 			const populatedSession = await Session.findById(session._id)
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.populate('goalId', 'title goalType')
 				.lean();
 
@@ -839,14 +872,14 @@ export default {
 		createSessionFromTemplate: async (
 			_: any,
 			{ input }: { input: any },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coaches can create sessions from templates
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userRole !== 'coach' && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: Only coaches can create sessions from templates'
+					'Unauthorized: Only coaches can create sessions from templates',
 				);
 			}
 
@@ -860,7 +893,11 @@ export default {
 			const goalIdString = input.goalId ? String(input.goalId) : null;
 
 			// Validate and convert client IDs
-			if (!input.clientsIds || !Array.isArray(input.clientsIds) || input.clientsIds.length === 0) {
+			if (
+				!input.clientsIds ||
+				!Array.isArray(input.clientsIds) ||
+				input.clientsIds.length === 0
+			) {
 				throw new Error('At least one client must be selected');
 			}
 
@@ -915,22 +952,26 @@ export default {
 						? goal.client_id.toString()
 						: String(goal.client_id)
 					: null;
-				
+
 				if (goalClientId) {
-					const isGoalForSelectedClient = clientsIds.some((clientObjId: mongoose.Types.ObjectId) => 
-						clientObjId.toString() === goalClientId
+					const isGoalForSelectedClient = clientsIds.some(
+						(clientObjId: mongoose.Types.ObjectId) =>
+							clientObjId.toString() === goalClientId,
 					);
 					if (!isGoalForSelectedClient && userRole !== 'admin') {
-						throw new Error('The selected goal must belong to one of the selected clients');
+						throw new Error(
+							'The selected goal must belong to one of the selected clients',
+						);
 					}
 				}
 			}
 
 			// Create new session from template
 			// Use workoutType from input if provided, otherwise use template's workoutType
-			const workoutType = input.workoutType !== undefined && input.workoutType !== null
-				? input.workoutType
-				: templateSession.workoutType || null;
+			const workoutType =
+				input.workoutType !== undefined && input.workoutType !== null
+					? input.workoutType
+					: templateSession.workoutType || null;
 
 			const session = new Session({
 				coach_id: new mongoose.Types.ObjectId(userIdString),
@@ -990,7 +1031,9 @@ export default {
 				.lean();
 
 			if (!populatedSession) {
-				throw new Error('Failed to create session: Session was not saved properly');
+				throw new Error(
+					'Failed to create session: Session was not saved properly',
+				);
 			}
 
 			// Validate that populated fields have valid IDs
@@ -998,16 +1041,21 @@ export default {
 				throw new Error('Failed to populate coach: Coach not found');
 			}
 
-			if (!populatedSession.clients_ids || populatedSession.clients_ids.length === 0) {
+			if (
+				!populatedSession.clients_ids ||
+				populatedSession.clients_ids.length === 0
+			) {
 				throw new Error('Failed to populate clients: No valid clients found');
 			}
 
 			// Validate all clients have valid IDs
 			const invalidClients = populatedSession.clients_ids.filter(
-				(client: any) => !client || !client._id
+				(client: any) => !client || !client._id,
 			);
 			if (invalidClients.length > 0) {
-				throw new Error(`Failed to populate clients: ${invalidClients.length} invalid client(s)`);
+				throw new Error(
+					`Failed to populate clients: ${invalidClients.length} invalid client(s)`,
+				);
 			}
 
 			// If goalId was provided, validate it was populated correctly
@@ -1023,7 +1071,7 @@ export default {
 		updateSession: async (
 			_: any,
 			{ id, input }: { id: string; input: any },
-			context: Context
+			context: Context,
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -1056,10 +1104,14 @@ export default {
 			if (input.status !== undefined) updateData.status = input.status;
 			if (input.maxParticipants !== undefined) {
 				if (session.sessionKind !== 'group_class') {
-					throw new Error('maxParticipants applies only to group class sessions');
+					throw new Error(
+						'maxParticipants applies only to group class sessions',
+					);
 				}
 				if (input.maxParticipants < acceptedCount(session)) {
-					throw new Error('maxParticipants cannot be below current accepted count');
+					throw new Error(
+						'maxParticipants cannot be below current accepted count',
+					);
 				}
 				updateData.maxParticipants = input.maxParticipants;
 			}
@@ -1075,7 +1127,10 @@ export default {
 			})
 				.populate('coach_id', 'firstName lastName')
 				.populate('clients_ids', 'firstName lastName email')
-				.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+				.populate({
+					path: 'enrollments.client_id',
+					select: 'firstName lastName email',
+				})
 				.lean();
 
 			return mapSessionToGraphQL(updatedSession);
@@ -1111,7 +1166,7 @@ export default {
 		completeSession: async (
 			_: any,
 			{ input }: { input: any },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only members/clients can complete sessions
 			const userId = context.auth.user?.id;
@@ -1134,7 +1189,7 @@ export default {
 			const { front, rightSide, leftSide, back } = input.progressImages;
 			if (!front || !rightSide || !leftSide || !back) {
 				throw new Error(
-					'All four progress images are required: front, rightSide, leftSide, and back'
+					'All four progress images are required: front, rightSide, leftSide, and back',
 				);
 			}
 
@@ -1147,7 +1202,8 @@ export default {
 
 			// Check if client is part of this session
 			const isClient = session.clients_ids?.some(
-				(clientId: mongoose.Types.ObjectId) => clientId.toString() === userIdString
+				(clientId: mongoose.Types.ObjectId) =>
+					clientId.toString() === userIdString,
 			);
 
 			if (!isClient && userRole !== 'admin') {
@@ -1160,9 +1216,10 @@ export default {
 			if (!goal || (!goal.goalType && !goal._id)) {
 				// Goal not populated, fetch it
 				if (session.goalId) {
-					const goalId = session.goalId instanceof mongoose.Types.ObjectId
-						? session.goalId
-						: new mongoose.Types.ObjectId(String(session.goalId));
+					const goalId =
+						session.goalId instanceof mongoose.Types.ObjectId
+							? session.goalId
+							: new mongoose.Types.ObjectId(String(session.goalId));
 					goal = await Goal.findById(goalId).select('goalType title').lean();
 				}
 			}
@@ -1170,19 +1227,25 @@ export default {
 			const isWeightRelated =
 				goal &&
 				goal.goalType &&
-				(String(goal.goalType).trim() === 'Weight loss' || 
-				 String(goal.goalType).trim() === 'Muscle building');
+				(String(goal.goalType).trim() === 'Weight loss' ||
+					String(goal.goalType).trim() === 'Muscle building');
 
 			// Validate weight if goal is weight-related - THIS IS REQUIRED
 			if (isWeightRelated) {
-				if (!input.weight || input.weight === null || input.weight === undefined) {
+				if (
+					!input.weight ||
+					input.weight === null ||
+					input.weight === undefined
+				) {
 					throw new Error(
-						`Weight is required for weight-related goals. This session is associated with a "${goal.goalType}" goal, and weight tracking is mandatory.`
+						`Weight is required for weight-related goals. This session is associated with a "${goal.goalType}" goal, and weight tracking is mandatory.`,
 					);
 				}
 				const weightNum = parseFloat(String(input.weight));
 				if (isNaN(weightNum) || weightNum <= 0) {
-					throw new Error('Please enter a valid weight (must be greater than 0)');
+					throw new Error(
+						'Please enter a valid weight (must be greater than 0)',
+					);
 				}
 			}
 
@@ -1240,7 +1303,8 @@ export default {
 						{ path: 'clients_ids', select: 'id firstName lastName email' },
 						{
 							path: 'goalId',
-							select: 'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
+							select:
+								'id title goalType description targetValue currentValue startDate targetDate client_id coach_id',
 							populate: [
 								{ path: 'client_id', select: 'id firstName lastName email' },
 								{ path: 'coach_id', select: 'id firstName lastName email' },
@@ -1258,14 +1322,14 @@ export default {
 		confirmSessionCompletion: async (
 			_: any,
 			{ input }: { input: any },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only coaches can confirm session completion
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 			if (userRole !== 'coach' && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: Only coaches can confirm session completion'
+					'Unauthorized: Only coaches can confirm session completion',
 				);
 			}
 
@@ -1287,7 +1351,7 @@ export default {
 			const isCoach = session.coach_id.toString() === userId;
 			if (!isCoach && userRole !== 'admin') {
 				throw new Error(
-					'Unauthorized: You cannot confirm completion for this session'
+					'Unauthorized: You cannot confirm completion for this session',
 				);
 			}
 
@@ -1296,7 +1360,7 @@ export default {
 				{
 					coachConfirmed: input.confirm,
 				},
-				{ new: true }
+				{ new: true },
 			)
 				.populate('session_id')
 				.populate('coach_id', 'firstName lastName')
@@ -1320,7 +1384,7 @@ export default {
 		clientConfirmWeight: async (
 			_: any,
 			{ sessionLogId }: { sessionLogId: string },
-			context: Context
+			context: Context,
 		) => {
 			// Authorization: Only members/clients can confirm their weight
 			const userId = context.auth.user?.id;
@@ -1348,7 +1412,7 @@ export default {
 				{
 					clientConfirmed: true,
 				},
-				{ new: true }
+				{ new: true },
 			)
 				.populate('session_id')
 				.populate('coach_id', 'firstName lastName')
@@ -1361,7 +1425,7 @@ export default {
 		inviteClientsToClassSession: async (
 			_: any,
 			{ sessionId, clientIds }: { sessionId: string; clientIds: string[] },
-			context: Context
+			context: Context,
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -1379,25 +1443,29 @@ export default {
 			if (session.status !== 'scheduled') {
 				throw new Error('Session is not open for invites');
 			}
-			const coachStr = session.coach_id.toString();
 			const ids = clientIds.map((x) => String(x));
-			await assertClientsBelongToCoach(coachStr, ids);
+			await assertInviteUserIdsExist(ids);
 
 			const doc = await Session.findById(sessionId);
 			if (!doc) throw new Error('Session not found');
 			for (const cid of ids) {
 				const oid = new mongoose.Types.ObjectId(cid);
 				const existing = (doc.enrollments || []).find(
-					(e: any) => e.client_id.toString() === cid
+					(e: any) => e.client_id.toString() === cid,
 				);
 				if (existing) {
 					if (existing.status === 'accepted' || existing.status === 'invited') {
 						continue;
 					}
 					if (existing.status === 'pending') {
-						throw new Error('Member already has a pending request for this class');
+						throw new Error(
+							'Member already has a pending request for this class',
+						);
 					}
-					if (existing.status === 'declined' || existing.status === 'rejected') {
+					if (
+						existing.status === 'declined' ||
+						existing.status === 'rejected'
+					) {
 						existing.status = 'invited';
 						existing.createdAt = new Date();
 					}
@@ -1418,7 +1486,7 @@ export default {
 		requestToJoinClassSession: async (
 			_: any,
 			{ sessionId }: { sessionId: string },
-			context: Context
+			context: Context,
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -1427,7 +1495,10 @@ export default {
 			}
 			const session = await Session.findById(sessionId).lean();
 			if (!session) throw new Error('Session not found');
-			if (session.sessionKind !== 'group_class' || session.status !== 'scheduled') {
+			if (
+				session.sessionKind !== 'group_class' ||
+				session.status !== 'scheduled'
+			) {
 				throw new Error('This class is not available to join');
 			}
 			const cid = String(userId);
@@ -1435,11 +1506,16 @@ export default {
 			if (!doc) throw new Error('Session not found');
 			const existing = getEnrollmentForClient(doc, cid);
 			if (existing) {
-				if (existing.status === 'accepted' || doc.clients_ids?.some((x: any) => x.toString() === cid)) {
+				if (
+					existing.status === 'accepted' ||
+					doc.clients_ids?.some((x: any) => x.toString() === cid)
+				) {
 					throw new Error('You are already in this class');
 				}
 				if (existing.status === 'invited') {
-					throw new Error('You have an invitation — accept it from your schedule');
+					throw new Error(
+						'You have an invitation — accept it from your schedule',
+					);
 				}
 				if (existing.status === 'pending') {
 					throw new Error('Join request already pending');
@@ -1464,7 +1540,7 @@ export default {
 		respondToClassInvitation: async (
 			_: any,
 			{ sessionId, accept }: { sessionId: string; accept: boolean },
-			context: Context
+			context: Context,
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -1502,8 +1578,12 @@ export default {
 
 		coachRespondToJoinRequest: async (
 			_: any,
-			{ sessionId, clientId, accept }: { sessionId: string; clientId: string; accept: boolean },
-			context: Context
+			{
+				sessionId,
+				clientId,
+				accept,
+			}: { sessionId: string; clientId: string; accept: boolean },
+			context: Context,
 		) => {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -1530,7 +1610,9 @@ export default {
 			}
 			const max = doc.maxParticipants ?? 20;
 			if (acceptedCount(doc) >= max) {
-				throw new Error('Class is full — increase capacity or reject the request');
+				throw new Error(
+					'Class is full — increase capacity or reject the request',
+				);
 			}
 			en.status = 'accepted';
 			const oid = new mongoose.Types.ObjectId(cid);
@@ -1546,7 +1628,11 @@ export default {
 	Session: {
 		coach: async (parent: any) => {
 			// If coach is already populated (object), return it
-			if (parent.coach && typeof parent.coach === 'object' && parent.coach._id) {
+			if (
+				parent.coach &&
+				typeof parent.coach === 'object' &&
+				parent.coach._id
+			) {
 				const coachId = parent.coach._id.toString();
 				if (!coachId) {
 					return null;
@@ -1558,7 +1644,7 @@ export default {
 					email: parent.coach.email || '',
 				};
 			}
-			
+
 			// If coach is an ID string, fetch it
 			if (parent.coachId) {
 				const coachIdString = String(parent.coachId);
@@ -1574,15 +1660,19 @@ export default {
 							firstName: user.firstName || '',
 							lastName: user.lastName || '',
 							email: user.email || '',
-					  }
+						}
 					: null;
 			}
-			
+
 			return null;
 		},
 		clients: async (parent: any) => {
 			// If clients are already populated (array of objects), return them
-			if (parent.clients && Array.isArray(parent.clients) && parent.clients.length > 0) {
+			if (
+				parent.clients &&
+				Array.isArray(parent.clients) &&
+				parent.clients.length > 0
+			) {
 				return parent.clients
 					.filter((client: any) => client && client._id) // Filter out null/undefined clients
 					.map((client: any) => {
@@ -1600,7 +1690,7 @@ export default {
 					})
 					.filter((client: any) => client !== null); // Remove any null entries
 			}
-			
+
 			// If clientsIds exist, fetch clients
 			if (parent.clientsIds && parent.clientsIds.length > 0) {
 				const clientsIds = parent.clientsIds
@@ -1612,17 +1702,17 @@ export default {
 						return new mongoose.Types.ObjectId(idString);
 					})
 					.filter((id: any) => id !== null);
-				
+
 				if (clientsIds.length === 0) {
 					return [];
 				}
-				
+
 				const clients = await User.find({
 					_id: { $in: clientsIds },
 				})
 					.select('firstName lastName email')
 					.lean();
-				
+
 				return clients
 					.filter((client: any) => client && client._id) // Filter out null/undefined
 					.map((client: any) => {
@@ -1643,12 +1733,12 @@ export default {
 		},
 		goal: async (parent: any) => {
 			if (!parent.goalId) return null;
-			
+
 			// If goal is already populated (object), format it
 			if (parent.goal && typeof parent.goal === 'object' && parent.goal._id) {
 				// Handle populated goal object
 				const goal = parent.goal;
-				
+
 				// Get client ID
 				let clientId: string;
 				if (goal.client_id) {
@@ -1662,7 +1752,7 @@ export default {
 				} else {
 					return null; // Invalid goal data
 				}
-				
+
 				// Get coach ID
 				let coachId: string | null = null;
 				if (goal.coach_id) {
@@ -1674,7 +1764,7 @@ export default {
 						coachId = String(goal.coach_id);
 					}
 				}
-				
+
 				return {
 					id: goal._id.toString(),
 					clientId: clientId,
@@ -1690,20 +1780,20 @@ export default {
 					updatedAt: goal.updatedAt?.toISOString() || null,
 				};
 			}
-			
+
 			// If goalId exists but goal is not populated, fetch it
 			if (parent.goalId) {
 				const goalIdString = String(parent.goalId);
 				if (!mongoose.Types.ObjectId.isValid(goalIdString)) {
 					return null;
 				}
-				
+
 				const goal = await Goal.findById(goalIdString)
 					.populate('client_id', 'firstName lastName email')
 					.populate('coach_id', 'firstName lastName email')
 					.lean();
 				if (!goal) return null;
-				
+
 				// Handle populated objects
 				let clientId: string;
 				if (goal.client_id) {
@@ -1717,7 +1807,7 @@ export default {
 				} else {
 					return null;
 				}
-				
+
 				let coachId: string | null = null;
 				if (goal.coach_id) {
 					if (goal.coach_id._id) {
@@ -1728,7 +1818,7 @@ export default {
 						coachId = String(goal.coach_id);
 					}
 				}
-				
+
 				return {
 					id: goal._id.toString(),
 					clientId: clientId,
@@ -1744,7 +1834,7 @@ export default {
 					updatedAt: goal.updatedAt?.toISOString() || null,
 				};
 			}
-			
+
 			return null;
 		},
 	},
@@ -1755,7 +1845,10 @@ export default {
 				const session = await Session.findById(parent.session)
 					.populate('coach_id', 'firstName lastName')
 					.populate('clients_ids', 'firstName lastName email')
-					.populate({ path: 'enrollments.client_id', select: 'firstName lastName email' })
+					.populate({
+						path: 'enrollments.client_id',
+						select: 'firstName lastName email',
+					})
 					.lean();
 				return session ? mapSessionToGraphQL(session) : null;
 			}
@@ -1772,7 +1865,7 @@ export default {
 							firstName: user.firstName,
 							lastName: user.lastName,
 							email: user.email,
-					  }
+						}
 					: null;
 			}
 			return parent.client;
@@ -1788,7 +1881,7 @@ export default {
 							firstName: user.firstName,
 							lastName: user.lastName,
 							email: user.email,
-					  }
+						}
 					: null;
 			}
 			return parent.coach;
