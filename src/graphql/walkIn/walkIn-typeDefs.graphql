@@ -23,7 +23,14 @@ type WalkInAttendanceLog {
 	walkInClient: WalkInClient!
 	timedInAt: String!
 	localDate: String!
+	"""Walk-in fee (PHP) recorded at time-in."""
+	payment: Float!
 	createdAt: String!
+}
+
+type WalkInPaymentSettings {
+	"""Default PHP amount applied to each new time-in (admin-configurable)."""
+	defaultPaymentPesos: Float!
 }
 
 type WalkInLogsConnection {
@@ -101,6 +108,8 @@ extend type Query {
 	): WalkInLogsConnection!
 	"""All walk-in profiles with per-profile time-in counts (paginated, newest updated first)."""
 	walkInAccountsOverview(pagination: WalkInPagination): WalkInAccountsOverview!
+	"""Default walk-in time-in fee in PHP (admin)."""
+	walkInPaymentSettings: WalkInPaymentSettings!
 }
 
 extend type Mutation {
@@ -113,4 +122,5 @@ extend type Mutation {
 		input: UpdateWalkInClientInput!
 	): WalkInClient!
 	walkInTimeIn(walkInClientId: ID!, at: String): WalkInAttendanceLog!
+	updateWalkInPaymentSettings(paymentPesos: Float!): WalkInPaymentSettings!
 }

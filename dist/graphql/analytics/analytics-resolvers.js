@@ -4,7 +4,20 @@ import MembershipTransaction from '../../database/models/membership/membershipTr
 import Membership from '../../database/models/membership/membership-shema.js';
 import mongoose from 'mongoose';
 import { updateTodayAnalytics } from '../../database/models/analytics/analytics-helper.js';
+import { sumWalkInPaymentsTotal, walkInPaymentsByLocalDateRange, manilaYmd, } from '../../database/models/analytics/walk-in-revenue.js';
 import { pubsub, EVENTS } from '../pubsub.js';
+function normalizeStoredAnalyticsRevenue(a) {
+    const w = a.walkInRevenue ?? 0;
+    const m = a.membershipSubscriptionRevenue != null
+        ? a.membershipSubscriptionRevenue
+        : Math.max(0, (a.totalRevenue ?? 0) - w);
+    const t = m + w;
+    return {
+        totalRevenue: t,
+        membershipSubscriptionRevenue: m,
+        walkInRevenue: w,
+    };
+}
 // Helper function to calculate revenue from ALL transactions (regardless of status)
 // IMPORTANT: Revenue represents ALL money ever received from subscriptions.
 // This ensures that:
@@ -22,11 +35,11 @@ const calculateRevenueFromAllTransactions = async () => {
     // This ensures revenue reflects all money ever received, not just current active subscriptions
     const query = {}; // No status filter - count all transactions
     const transactions = await MembershipTransaction.find(query).lean();
-    let totalRevenue = 0;
+    let membershipSubscriptionRevenue = 0;
     const revenueByMembership = new Map();
     for (const transaction of transactions) {
         const price = transaction.priceAtPurchase || 0;
-        totalRevenue += price;
+        membershipSubscriptionRevenue += price;
         const membershipId = transaction.membership_id.toString();
         const existing = revenueByMembership.get(membershipId);
         if (existing) {
@@ -45,7 +58,7 @@ const calculateRevenueFromAllTransactions = async () => {
         }
     }
     return {
-        totalRevenue,
+        membershipSubscriptionRevenue,
         revenueByMembership: Array.from(revenueByMembership.values()),
     };
 };
@@ -76,6 +89,90 @@ const getSubscriptionCounts = async (dateRange) => {
         expiredSubscriptions: expired,
     };
 };
+async function buildPeriodRevenueWithWalkIn(dateRange) {
+    let walkMap = new Map();
+    if (dateRange) {
+        const sd = new Date(dateRange.startDate);
+        const ed = new Date(dateRange.endDate);
+        let y1 = manilaYmd(sd);
+        let y2 = manilaYmd(ed);
+        if (y1 > y2) {
+            const t = y1;
+            y1 = y2;
+            y2 = t;
+        }
+        walkMap = await walkInPaymentsByLocalDateRange(y1, y2);
+    }
+    else {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+        walkMap = await walkInPaymentsByLocalDateRange(manilaYmd(startDate), manilaYmd(endDate));
+    }
+    const periodRevenue = [];
+    if (dateRange) {
+        const startDate = new Date(dateRange.startDate);
+        const endDate = new Date(dateRange.endDate);
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const dayStart = new Date(currentDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(currentDate);
+            dayEnd.setHours(23, 59, 59, 999);
+            const dayTransactions = await MembershipTransaction.find({
+                status: 'Active',
+                createdAt: {
+                    $gte: dayStart,
+                    $lte: dayEnd,
+                },
+            }).lean();
+            const dayRevenue = dayTransactions.reduce((sum, t) => sum + (t.priceAtPurchase || 0), 0);
+            const dayCount = dayTransactions.length;
+            const manilaDay = manilaYmd(currentDate);
+            const w = walkMap.get(manilaDay) ?? { revenue: 0, count: 0 };
+            periodRevenue.push({
+                period: dayStart.toISOString().split('T')[0],
+                revenue: dayRevenue + w.revenue,
+                count: dayCount,
+                walkInRevenue: w.revenue,
+                walkInCount: w.count,
+            });
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+    else {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const dayStart = new Date(currentDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(currentDate);
+            dayEnd.setHours(23, 59, 59, 999);
+            const dayTransactions = await MembershipTransaction.find({
+                status: 'Active',
+                createdAt: {
+                    $gte: dayStart,
+                    $lte: dayEnd,
+                },
+            }).lean();
+            const dayRevenue = dayTransactions.reduce((sum, t) => sum + (t.priceAtPurchase || 0), 0);
+            const dayCount = dayTransactions.length;
+            const manilaDay = manilaYmd(currentDate);
+            const w = walkMap.get(manilaDay) ?? { revenue: 0, count: 0 };
+            periodRevenue.push({
+                period: dayStart.toISOString().split('T')[0],
+                revenue: dayRevenue + w.revenue,
+                count: dayCount,
+                walkInRevenue: w.revenue,
+                walkInCount: w.count,
+            });
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+    return periodRevenue;
+}
 export default {
     Query: {
         getAnalytics: async (_, { date }, context) => {
@@ -106,12 +203,15 @@ export default {
                 };
                 // Calculate revenue from ALL transactions (regardless of status)
                 // This ensures revenue reflects all money ever received and doesn't decrease when canceled
-                const { totalRevenue, revenueByMembership } = await calculateRevenueFromAllTransactions();
+                const { membershipSubscriptionRevenue, revenueByMembership } = await calculateRevenueFromAllTransactions();
+                const walkInRevenue = await sumWalkInPaymentsTotal();
                 const counts = await getSubscriptionCounts(dateRange);
                 // Create and save analytics
                 analytics = await Analytics.create({
                     date: targetDate,
-                    totalRevenue,
+                    membershipSubscriptionRevenue,
+                    walkInRevenue,
+                    totalRevenue: membershipSubscriptionRevenue + walkInRevenue,
                     activeSubscriptions: counts.activeSubscriptions,
                     newSubscriptions: counts.newSubscriptions,
                     canceledSubscriptions: counts.canceledSubscriptions,
@@ -124,10 +224,13 @@ export default {
                     })),
                 });
             }
+            const rev = normalizeStoredAnalyticsRevenue(analytics);
             return {
                 id: analytics._id.toString(),
                 date: analytics.date.toISOString(),
-                totalRevenue: analytics.totalRevenue,
+                totalRevenue: rev.totalRevenue,
+                membershipSubscriptionRevenue: rev.membershipSubscriptionRevenue,
+                walkInRevenue: rev.walkInRevenue,
                 activeSubscriptions: analytics.activeSubscriptions,
                 newSubscriptions: analytics.newSubscriptions,
                 canceledSubscriptions: analytics.canceledSubscriptions,
@@ -150,92 +253,16 @@ export default {
             }
             // Update today's analytics to ensure it's current
             await updateTodayAnalytics();
-            // Get today's analytics (which contains current revenue from all transactions)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayAnalytics = await Analytics.findOne({ date: today }).lean();
-            // Use stored analytics data or calculate if not available
-            let totalRevenue = 0;
-            let revenueByMembership = [];
-            if (todayAnalytics) {
-                totalRevenue = todayAnalytics.totalRevenue;
-                revenueByMembership = todayAnalytics.revenueByMembership.map((r) => ({
-                    membershipId: r.membershipId.toString(),
-                    membershipName: r.membershipName,
-                    revenue: r.revenue,
-                    count: r.count,
-                }));
-            }
-            else {
-                // Fallback: calculate from all transactions if analytics not found
-                const { totalRevenue: calculatedRevenue, revenueByMembership: calculatedRevenueByMembership } = await calculateRevenueFromAllTransactions();
-                totalRevenue = calculatedRevenue;
-                revenueByMembership = calculatedRevenueByMembership;
-            }
+            const { membershipSubscriptionRevenue, revenueByMembership: mbList } = await calculateRevenueFromAllTransactions();
+            const walkInRevenue = await sumWalkInPaymentsTotal();
+            const totalRevenue = membershipSubscriptionRevenue + walkInRevenue;
+            const revenueByMembership = mbList;
             const counts = await getSubscriptionCounts(dateRange);
-            // Calculate revenue by period (daily for the last 30 days if no date range)
-            // For period revenue, we show NEW revenue added each day (transactions created that day)
-            // This is different from total revenue which shows all active subscriptions
-            let periodRevenue = [];
-            if (dateRange) {
-                // Calculate daily NEW revenue for the date range (transactions created each day)
-                const startDate = new Date(dateRange.startDate);
-                const endDate = new Date(dateRange.endDate);
-                const currentDate = new Date(startDate);
-                while (currentDate <= endDate) {
-                    const dayStart = new Date(currentDate);
-                    dayStart.setHours(0, 0, 0, 0);
-                    const dayEnd = new Date(currentDate);
-                    dayEnd.setHours(23, 59, 59, 999);
-                    // Count transactions created on this day (new revenue added)
-                    const dayTransactions = await MembershipTransaction.find({
-                        status: 'Active',
-                        createdAt: {
-                            $gte: dayStart,
-                            $lte: dayEnd,
-                        },
-                    }).lean();
-                    const dayRevenue = dayTransactions.reduce((sum, t) => sum + (t.priceAtPurchase || 0), 0);
-                    const dayCount = dayTransactions.length;
-                    periodRevenue.push({
-                        period: dayStart.toISOString().split('T')[0],
-                        revenue: dayRevenue,
-                        count: dayCount,
-                    });
-                    currentDate.setDate(currentDate.getDate() + 1);
-                }
-            }
-            else {
-                // Default: last 30 days - show new revenue added each day
-                const endDate = new Date();
-                const startDate = new Date();
-                startDate.setDate(startDate.getDate() - 30);
-                const currentDate = new Date(startDate);
-                while (currentDate <= endDate) {
-                    const dayStart = new Date(currentDate);
-                    dayStart.setHours(0, 0, 0, 0);
-                    const dayEnd = new Date(currentDate);
-                    dayEnd.setHours(23, 59, 59, 999);
-                    // Count transactions created on this day (new revenue added)
-                    const dayTransactions = await MembershipTransaction.find({
-                        status: 'Active',
-                        createdAt: {
-                            $gte: dayStart,
-                            $lte: dayEnd,
-                        },
-                    }).lean();
-                    const dayRevenue = dayTransactions.reduce((sum, t) => sum + (t.priceAtPurchase || 0), 0);
-                    const dayCount = dayTransactions.length;
-                    periodRevenue.push({
-                        period: dayStart.toISOString().split('T')[0],
-                        revenue: dayRevenue,
-                        count: dayCount,
-                    });
-                    currentDate.setDate(currentDate.getDate() + 1);
-                }
-            }
+            const periodRevenue = await buildPeriodRevenueWithWalkIn(dateRange);
             return {
                 totalRevenue,
+                membershipSubscriptionRevenue,
+                walkInRevenue,
                 activeSubscriptions: counts.activeSubscriptions,
                 newSubscriptions: counts.newSubscriptions,
                 canceledSubscriptions: counts.canceledSubscriptions,
@@ -267,30 +294,34 @@ export default {
             })
                 .sort({ date: -1 })
                 .lean();
-            return analytics.map((a) => ({
-                id: a._id.toString(),
-                date: a.date.toISOString(),
-                totalRevenue: a.totalRevenue,
-                activeSubscriptions: a.activeSubscriptions,
-                newSubscriptions: a.newSubscriptions,
-                canceledSubscriptions: a.canceledSubscriptions,
-                expiredSubscriptions: a.expiredSubscriptions,
-                revenueByMembership: a.revenueByMembership.map((r) => ({
-                    membershipId: r.membershipId.toString(),
-                    membershipName: r.membershipName,
-                    revenue: r.revenue,
-                    count: r.count,
-                })),
-                createdAt: a.createdAt?.toISOString(),
-                updatedAt: a.updatedAt?.toISOString(),
-            }));
+            return analytics.map((a) => {
+                const rev = normalizeStoredAnalyticsRevenue(a);
+                return {
+                    id: a._id.toString(),
+                    date: a.date.toISOString(),
+                    totalRevenue: rev.totalRevenue,
+                    membershipSubscriptionRevenue: rev.membershipSubscriptionRevenue,
+                    walkInRevenue: rev.walkInRevenue,
+                    activeSubscriptions: a.activeSubscriptions,
+                    newSubscriptions: a.newSubscriptions,
+                    canceledSubscriptions: a.canceledSubscriptions,
+                    expiredSubscriptions: a.expiredSubscriptions,
+                    revenueByMembership: a.revenueByMembership.map((r) => ({
+                        membershipId: r.membershipId.toString(),
+                        membershipName: r.membershipName,
+                        revenue: r.revenue,
+                        count: r.count,
+                    })),
+                    createdAt: a.createdAt?.toISOString(),
+                    updatedAt: a.updatedAt?.toISOString(),
+                };
+            });
         },
     },
     Subscription: {
         revenueSummaryUpdated: {
             subscribe: (_, { dateRange }, context) => {
-                // Authorization check
-                if (!context.user || context.user.role !== 'admin') {
+                if (context.auth.user?.role !== 'admin') {
                     throw new Error('Unauthorized: Only admins can subscribe to revenue updates');
                 }
                 // Return async iterator for the subscription
@@ -303,49 +334,25 @@ export default {
         },
     },
 };
-// Helper function to get revenue summary data (extracted from getRevenueSummary)
 async function getRevenueSummaryData(dateRange) {
+    const { membershipSubscriptionRevenue, revenueByMembership: mbList } = await calculateRevenueFromAllTransactions();
+    const walkInRevenue = await sumWalkInPaymentsTotal();
     const counts = await getSubscriptionCounts(dateRange);
-    const revenueData = await calculateRevenueFromAllTransactions();
-    // Calculate revenue by period if dateRange is provided
-    let revenueByPeriod = [];
-    if (dateRange) {
-        // Group transactions by period (monthly)
-        const startDate = new Date(dateRange.startDate);
-        const endDate = new Date(dateRange.endDate);
-        const periodMap = new Map();
-        const transactions = await MembershipTransaction.find({
-            createdAt: {
-                $gte: startDate,
-                $lte: endDate,
-            },
-        }).lean();
-        for (const transaction of transactions) {
-            const transactionDate = new Date(transaction.createdAt);
-            const period = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
-            const price = transaction.priceAtPurchase || 0;
-            const existing = periodMap.get(period);
-            if (existing) {
-                existing.revenue += price;
-                existing.count += 1;
-            }
-            else {
-                periodMap.set(period, { revenue: price, count: 1 });
-            }
-        }
-        revenueByPeriod = Array.from(periodMap.entries()).map(([period, data]) => ({
-            period,
-            revenue: data.revenue,
-            count: data.count,
-        }));
-    }
+    const periodRevenue = await buildPeriodRevenueWithWalkIn(dateRange);
     return {
-        totalRevenue: revenueData.totalRevenue,
+        totalRevenue: membershipSubscriptionRevenue + walkInRevenue,
+        membershipSubscriptionRevenue,
+        walkInRevenue,
         activeSubscriptions: counts.activeSubscriptions,
         newSubscriptions: counts.newSubscriptions,
         canceledSubscriptions: counts.canceledSubscriptions,
         expiredSubscriptions: counts.expiredSubscriptions,
-        revenueByMembership: Array.from(revenueData.revenueByMembership.values()),
-        revenueByPeriod,
+        revenueByMembership: mbList.map((r) => ({
+            membershipId: r.membershipId,
+            membershipName: r.membershipName,
+            revenue: r.revenue,
+            count: r.count,
+        })),
+        revenueByPeriod: periodRevenue,
     };
 }

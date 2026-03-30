@@ -3,6 +3,8 @@ type Analytics {
 	id: ID!
 	date: String!
 	totalRevenue: Float!
+	membershipSubscriptionRevenue: Float!
+	walkInRevenue: Float!
 	activeSubscriptions: Int!
 	newSubscriptions: Int!
 	canceledSubscriptions: Int!
@@ -21,6 +23,8 @@ type MembershipRevenue {
 
 type RevenueSummary {
 	totalRevenue: Float!
+	membershipSubscriptionRevenue: Float!
+	walkInRevenue: Float!
 	activeSubscriptions: Int!
 	newSubscriptions: Int!
 	canceledSubscriptions: Int!
@@ -33,6 +37,8 @@ type PeriodRevenue {
 	period: String!
 	revenue: Float!
 	count: Int!
+	walkInRevenue: Float!
+	walkInCount: Int!
 }
 
 input DateRangeInput {

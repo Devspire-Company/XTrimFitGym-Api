@@ -4,6 +4,7 @@ import MembershipTransaction from '../membership/membershipTransaction-schema.js
 import Membership from '../membership/membership-shema.js';
 import mongoose from 'mongoose';
 import { pubsub, EVENTS } from '../../../graphql/pubsub.js';
+import { sumWalkInPaymentsTotal } from './walk-in-revenue.js';
 
 /**
  * Updates analytics for today's date based on ALL transactions
@@ -23,12 +24,12 @@ export async function updateTodayAnalytics() {
 	// This ensures revenue reflects all money ever received and doesn't decrease when canceled
 	const allTransactions = await MembershipTransaction.find({}).lean();
 
-	let totalRevenue = 0;
+	let membershipSubscriptionRevenue = 0;
 	const revenueByMembership: Map<string, { membershipId: string; membershipName: string; revenue: number; count: number }> = new Map();
 
 	for (const transaction of allTransactions) {
 		const price = transaction.priceAtPurchase || 0;
-		totalRevenue += price;
+		membershipSubscriptionRevenue += price;
 
 		const membershipId = transaction.membership_id.toString();
 		const existing = revenueByMembership.get(membershipId);
@@ -77,12 +78,17 @@ export async function updateTodayAnalytics() {
 		}),
 	]);
 
+	const walkInRevenue = await sumWalkInPaymentsTotal();
+	const totalRevenue = membershipSubscriptionRevenue + walkInRevenue;
+
 	// Update or create today's analytics
 	await Analytics.findOneAndUpdate(
 		{ date: today },
 		{
 			date: today,
-			totalRevenue, // Revenue from all currently active subscriptions
+			totalRevenue,
+			membershipSubscriptionRevenue,
+			walkInRevenue,
 			activeSubscriptions: active,
 			newSubscriptions: newSubs,
 			canceledSubscriptions: canceled,

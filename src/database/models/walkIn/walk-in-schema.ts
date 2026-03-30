@@ -50,6 +50,8 @@ export interface IWalkInAttendanceLog {
 	timedInAt: Date;
 	/** YYYY-MM-DD in Asia/Manila */
 	localDate: string;
+	/** Snapshot of walk-in fee (PHP) at time-in */
+	paymentPesos?: number;
 	createdByAdminId?: mongoose.Types.ObjectId;
 	createdAt?: Date;
 	updatedAt?: Date;
@@ -64,6 +66,7 @@ const walkInAttendanceLogSchema = new Schema(
 		},
 		timedInAt: { type: Date, required: true },
 		localDate: { type: String, required: true },
+		paymentPesos: { type: Number, default: 60, min: 0 },
 		createdByAdminId: {
 			type: Schema.Types.ObjectId,
 			ref: 'User',

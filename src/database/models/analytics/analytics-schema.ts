@@ -3,6 +3,8 @@ import mongoose, { Schema } from 'mongoose';
 export interface IAnalytics {
 	date: Date;
 	totalRevenue: number;
+	membershipSubscriptionRevenue: number;
+	walkInRevenue: number;
 	activeSubscriptions: number;
 	newSubscriptions: number;
 	canceledSubscriptions: number;
@@ -26,6 +28,14 @@ const analyticsSchema = new Schema(
 			index: true,
 		},
 		totalRevenue: {
+			type: Number,
+			default: 0,
+		},
+		membershipSubscriptionRevenue: {
+			type: Number,
+			default: 0,
+		},
+		walkInRevenue: {
 			type: Number,
 			default: 0,
 		},

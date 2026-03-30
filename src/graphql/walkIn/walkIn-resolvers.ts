@@ -7,6 +7,11 @@ import {
 	type WalkInGenderValue,
 } from '../../database/models/walkIn/walk-in-schema.js';
 import mongoose from 'mongoose';
+import { updateTodayAnalytics } from '../../database/models/analytics/analytics-helper.js';
+import {
+	getWalkInTimeInPaymentPesos,
+	setWalkInTimeInPaymentPesos,
+} from '../../database/models/gym/gym-settings-schema.js';
 
 type Context = IAuthContext;
 
@@ -43,6 +48,7 @@ const mapLog = (
 	walkInClient: mapClient(client),
 	timedInAt: log.timedInAt.toISOString(),
 	localDate: log.localDate,
+	payment: Number(log.paymentPesos ?? 0),
 	createdAt: log.createdAt?.toISOString() ?? log.timedInAt.toISOString(),
 });
 
@@ -194,6 +200,12 @@ export default {
 			return { logs, totalCount };
 		},
 
+		walkInPaymentSettings: async (_: unknown, __: unknown, context: Context) => {
+			requireAdmin(context);
+			const defaultPaymentPesos = await getWalkInTimeInPaymentPesos();
+			return { defaultPaymentPesos };
+		},
+
 		walkInAccountsOverview: async (
 			_: unknown,
 			{
@@ -294,15 +306,18 @@ export default {
 
 			const now = new Date();
 			const localDate = toManilaDateString(now);
+			const paymentPesos = await getWalkInTimeInPaymentPesos();
 			const logDoc = new WalkInAttendanceLog({
 				walkInClientId: client._id,
 				timedInAt: now,
 				localDate,
+				paymentPesos,
 				createdByAdminId: adminId
 					? new mongoose.Types.ObjectId(adminId)
 					: undefined,
 			});
 			await logDoc.save();
+			await updateTodayAnalytics();
 			const logObj = logDoc.toObject() as IWalkInAttendanceLog & {
 				_id: mongoose.Types.ObjectId;
 			};
@@ -385,19 +400,32 @@ export default {
 				timedInAt = new Date();
 			}
 			const localDate = toManilaDateString(timedInAt);
+			const paymentPesos = await getWalkInTimeInPaymentPesos();
 			const logDoc = new WalkInAttendanceLog({
 				walkInClientId: new mongoose.Types.ObjectId(walkInClientId),
 				timedInAt,
 				localDate,
+				paymentPesos,
 				createdByAdminId: adminId
 					? new mongoose.Types.ObjectId(adminId)
 					: undefined,
 			});
 			await logDoc.save();
+			await updateTodayAnalytics();
 			const logObj = logDoc.toObject() as IWalkInAttendanceLog & {
 				_id: mongoose.Types.ObjectId;
 			};
 			return mapLog(logObj, clientObj);
+		},
+
+		updateWalkInPaymentSettings: async (
+			_: unknown,
+			{ paymentPesos }: { paymentPesos: number },
+			context: Context,
+		) => {
+			requireAdmin(context);
+			const next = await setWalkInTimeInPaymentPesos(paymentPesos);
+			return { defaultPaymentPesos: next };
 		},
 	},
 };

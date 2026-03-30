@@ -26,6 +26,7 @@ const walkInAttendanceLogSchema = new Schema({
     },
     timedInAt: { type: Date, required: true },
     localDate: { type: String, required: true },
+    paymentPesos: { type: Number, default: 60, min: 0 },
     createdByAdminId: {
         type: Schema.Types.ObjectId,
         ref: 'User',

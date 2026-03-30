@@ -1,5 +1,7 @@
 import { WalkInClient, WalkInAttendanceLog, } from '../../database/models/walkIn/walk-in-schema.js';
 import mongoose from 'mongoose';
+import { updateTodayAnalytics } from '../../database/models/analytics/analytics-helper.js';
+import { getWalkInTimeInPaymentPesos, setWalkInTimeInPaymentPesos, } from '../../database/models/gym/gym-settings-schema.js';
 const MANILA_TZ = 'Asia/Manila';
 export function toManilaDateString(d) {
     return d.toLocaleDateString('en-CA', { timeZone: MANILA_TZ });
@@ -26,6 +28,7 @@ const mapLog = (log, client) => ({
     walkInClient: mapClient(client),
     timedInAt: log.timedInAt.toISOString(),
     localDate: log.localDate,
+    payment: Number(log.paymentPesos ?? 0),
     createdAt: log.createdAt?.toISOString() ?? log.timedInAt.toISOString(),
 });
 export default {
@@ -118,6 +121,11 @@ export default {
             const logs = rows.map((row) => mapLog(row, clientObj));
             return { logs, totalCount };
         },
+        walkInPaymentSettings: async (_, __, context) => {
+            requireAdmin(context);
+            const defaultPaymentPesos = await getWalkInTimeInPaymentPesos();
+            return { defaultPaymentPesos };
+        },
         walkInAccountsOverview: async (_, { pagination, }, context) => {
             requireAdmin(context);
             const limit = Math.min(Math.max(pagination?.limit ?? 50, 1), 200);
@@ -179,15 +187,18 @@ export default {
             }
             const now = new Date();
             const localDate = toManilaDateString(now);
+            const paymentPesos = await getWalkInTimeInPaymentPesos();
             const logDoc = new WalkInAttendanceLog({
                 walkInClientId: client._id,
                 timedInAt: now,
                 localDate,
+                paymentPesos,
                 createdByAdminId: adminId
                     ? new mongoose.Types.ObjectId(adminId)
                     : undefined,
             });
             await logDoc.save();
+            await updateTodayAnalytics();
             const logObj = logDoc.toObject();
             return {
                 client: mapClient(clientObj),
@@ -237,17 +248,25 @@ export default {
                 timedInAt = new Date();
             }
             const localDate = toManilaDateString(timedInAt);
+            const paymentPesos = await getWalkInTimeInPaymentPesos();
             const logDoc = new WalkInAttendanceLog({
                 walkInClientId: new mongoose.Types.ObjectId(walkInClientId),
                 timedInAt,
                 localDate,
+                paymentPesos,
                 createdByAdminId: adminId
                     ? new mongoose.Types.ObjectId(adminId)
                     : undefined,
             });
             await logDoc.save();
+            await updateTodayAnalytics();
             const logObj = logDoc.toObject();
             return mapLog(logObj, clientObj);
+        },
+        updateWalkInPaymentSettings: async (_, { paymentPesos }, context) => {
+            requireAdmin(context);
+            const next = await setWalkInTimeInPaymentPesos(paymentPesos);
+            return { defaultPaymentPesos: next };
         },
     },
 };

@@ -10,6 +10,14 @@ const analyticsSchema = new Schema({
         type: Number,
         default: 0,
     },
+    membershipSubscriptionRevenue: {
+        type: Number,
+        default: 0,
+    },
+    walkInRevenue: {
+        type: Number,
+        default: 0,
+    },
     activeSubscriptions: {
         type: Number,
         default: 0,
