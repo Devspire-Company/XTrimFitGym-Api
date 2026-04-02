@@ -21,6 +21,8 @@ export interface IUser {
 	agreedToPrivacyPolicy?: boolean;
 	agreedToLiabilityWaiver?: boolean;
 	attendanceId?: number;
+	/** Linked Clerk user id (web/mobile OAuth). */
+	clerkId?: string;
 	membershipDetails?: {
 		membership_id?: mongoose.Types.ObjectId;
 		physiqueGoalType?: PhysiqueType;
@@ -146,6 +148,11 @@ const userSchema = new Schema(
 		agreedToLiabilityWaiver: {
 			type: Boolean,
 			default: false,
+		},
+		clerkId: {
+			type: String,
+			unique: true,
+			sparse: true,
 		},
 		attendanceId: {
 			type: Number,

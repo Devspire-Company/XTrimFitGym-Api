@@ -25,10 +25,12 @@ export type Analytics = {
   date: Scalars['String']['output'];
   expiredSubscriptions: Scalars['Int']['output'];
   id: Scalars['ID']['output'];
+  membershipSubscriptionRevenue: Scalars['Float']['output'];
   newSubscriptions: Scalars['Int']['output'];
   revenueByMembership: Array<MembershipRevenue>;
   totalRevenue: Scalars['Float']['output'];
   updatedAt?: Maybe<Scalars['String']['output']>;
+  walkInRevenue: Scalars['Float']['output'];
 };
 
 export type ApproveSubscriptionRequestInput = {
@@ -74,6 +76,22 @@ export type AuthResponse = {
   token: Scalars['String']['output'];
   user: User;
 };
+
+export type ClassEnrollment = {
+  __typename?: 'ClassEnrollment';
+  client?: Maybe<User>;
+  clientId: Scalars['ID']['output'];
+  createdAt?: Maybe<Scalars['String']['output']>;
+  status: ClassEnrollmentStatus;
+};
+
+export enum ClassEnrollmentStatus {
+  Accepted = 'accepted',
+  Declined = 'declined',
+  Invited = 'invited',
+  Pending = 'pending',
+  Rejected = 'rejected'
+}
 
 export type CoachDetails = {
   __typename?: 'CoachDetails';
@@ -151,6 +169,15 @@ export type CreateCoachRequestInput = {
   message?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type CreateEquipmentInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  imageUrl: Scalars['String']['input'];
+  name: Scalars['String']['input'];
+  notes?: InputMaybe<Scalars['String']['input']>;
+  sortOrder?: InputMaybe<Scalars['Int']['input']>;
+  status?: InputMaybe<EquipmentStatus>;
+};
+
 export type CreateGoalInput = {
   currentWeight?: InputMaybe<Scalars['Float']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -192,14 +219,17 @@ export type CreateSessionFromTemplateInput = {
 };
 
 export type CreateSessionInput = {
-  clientsIds: Array<Scalars['ID']['input']>;
+  clientsIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   date: Scalars['String']['input'];
   endTime?: InputMaybe<Scalars['String']['input']>;
   goalId?: InputMaybe<Scalars['ID']['input']>;
   gymArea: Scalars['String']['input'];
+  invitedClientIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   isTemplate?: InputMaybe<Scalars['Boolean']['input']>;
+  maxParticipants?: InputMaybe<Scalars['Int']['input']>;
   name: Scalars['String']['input'];
   note?: InputMaybe<Scalars['String']['input']>;
+  sessionKind?: InputMaybe<SessionKind>;
   startTime: Scalars['String']['input'];
   templateId?: InputMaybe<Scalars['ID']['input']>;
   workoutType?: InputMaybe<Scalars['String']['input']>;
@@ -235,6 +265,22 @@ export type CreateUserInput = {
   role: RoleType;
 };
 
+export type CreateWalkInClientInput = {
+  email?: InputMaybe<Scalars['String']['input']>;
+  firstName: Scalars['String']['input'];
+  gender: WalkInGender;
+  lastName: Scalars['String']['input'];
+  middleName?: InputMaybe<Scalars['String']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  phoneNumber?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CreateWalkInClientResult = {
+  __typename?: 'CreateWalkInClientResult';
+  client: WalkInClient;
+  log?: Maybe<WalkInAttendanceLog>;
+};
+
 export type DateRangeInput = {
   endDate: Scalars['String']['input'];
   startDate: Scalars['String']['input'];
@@ -249,6 +295,25 @@ export enum DurationType {
   Monthly = 'MONTHLY',
   Quarterly = 'QUARTERLY',
   Yearly = 'YEARLY'
+}
+
+export type Equipment = {
+  __typename?: 'Equipment';
+  createdAt?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  imageUrl: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  sortOrder: Scalars['Int']['output'];
+  status: EquipmentStatus;
+  updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
+export enum EquipmentStatus {
+  Available = 'AVAILABLE',
+  Damaged = 'DAMAGED',
+  Undermaintenance = 'UNDERMAINTENANCE'
 }
 
 export type Goal = {
@@ -359,10 +424,12 @@ export type Mutation = {
   cancelMembership: Scalars['Boolean']['output'];
   cancelSession: Scalars['Boolean']['output'];
   clientConfirmWeight: SessionLog;
+  coachRespondToJoinRequest: Session;
   completeSession: SessionLog;
   confirmSessionCompletion: SessionLog;
   createCoachRating: CoachRating;
   createCoachRequest: CoachRequest;
+  createEquipment: Equipment;
   createGoal: Goal;
   createMembership: Membership;
   createProgressRating: ProgressRating;
@@ -370,24 +437,33 @@ export type Mutation = {
   createSessionFromTemplate: Session;
   createSubscriptionRequest: SubscriptionRequest;
   createUser: AuthResponse;
+  createWalkInClient: CreateWalkInClientResult;
   deleteCoachRating: Scalars['Boolean']['output'];
+  deleteEquipment: Scalars['Boolean']['output'];
   deleteGoal: Scalars['Boolean']['output'];
   deleteMembership: Scalars['Boolean']['output'];
   deleteProgressRating: Scalars['Boolean']['output'];
   deleteSubscriptionRequest: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
   directSubscribeMember: MembershipTransaction;
+  inviteClientsToClassSession: Session;
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
+  requestToJoinClassSession: Session;
+  respondToClassInvitation: Session;
   updateCoachRating: CoachRating;
   updateCoachRequest: CoachRequest;
+  updateEquipment: Equipment;
   updateGoal: Goal;
   updateMembership: Membership;
   updateProgressRating: ProgressRating;
   updateSession: Session;
   updateUser?: Maybe<User>;
+  updateWalkInClient: WalkInClient;
+  updateWalkInPaymentSettings: WalkInPaymentSettings;
+  walkInTimeIn: WalkInAttendanceLog;
 };
 
 
@@ -421,6 +497,13 @@ export type MutationClientConfirmWeightArgs = {
 };
 
 
+export type MutationCoachRespondToJoinRequestArgs = {
+  accept: Scalars['Boolean']['input'];
+  clientId: Scalars['ID']['input'];
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type MutationCompleteSessionArgs = {
   input: CreateSessionLogInput;
 };
@@ -438,6 +521,11 @@ export type MutationCreateCoachRatingArgs = {
 
 export type MutationCreateCoachRequestArgs = {
   input: CreateCoachRequestInput;
+};
+
+
+export type MutationCreateEquipmentArgs = {
+  input: CreateEquipmentInput;
 };
 
 
@@ -476,7 +564,18 @@ export type MutationCreateUserArgs = {
 };
 
 
+export type MutationCreateWalkInClientArgs = {
+  input: CreateWalkInClientInput;
+  timeInNow: Scalars['Boolean']['input'];
+};
+
+
 export type MutationDeleteCoachRatingArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteEquipmentArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -511,6 +610,12 @@ export type MutationDirectSubscribeMemberArgs = {
 };
 
 
+export type MutationInviteClientsToClassSessionArgs = {
+  clientIds: Array<Scalars['ID']['input']>;
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type MutationLoginArgs = {
   input: LoginInput;
 };
@@ -531,6 +636,17 @@ export type MutationRemoveClientArgs = {
 };
 
 
+export type MutationRequestToJoinClassSessionArgs = {
+  sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationRespondToClassInvitationArgs = {
+  accept: Scalars['Boolean']['input'];
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type MutationUpdateCoachRatingArgs = {
   comment?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -541,6 +657,12 @@ export type MutationUpdateCoachRatingArgs = {
 export type MutationUpdateCoachRequestArgs = {
   id: Scalars['ID']['input'];
   input: UpdateCoachRequestInput;
+};
+
+
+export type MutationUpdateEquipmentArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateEquipmentInput;
 };
 
 
@@ -573,11 +695,30 @@ export type MutationUpdateUserArgs = {
   input: UpdateUserInput;
 };
 
+
+export type MutationUpdateWalkInClientArgs = {
+  input: UpdateWalkInClientInput;
+  walkInClientId: Scalars['ID']['input'];
+};
+
+
+export type MutationUpdateWalkInPaymentSettingsArgs = {
+  paymentPesos: Scalars['Float']['input'];
+};
+
+
+export type MutationWalkInTimeInArgs = {
+  at?: InputMaybe<Scalars['String']['input']>;
+  walkInClientId: Scalars['ID']['input'];
+};
+
 export type PeriodRevenue = {
   __typename?: 'PeriodRevenue';
   count: Scalars['Int']['output'];
   period: Scalars['String']['output'];
   revenue: Scalars['Float']['output'];
+  walkInCount: Scalars['Int']['output'];
+  walkInRevenue: Scalars['Float']['output'];
 };
 
 export type ProgressImages = {
@@ -644,9 +785,12 @@ export type Query = {
   getCoachSessionLogs: Array<SessionLog>;
   getCoachSessions: Array<Session>;
   getCurrentMembership?: Maybe<MembershipTransaction>;
+  getEquipment?: Maybe<Equipment>;
+  getEquipments: Array<Equipment>;
   getFitnessGoalTypes: Array<Scalars['String']['output']>;
   getGoal?: Maybe<Goal>;
   getGoals: Array<Goal>;
+  getJoinableGroupClasses: Array<Session>;
   getMembership?: Maybe<Membership>;
   getMembershipTransaction?: Maybe<MembershipTransaction>;
   getMemberships: Array<Membership>;
@@ -666,6 +810,19 @@ export type Query = {
   getUsers?: Maybe<Array<Maybe<User>>>;
   getWeightProgress: Array<SessionLog>;
   getWeightProgressChart: Array<WeightProgress>;
+  /** Current user from Authorization (JWT or Clerk session token). */
+  me?: Maybe<User>;
+  /** Search by name/phone/email, or pass an empty query to list all walk-ins (admin, paginated). */
+  searchWalkInClients: Array<WalkInClient>;
+  /** All walk-in profiles with per-profile time-in counts (paginated, newest updated first). */
+  walkInAccountsOverview: WalkInAccountsOverview;
+  walkInAttendanceLogs: WalkInLogsConnection;
+  /** All time-in logs for one walk-in client (newest first). */
+  walkInLogsByClient: WalkInLogsConnection;
+  /** Default walk-in time-in fee in PHP (admin). */
+  walkInPaymentSettings: WalkInPaymentSettings;
+  /** System-wide walk-in profile and time-in counts (admin). */
+  walkInStats: WalkInStats;
 };
 
 
@@ -742,6 +899,11 @@ export type QueryGetCoachSessionLogsArgs = {
 export type QueryGetCoachSessionsArgs = {
   coachId: Scalars['ID']['input'];
   status?: InputMaybe<SessionStatus>;
+};
+
+
+export type QueryGetEquipmentArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -836,6 +998,30 @@ export type QueryGetWeightProgressChartArgs = {
   goalId?: InputMaybe<Scalars['ID']['input']>;
 };
 
+
+export type QuerySearchWalkInClientsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryWalkInAccountsOverviewArgs = {
+  pagination?: InputMaybe<WalkInPagination>;
+};
+
+
+export type QueryWalkInAttendanceLogsArgs = {
+  filter: WalkInLogsFilter;
+  pagination?: InputMaybe<WalkInPagination>;
+};
+
+
+export type QueryWalkInLogsByClientArgs = {
+  pagination?: InputMaybe<WalkInPagination>;
+  walkInClientId: Scalars['ID']['input'];
+};
+
 export type RejectSubscriptionRequestInput = {
   requestId: Scalars['ID']['input'];
 };
@@ -845,10 +1031,12 @@ export type RevenueSummary = {
   activeSubscriptions: Scalars['Int']['output'];
   canceledSubscriptions: Scalars['Int']['output'];
   expiredSubscriptions: Scalars['Int']['output'];
+  membershipSubscriptionRevenue: Scalars['Float']['output'];
   newSubscriptions: Scalars['Int']['output'];
   revenueByMembership: Array<MembershipRevenue>;
   revenueByPeriod: Array<PeriodRevenue>;
   totalRevenue: Scalars['Float']['output'];
+  walkInRevenue: Scalars['Float']['output'];
 };
 
 export enum RoleType {
@@ -866,13 +1054,16 @@ export type Session = {
   createdAt?: Maybe<Scalars['String']['output']>;
   date: Scalars['String']['output'];
   endTime?: Maybe<Scalars['String']['output']>;
+  enrollments: Array<ClassEnrollment>;
   goal?: Maybe<Goal>;
   goalId?: Maybe<Scalars['ID']['output']>;
   gymArea: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   isTemplate?: Maybe<Scalars['Boolean']['output']>;
+  maxParticipants?: Maybe<Scalars['Int']['output']>;
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
+  sessionKind: SessionKind;
   startTime: Scalars['String']['output'];
   status: SessionStatus;
   templateId?: Maybe<Scalars['ID']['output']>;
@@ -880,6 +1071,11 @@ export type Session = {
   updatedAt?: Maybe<Scalars['String']['output']>;
   workoutType?: Maybe<Scalars['String']['output']>;
 };
+
+export enum SessionKind {
+  GroupClass = 'group_class',
+  Personal = 'personal'
+}
 
 export type SessionLog = {
   __typename?: 'SessionLog';
@@ -959,6 +1155,15 @@ export type UpdateCoachRequestInput = {
   status: CoachRequestStatus;
 };
 
+export type UpdateEquipmentInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  imageUrl?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  sortOrder?: InputMaybe<Scalars['Int']['input']>;
+  status?: InputMaybe<EquipmentStatus>;
+};
+
 export type UpdateGoalInput = {
   currentWeight?: InputMaybe<Scalars['Float']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -990,6 +1195,7 @@ export type UpdateSessionInput = {
   date?: InputMaybe<Scalars['String']['input']>;
   endTime?: InputMaybe<Scalars['String']['input']>;
   gymArea?: InputMaybe<Scalars['String']['input']>;
+  maxParticipants?: InputMaybe<Scalars['Int']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   note?: InputMaybe<Scalars['String']['input']>;
   startTime?: InputMaybe<Scalars['String']['input']>;
@@ -1015,6 +1221,16 @@ export type UpdateUserInput = {
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type UpdateWalkInClientInput = {
+  email?: InputMaybe<Scalars['String']['input']>;
+  firstName: Scalars['String']['input'];
+  gender: WalkInGender;
+  lastName: Scalars['String']['input'];
+  middleName?: InputMaybe<Scalars['String']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  phoneNumber?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type User = {
   __typename?: 'User';
   agreedToLiabilityWaiver?: Maybe<Scalars['Boolean']['output']>;
@@ -1037,6 +1253,82 @@ export type User = {
   phoneNumber?: Maybe<Scalars['String']['output']>;
   role: RoleType;
   updatedAt?: Maybe<Scalars['String']['output']>;
+};
+
+export type WalkInAccountRow = {
+  __typename?: 'WalkInAccountRow';
+  client: WalkInClient;
+  /** Total number of time-in attendance records for this walk-in profile. */
+  timeInCount: Scalars['Int']['output'];
+};
+
+export type WalkInAccountsOverview = {
+  __typename?: 'WalkInAccountsOverview';
+  rows: Array<WalkInAccountRow>;
+  /** Total time-in log rows across all walk-ins. */
+  totalTimeInRecords: Scalars['Int']['output'];
+  /** Total walk-in profiles in the system. */
+  totalWalkInAccounts: Scalars['Int']['output'];
+};
+
+export type WalkInAttendanceLog = {
+  __typename?: 'WalkInAttendanceLog';
+  createdAt: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  localDate: Scalars['String']['output'];
+  /** Walk-in fee (PHP) recorded at time-in. */
+  payment: Scalars['Float']['output'];
+  timedInAt: Scalars['String']['output'];
+  walkInClient: WalkInClient;
+};
+
+export type WalkInClient = {
+  __typename?: 'WalkInClient';
+  createdAt: Scalars['String']['output'];
+  email?: Maybe<Scalars['String']['output']>;
+  firstName: Scalars['String']['output'];
+  gender: WalkInGender;
+  id: Scalars['ID']['output'];
+  lastName: Scalars['String']['output'];
+  middleName?: Maybe<Scalars['String']['output']>;
+  notes?: Maybe<Scalars['String']['output']>;
+  phoneNumber?: Maybe<Scalars['String']['output']>;
+  updatedAt: Scalars['String']['output'];
+};
+
+export enum WalkInGender {
+  Female = 'FEMALE',
+  Male = 'MALE',
+  NonBinary = 'NON_BINARY',
+  PreferNotToSay = 'PREFER_NOT_TO_SAY'
+}
+
+export type WalkInLogsConnection = {
+  __typename?: 'WalkInLogsConnection';
+  logs: Array<WalkInAttendanceLog>;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type WalkInLogsFilter = {
+  /** YYYY-MM-DD (Asia/Manila calendar date) */
+  date: Scalars['String']['input'];
+};
+
+export type WalkInPagination = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type WalkInPaymentSettings = {
+  __typename?: 'WalkInPaymentSettings';
+  /** Default PHP amount applied to each new time-in (admin-configurable). */
+  defaultPaymentPesos: Scalars['Float']['output'];
+};
+
+export type WalkInStats = {
+  __typename?: 'WalkInStats';
+  totalTimeInRecords: Scalars['Int']['output'];
+  totalWalkInAccounts: Scalars['Int']['output'];
 };
 
 export type WeightProgress = {
@@ -1128,6 +1420,8 @@ export type ResolversTypes = {
   AttendanceRecord: ResolverTypeWrapper<Partial<AttendanceRecord>>;
   AuthResponse: ResolverTypeWrapper<Partial<AuthResponse>>;
   Boolean: ResolverTypeWrapper<Partial<Scalars['Boolean']['output']>>;
+  ClassEnrollment: ResolverTypeWrapper<Partial<ClassEnrollment>>;
+  ClassEnrollmentStatus: ResolverTypeWrapper<Partial<ClassEnrollmentStatus>>;
   CoachDetails: ResolverTypeWrapper<Partial<CoachDetails>>;
   CoachDetailsInput: ResolverTypeWrapper<Partial<CoachDetailsInput>>;
   CoachRating: ResolverTypeWrapper<Partial<CoachRating>>;
@@ -1136,6 +1430,7 @@ export type ResolversTypes = {
   ConfirmSessionCompletionInput: ResolverTypeWrapper<Partial<ConfirmSessionCompletionInput>>;
   CreateCoachRatingInput: ResolverTypeWrapper<Partial<CreateCoachRatingInput>>;
   CreateCoachRequestInput: ResolverTypeWrapper<Partial<CreateCoachRequestInput>>;
+  CreateEquipmentInput: ResolverTypeWrapper<Partial<CreateEquipmentInput>>;
   CreateGoalInput: ResolverTypeWrapper<Partial<CreateGoalInput>>;
   CreateMembershipInput: ResolverTypeWrapper<Partial<CreateMembershipInput>>;
   CreateProgressRatingInput: ResolverTypeWrapper<Partial<CreateProgressRatingInput>>;
@@ -1144,9 +1439,13 @@ export type ResolversTypes = {
   CreateSessionLogInput: ResolverTypeWrapper<Partial<CreateSessionLogInput>>;
   CreateSubscriptionRequestInput: ResolverTypeWrapper<Partial<CreateSubscriptionRequestInput>>;
   CreateUserInput: ResolverTypeWrapper<Partial<CreateUserInput>>;
+  CreateWalkInClientInput: ResolverTypeWrapper<Partial<CreateWalkInClientInput>>;
+  CreateWalkInClientResult: ResolverTypeWrapper<Partial<CreateWalkInClientResult>>;
   DateRangeInput: ResolverTypeWrapper<Partial<DateRangeInput>>;
   DirectSubscribeInput: ResolverTypeWrapper<Partial<DirectSubscribeInput>>;
   DurationType: ResolverTypeWrapper<Partial<DurationType>>;
+  Equipment: ResolverTypeWrapper<Partial<Equipment>>;
+  EquipmentStatus: ResolverTypeWrapper<Partial<EquipmentStatus>>;
   Float: ResolverTypeWrapper<Partial<Scalars['Float']['output']>>;
   Goal: ResolverTypeWrapper<Partial<Goal>>;
   GoalStatus: ResolverTypeWrapper<Partial<GoalStatus>>;
@@ -1172,6 +1471,7 @@ export type ResolversTypes = {
   RevenueSummary: ResolverTypeWrapper<Partial<RevenueSummary>>;
   RoleType: ResolverTypeWrapper<Partial<RoleType>>;
   Session: ResolverTypeWrapper<Partial<Session>>;
+  SessionKind: ResolverTypeWrapper<Partial<SessionKind>>;
   SessionLog: ResolverTypeWrapper<Partial<SessionLog>>;
   SessionStatus: ResolverTypeWrapper<Partial<SessionStatus>>;
   String: ResolverTypeWrapper<Partial<Scalars['String']['output']>>;
@@ -1180,12 +1480,24 @@ export type ResolversTypes = {
   SubscriptionRequestStatus: ResolverTypeWrapper<Partial<SubscriptionRequestStatus>>;
   TransactionStatus: ResolverTypeWrapper<Partial<TransactionStatus>>;
   UpdateCoachRequestInput: ResolverTypeWrapper<Partial<UpdateCoachRequestInput>>;
+  UpdateEquipmentInput: ResolverTypeWrapper<Partial<UpdateEquipmentInput>>;
   UpdateGoalInput: ResolverTypeWrapper<Partial<UpdateGoalInput>>;
   UpdateMembershipInput: ResolverTypeWrapper<Partial<UpdateMembershipInput>>;
   UpdateProgressRatingInput: ResolverTypeWrapper<Partial<UpdateProgressRatingInput>>;
   UpdateSessionInput: ResolverTypeWrapper<Partial<UpdateSessionInput>>;
   UpdateUserInput: ResolverTypeWrapper<Partial<UpdateUserInput>>;
+  UpdateWalkInClientInput: ResolverTypeWrapper<Partial<UpdateWalkInClientInput>>;
   User: ResolverTypeWrapper<Partial<User>>;
+  WalkInAccountRow: ResolverTypeWrapper<Partial<WalkInAccountRow>>;
+  WalkInAccountsOverview: ResolverTypeWrapper<Partial<WalkInAccountsOverview>>;
+  WalkInAttendanceLog: ResolverTypeWrapper<Partial<WalkInAttendanceLog>>;
+  WalkInClient: ResolverTypeWrapper<Partial<WalkInClient>>;
+  WalkInGender: ResolverTypeWrapper<Partial<WalkInGender>>;
+  WalkInLogsConnection: ResolverTypeWrapper<Partial<WalkInLogsConnection>>;
+  WalkInLogsFilter: ResolverTypeWrapper<Partial<WalkInLogsFilter>>;
+  WalkInPagination: ResolverTypeWrapper<Partial<WalkInPagination>>;
+  WalkInPaymentSettings: ResolverTypeWrapper<Partial<WalkInPaymentSettings>>;
+  WalkInStats: ResolverTypeWrapper<Partial<WalkInStats>>;
   WeightProgress: ResolverTypeWrapper<Partial<WeightProgress>>;
 };
 
@@ -1199,6 +1511,7 @@ export type ResolversParentTypes = {
   AttendanceRecord: Partial<AttendanceRecord>;
   AuthResponse: Partial<AuthResponse>;
   Boolean: Partial<Scalars['Boolean']['output']>;
+  ClassEnrollment: Partial<ClassEnrollment>;
   CoachDetails: Partial<CoachDetails>;
   CoachDetailsInput: Partial<CoachDetailsInput>;
   CoachRating: Partial<CoachRating>;
@@ -1206,6 +1519,7 @@ export type ResolversParentTypes = {
   ConfirmSessionCompletionInput: Partial<ConfirmSessionCompletionInput>;
   CreateCoachRatingInput: Partial<CreateCoachRatingInput>;
   CreateCoachRequestInput: Partial<CreateCoachRequestInput>;
+  CreateEquipmentInput: Partial<CreateEquipmentInput>;
   CreateGoalInput: Partial<CreateGoalInput>;
   CreateMembershipInput: Partial<CreateMembershipInput>;
   CreateProgressRatingInput: Partial<CreateProgressRatingInput>;
@@ -1214,8 +1528,11 @@ export type ResolversParentTypes = {
   CreateSessionLogInput: Partial<CreateSessionLogInput>;
   CreateSubscriptionRequestInput: Partial<CreateSubscriptionRequestInput>;
   CreateUserInput: Partial<CreateUserInput>;
+  CreateWalkInClientInput: Partial<CreateWalkInClientInput>;
+  CreateWalkInClientResult: Partial<CreateWalkInClientResult>;
   DateRangeInput: Partial<DateRangeInput>;
   DirectSubscribeInput: Partial<DirectSubscribeInput>;
+  Equipment: Partial<Equipment>;
   Float: Partial<Scalars['Float']['output']>;
   Goal: Partial<Goal>;
   ID: Partial<Scalars['ID']['output']>;
@@ -1242,12 +1559,23 @@ export type ResolversParentTypes = {
   Subscription: Record<PropertyKey, never>;
   SubscriptionRequest: Partial<SubscriptionRequest>;
   UpdateCoachRequestInput: Partial<UpdateCoachRequestInput>;
+  UpdateEquipmentInput: Partial<UpdateEquipmentInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
   UpdateMembershipInput: Partial<UpdateMembershipInput>;
   UpdateProgressRatingInput: Partial<UpdateProgressRatingInput>;
   UpdateSessionInput: Partial<UpdateSessionInput>;
   UpdateUserInput: Partial<UpdateUserInput>;
+  UpdateWalkInClientInput: Partial<UpdateWalkInClientInput>;
   User: Partial<User>;
+  WalkInAccountRow: Partial<WalkInAccountRow>;
+  WalkInAccountsOverview: Partial<WalkInAccountsOverview>;
+  WalkInAttendanceLog: Partial<WalkInAttendanceLog>;
+  WalkInClient: Partial<WalkInClient>;
+  WalkInLogsConnection: Partial<WalkInLogsConnection>;
+  WalkInLogsFilter: Partial<WalkInLogsFilter>;
+  WalkInPagination: Partial<WalkInPagination>;
+  WalkInPaymentSettings: Partial<WalkInPaymentSettings>;
+  WalkInStats: Partial<WalkInStats>;
   WeightProgress: Partial<WeightProgress>;
 };
 
@@ -1258,10 +1586,12 @@ export type AnalyticsResolvers<ContextType = IAuthContext, ParentType extends Re
   date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   expiredSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  membershipSubscriptionRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   newSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   revenueByMembership?: Resolver<Array<ResolversTypes['MembershipRevenue']>, ParentType, ContextType>;
   totalRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  walkInRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
 export type AttendanceConnectionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AttendanceConnection'] = ResolversParentTypes['AttendanceConnection']> = {
@@ -1285,6 +1615,13 @@ export type AttendanceRecordResolvers<ContextType = IAuthContext, ParentType ext
 export type AuthResponseResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['AuthResponse'] = ResolversParentTypes['AuthResponse']> = {
   token?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   user?: Resolver<ResolversTypes['User'], ParentType, ContextType>;
+};
+
+export type ClassEnrollmentResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['ClassEnrollment'] = ResolversParentTypes['ClassEnrollment']> = {
+  client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['ClassEnrollmentStatus'], ParentType, ContextType>;
 };
 
 export type CoachDetailsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['CoachDetails'] = ResolversParentTypes['CoachDetails']> = {
@@ -1322,6 +1659,23 @@ export type CoachRequestResolvers<ContextType = IAuthContext, ParentType extends
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   message?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['CoachRequestStatus'], ParentType, ContextType>;
+  updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type CreateWalkInClientResultResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['CreateWalkInClientResult'] = ResolversParentTypes['CreateWalkInClientResult']> = {
+  client?: Resolver<ResolversTypes['WalkInClient'], ParentType, ContextType>;
+  log?: Resolver<Maybe<ResolversTypes['WalkInAttendanceLog']>, ParentType, ContextType>;
+};
+
+export type EquipmentResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Equipment'] = ResolversParentTypes['Equipment']> = {
+  createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  imageUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  notes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  sortOrder?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['EquipmentStatus'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
@@ -1399,10 +1753,12 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   cancelMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelMembershipArgs, 'transactionId'>>;
   cancelSession?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCancelSessionArgs, 'id'>>;
   clientConfirmWeight?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationClientConfirmWeightArgs, 'sessionLogId'>>;
+  coachRespondToJoinRequest?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCoachRespondToJoinRequestArgs, 'accept' | 'clientId' | 'sessionId'>>;
   completeSession?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationCompleteSessionArgs, 'input'>>;
   confirmSessionCompletion?: Resolver<ResolversTypes['SessionLog'], ParentType, ContextType, RequireFields<MutationConfirmSessionCompletionArgs, 'input'>>;
   createCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationCreateCoachRatingArgs, 'input'>>;
   createCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationCreateCoachRequestArgs, 'input'>>;
+  createEquipment?: Resolver<ResolversTypes['Equipment'], ParentType, ContextType, RequireFields<MutationCreateEquipmentArgs, 'input'>>;
   createGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationCreateGoalArgs, 'input'>>;
   createMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationCreateMembershipArgs, 'input'>>;
   createProgressRating?: Resolver<ResolversTypes['ProgressRating'], ParentType, ContextType, RequireFields<MutationCreateProgressRatingArgs, 'input'>>;
@@ -1410,30 +1766,41 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   createSessionFromTemplate?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationCreateSessionFromTemplateArgs, 'input'>>;
   createSubscriptionRequest?: Resolver<ResolversTypes['SubscriptionRequest'], ParentType, ContextType, RequireFields<MutationCreateSubscriptionRequestArgs, 'input'>>;
   createUser?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationCreateUserArgs, 'input'>>;
+  createWalkInClient?: Resolver<ResolversTypes['CreateWalkInClientResult'], ParentType, ContextType, RequireFields<MutationCreateWalkInClientArgs, 'input' | 'timeInNow'>>;
   deleteCoachRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteCoachRatingArgs, 'id'>>;
+  deleteEquipment?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteEquipmentArgs, 'id'>>;
   deleteGoal?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteGoalArgs, 'id'>>;
   deleteMembership?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteMembershipArgs, 'id'>>;
   deleteProgressRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteProgressRatingArgs, 'id'>>;
   deleteSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSubscriptionRequestArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
   directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
+  inviteClientsToClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationInviteClientsToClassSessionArgs, 'clientIds' | 'sessionId'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
+  requestToJoinClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRequestToJoinClassSessionArgs, 'sessionId'>>;
+  respondToClassInvitation?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRespondToClassInvitationArgs, 'accept' | 'sessionId'>>;
   updateCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationUpdateCoachRatingArgs, 'id'>>;
   updateCoachRequest?: Resolver<ResolversTypes['CoachRequest'], ParentType, ContextType, RequireFields<MutationUpdateCoachRequestArgs, 'id' | 'input'>>;
+  updateEquipment?: Resolver<ResolversTypes['Equipment'], ParentType, ContextType, RequireFields<MutationUpdateEquipmentArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
   updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;
   updateProgressRating?: Resolver<ResolversTypes['ProgressRating'], ParentType, ContextType, RequireFields<MutationUpdateProgressRatingArgs, 'id' | 'input'>>;
   updateSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationUpdateSessionArgs, 'id' | 'input'>>;
   updateUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationUpdateUserArgs, 'id' | 'input'>>;
+  updateWalkInClient?: Resolver<ResolversTypes['WalkInClient'], ParentType, ContextType, RequireFields<MutationUpdateWalkInClientArgs, 'input' | 'walkInClientId'>>;
+  updateWalkInPaymentSettings?: Resolver<ResolversTypes['WalkInPaymentSettings'], ParentType, ContextType, RequireFields<MutationUpdateWalkInPaymentSettingsArgs, 'paymentPesos'>>;
+  walkInTimeIn?: Resolver<ResolversTypes['WalkInAttendanceLog'], ParentType, ContextType, RequireFields<MutationWalkInTimeInArgs, 'walkInClientId'>>;
 };
 
 export type PeriodRevenueResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['PeriodRevenue'] = ResolversParentTypes['PeriodRevenue']> = {
   count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   period?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   revenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  walkInCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  walkInRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
 export type ProgressImagesResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['ProgressImages'] = ResolversParentTypes['ProgressImages']> = {
@@ -1479,9 +1846,12 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getCoachSessionLogs?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetCoachSessionLogsArgs, 'coachId'>>;
   getCoachSessions?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType, RequireFields<QueryGetCoachSessionsArgs, 'coachId'>>;
   getCurrentMembership?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType>;
+  getEquipment?: Resolver<Maybe<ResolversTypes['Equipment']>, ParentType, ContextType, RequireFields<QueryGetEquipmentArgs, 'id'>>;
+  getEquipments?: Resolver<Array<ResolversTypes['Equipment']>, ParentType, ContextType>;
   getFitnessGoalTypes?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   getGoal?: Resolver<Maybe<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetGoalArgs, 'id'>>;
   getGoals?: Resolver<Array<ResolversTypes['Goal']>, ParentType, ContextType, RequireFields<QueryGetGoalsArgs, 'clientId'>>;
+  getJoinableGroupClasses?: Resolver<Array<ResolversTypes['Session']>, ParentType, ContextType>;
   getMembership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType, RequireFields<QueryGetMembershipArgs, 'id'>>;
   getMembershipTransaction?: Resolver<Maybe<ResolversTypes['MembershipTransaction']>, ParentType, ContextType, RequireFields<QueryGetMembershipTransactionArgs, 'id'>>;
   getMemberships?: Resolver<Array<ResolversTypes['Membership']>, ParentType, ContextType, Partial<QueryGetMembershipsArgs>>;
@@ -1501,16 +1871,25 @@ export type QueryResolvers<ContextType = IAuthContext, ParentType extends Resolv
   getUsers?: Resolver<Maybe<Array<Maybe<ResolversTypes['User']>>>, ParentType, ContextType, Partial<QueryGetUsersArgs>>;
   getWeightProgress?: Resolver<Array<ResolversTypes['SessionLog']>, ParentType, ContextType, RequireFields<QueryGetWeightProgressArgs, 'clientId'>>;
   getWeightProgressChart?: Resolver<Array<ResolversTypes['WeightProgress']>, ParentType, ContextType, RequireFields<QueryGetWeightProgressChartArgs, 'clientId'>>;
+  me?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
+  searchWalkInClients?: Resolver<Array<ResolversTypes['WalkInClient']>, ParentType, ContextType, Partial<QuerySearchWalkInClientsArgs>>;
+  walkInAccountsOverview?: Resolver<ResolversTypes['WalkInAccountsOverview'], ParentType, ContextType, Partial<QueryWalkInAccountsOverviewArgs>>;
+  walkInAttendanceLogs?: Resolver<ResolversTypes['WalkInLogsConnection'], ParentType, ContextType, RequireFields<QueryWalkInAttendanceLogsArgs, 'filter'>>;
+  walkInLogsByClient?: Resolver<ResolversTypes['WalkInLogsConnection'], ParentType, ContextType, RequireFields<QueryWalkInLogsByClientArgs, 'walkInClientId'>>;
+  walkInPaymentSettings?: Resolver<ResolversTypes['WalkInPaymentSettings'], ParentType, ContextType>;
+  walkInStats?: Resolver<ResolversTypes['WalkInStats'], ParentType, ContextType>;
 };
 
 export type RevenueSummaryResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['RevenueSummary'] = ResolversParentTypes['RevenueSummary']> = {
   activeSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   canceledSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   expiredSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  membershipSubscriptionRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   newSubscriptions?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   revenueByMembership?: Resolver<Array<ResolversTypes['MembershipRevenue']>, ParentType, ContextType>;
   revenueByPeriod?: Resolver<Array<ResolversTypes['PeriodRevenue']>, ParentType, ContextType>;
   totalRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  walkInRevenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
 
 export type SessionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['Session'] = ResolversParentTypes['Session']> = {
@@ -1521,13 +1900,16 @@ export type SessionResolvers<ContextType = IAuthContext, ParentType extends Reso
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   endTime?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  enrollments?: Resolver<Array<ResolversTypes['ClassEnrollment']>, ParentType, ContextType>;
   goal?: Resolver<Maybe<ResolversTypes['Goal']>, ParentType, ContextType>;
   goalId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   gymArea?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   isTemplate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  maxParticipants?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  sessionKind?: Resolver<ResolversTypes['SessionKind'], ParentType, ContextType>;
   startTime?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['SessionStatus'], ParentType, ContextType>;
   templateId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
@@ -1602,6 +1984,53 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
+export type WalkInAccountRowResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInAccountRow'] = ResolversParentTypes['WalkInAccountRow']> = {
+  client?: Resolver<ResolversTypes['WalkInClient'], ParentType, ContextType>;
+  timeInCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type WalkInAccountsOverviewResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInAccountsOverview'] = ResolversParentTypes['WalkInAccountsOverview']> = {
+  rows?: Resolver<Array<ResolversTypes['WalkInAccountRow']>, ParentType, ContextType>;
+  totalTimeInRecords?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  totalWalkInAccounts?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type WalkInAttendanceLogResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInAttendanceLog'] = ResolversParentTypes['WalkInAttendanceLog']> = {
+  createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  localDate?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  payment?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  timedInAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  walkInClient?: Resolver<ResolversTypes['WalkInClient'], ParentType, ContextType>;
+};
+
+export type WalkInClientResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInClient'] = ResolversParentTypes['WalkInClient']> = {
+  createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  firstName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  gender?: Resolver<ResolversTypes['WalkInGender'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  middleName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  notes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type WalkInLogsConnectionResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInLogsConnection'] = ResolversParentTypes['WalkInLogsConnection']> = {
+  logs?: Resolver<Array<ResolversTypes['WalkInAttendanceLog']>, ParentType, ContextType>;
+  totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type WalkInPaymentSettingsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInPaymentSettings'] = ResolversParentTypes['WalkInPaymentSettings']> = {
+  defaultPaymentPesos?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+};
+
+export type WalkInStatsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInStats'] = ResolversParentTypes['WalkInStats']> = {
+  totalTimeInRecords?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  totalWalkInAccounts?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
 export type WeightProgressResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WeightProgress'] = ResolversParentTypes['WeightProgress']> = {
   date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   sessionId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
@@ -1614,9 +2043,12 @@ export type Resolvers<ContextType = IAuthContext> = {
   AttendanceConnection?: AttendanceConnectionResolvers<ContextType>;
   AttendanceRecord?: AttendanceRecordResolvers<ContextType>;
   AuthResponse?: AuthResponseResolvers<ContextType>;
+  ClassEnrollment?: ClassEnrollmentResolvers<ContextType>;
   CoachDetails?: CoachDetailsResolvers<ContextType>;
   CoachRating?: CoachRatingResolvers<ContextType>;
   CoachRequest?: CoachRequestResolvers<ContextType>;
+  CreateWalkInClientResult?: CreateWalkInClientResultResolvers<ContextType>;
+  Equipment?: EquipmentResolvers<ContextType>;
   Goal?: GoalResolvers<ContextType>;
   LoginHistoryEntry?: LoginHistoryEntryResolvers<ContextType>;
   MemberDetails?: MemberDetailsResolvers<ContextType>;
@@ -1634,6 +2066,13 @@ export type Resolvers<ContextType = IAuthContext> = {
   Subscription?: SubscriptionResolvers<ContextType>;
   SubscriptionRequest?: SubscriptionRequestResolvers<ContextType>;
   User?: UserResolvers<ContextType>;
+  WalkInAccountRow?: WalkInAccountRowResolvers<ContextType>;
+  WalkInAccountsOverview?: WalkInAccountsOverviewResolvers<ContextType>;
+  WalkInAttendanceLog?: WalkInAttendanceLogResolvers<ContextType>;
+  WalkInClient?: WalkInClientResolvers<ContextType>;
+  WalkInLogsConnection?: WalkInLogsConnectionResolvers<ContextType>;
+  WalkInPaymentSettings?: WalkInPaymentSettingsResolvers<ContextType>;
+  WalkInStats?: WalkInStatsResolvers<ContextType>;
   WeightProgress?: WeightProgressResolvers<ContextType>;
 };
 

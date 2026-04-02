@@ -1,3 +1,11 @@
+export var ClassEnrollmentStatus;
+(function (ClassEnrollmentStatus) {
+    ClassEnrollmentStatus["Accepted"] = "accepted";
+    ClassEnrollmentStatus["Declined"] = "declined";
+    ClassEnrollmentStatus["Invited"] = "invited";
+    ClassEnrollmentStatus["Pending"] = "pending";
+    ClassEnrollmentStatus["Rejected"] = "rejected";
+})(ClassEnrollmentStatus || (ClassEnrollmentStatus = {}));
 export var CoachRequestStatus;
 (function (CoachRequestStatus) {
     CoachRequestStatus["Approved"] = "approved";
@@ -10,6 +18,12 @@ export var DurationType;
     DurationType["Quarterly"] = "QUARTERLY";
     DurationType["Yearly"] = "YEARLY";
 })(DurationType || (DurationType = {}));
+export var EquipmentStatus;
+(function (EquipmentStatus) {
+    EquipmentStatus["Available"] = "AVAILABLE";
+    EquipmentStatus["Damaged"] = "DAMAGED";
+    EquipmentStatus["Undermaintenance"] = "UNDERMAINTENANCE";
+})(EquipmentStatus || (EquipmentStatus = {}));
 export var GoalStatus;
 (function (GoalStatus) {
     GoalStatus["Active"] = "active";
@@ -36,6 +50,11 @@ export var RoleType;
     RoleType["Coach"] = "coach";
     RoleType["Member"] = "member";
 })(RoleType || (RoleType = {}));
+export var SessionKind;
+(function (SessionKind) {
+    SessionKind["GroupClass"] = "group_class";
+    SessionKind["Personal"] = "personal";
+})(SessionKind || (SessionKind = {}));
 export var SessionStatus;
 (function (SessionStatus) {
     SessionStatus["Cancelled"] = "cancelled";
@@ -54,3 +73,10 @@ export var TransactionStatus;
     TransactionStatus["Canceled"] = "CANCELED";
     TransactionStatus["Expired"] = "EXPIRED";
 })(TransactionStatus || (TransactionStatus = {}));
+export var WalkInGender;
+(function (WalkInGender) {
+    WalkInGender["Female"] = "FEMALE";
+    WalkInGender["Male"] = "MALE";
+    WalkInGender["NonBinary"] = "NON_BINARY";
+    WalkInGender["PreferNotToSay"] = "PREFER_NOT_TO_SAY";
+})(WalkInGender || (WalkInGender = {}));

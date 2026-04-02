@@ -94,6 +94,11 @@ const userSchema = new Schema({
         type: Boolean,
         default: false,
     },
+    clerkId: {
+        type: String,
+        unique: true,
+        sparse: true,
+    },
     attendanceId: {
         type: Number,
         unique: true,

@@ -73,6 +73,15 @@ const generateUniqueAttendanceId = async () => {
 };
 const userResolvers = {
     Query: {
+        me: async (_, __, context) => {
+            const userId = context.auth.user?.id;
+            if (!userId)
+                return null;
+            const user = await User.findById(userId).lean();
+            if (!user)
+                return null;
+            return mapUserToGraphQL(user);
+        },
         getUser: async (_, { id }, context) => {
             const user = await User.findById(id).lean();
             if (!user)

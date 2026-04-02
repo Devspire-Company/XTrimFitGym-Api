@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import z from 'zod';
 import jwt from 'jsonwebtoken';
-function parseToken(token) {
+import { verifyToken, createClerkClient } from '@clerk/backend';
+import User from '../database/models/user/user-schema.js';
+function parseJwtToken(token) {
     if (!token)
         return null;
     try {
@@ -14,18 +16,56 @@ function parseToken(token) {
             .safeParse(decoded);
         return payload.success ? payload.data : null;
     }
-    catch (error) {
+    catch {
         return null;
     }
 }
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+async function resolveClerkUser(bearerToken) {
+    const secret = process.env.CLERK_SECRET_KEY;
+    if (!secret)
+        return null;
+    try {
+        const payload = await verifyToken(bearerToken, { secretKey: secret });
+        const sub = payload.sub;
+        if (!sub)
+            return null;
+        let doc = await User.findOne({ clerkId: sub }).lean();
+        if (doc) {
+            return { id: doc._id.toString(), role: doc.role };
+        }
+        const clerk = createClerkClient({ secretKey: secret });
+        const cu = await clerk.users.getUser(sub);
+        const email = cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
+            cu.emailAddresses[0]?.emailAddress;
+        if (!email)
+            return null;
+        doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
+        if (!doc)
+            return null;
+        await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+        return { id: doc._id.toString(), role: doc.role };
+    }
+    catch {
+        return null;
+    }
+}
+async function resolveUser(bearerToken) {
+    if (!bearerToken)
+        return null;
+    const fromJwt = parseJwtToken(bearerToken);
+    if (fromJwt)
+        return fromJwt;
+    return resolveClerkUser(bearerToken);
+}
 const authContext = async ({ req, res, }) => {
-    // Get token from cookie or Authorization header
     const tokenFromCookie = req.cookies?.token;
     const authHeader = req.headers.authorization || req.headers.Authorization;
     const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
     const token = tokenFromCookie || tokenFromHeader;
-    const user = parseToken(token);
-    // Debug: Log authentication status only in development
+    const user = await resolveUser(token);
     if (!user && process.env.NODE_ENV !== 'production') {
         console.log('🔒 No authenticated user found');
         console.log('  - Cookie token:', tokenFromCookie ? 'Present' : 'Missing');
@@ -40,12 +80,11 @@ const authContext = async ({ req, res, }) => {
         auth: {
             user,
             logIn: (args) => {
-                const token = jwt.sign(args, process.env.JWT_SIKRIT);
-                // Remove domain restriction to work with IP addresses and different origins
-                res.cookie('token', token, {
+                const t = jwt.sign(args, process.env.JWT_SIKRIT);
+                res.cookie('token', t, {
                     httpOnly: true,
-                    secure: false, // Set to true in production with HTTPS
-                    sameSite: 'lax', // Helps with cross-origin requests
+                    secure: false,
+                    sameSite: 'lax',
                     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
                     path: '/',
                 });

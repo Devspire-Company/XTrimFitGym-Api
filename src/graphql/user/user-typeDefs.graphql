@@ -115,6 +115,8 @@ input UpdateUserInput {
 
 # Queries
 type Query {
+	"""Current user from Authorization (JWT or Clerk session token)."""
+	me: User
 	getUser(id: ID!): User
 	getUsers(role: RoleType): [User]
 }

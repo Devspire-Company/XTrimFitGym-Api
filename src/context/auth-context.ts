@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import { Request, Response } from 'express';
 import z from 'zod';
 import jwt from 'jsonwebtoken';
-import { RoleType } from '../database/models/user/user-schema.js';
+import { verifyToken, createClerkClient } from '@clerk/backend';
+import User, { RoleType } from '../database/models/user/user-schema.js';
 
 export interface IAuthContext {
 	db: typeof mongoose;
@@ -13,7 +14,7 @@ export interface IAuthContext {
 	};
 }
 
-function parseToken(token?: string) {
+function parseJwtToken(token?: string) {
 	if (!token) return null;
 
 	try {
@@ -26,9 +27,51 @@ function parseToken(token?: string) {
 			.safeParse(decoded);
 
 		return payload.success ? payload.data : null;
-	} catch (error) {
+	} catch {
 		return null;
 	}
+}
+
+function escapeRegex(s: string) {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role: RoleType } | null> {
+	const secret = process.env.CLERK_SECRET_KEY;
+	if (!secret) return null;
+
+	try {
+		const payload = await verifyToken(bearerToken, { secretKey: secret });
+		const sub = payload.sub;
+		if (!sub) return null;
+
+		let doc = await User.findOne({ clerkId: sub }).lean();
+		if (doc) {
+			return { id: doc._id!.toString(), role: doc.role as RoleType };
+		}
+
+		const clerk = createClerkClient({ secretKey: secret });
+		const cu = await clerk.users.getUser(sub);
+		const email =
+			cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
+			cu.emailAddresses[0]?.emailAddress;
+		if (!email) return null;
+
+		doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
+		if (!doc) return null;
+
+		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+		return { id: doc._id!.toString(), role: doc.role as RoleType };
+	} catch {
+		return null;
+	}
+}
+
+async function resolveUser(bearerToken: string | undefined) {
+	if (!bearerToken) return null;
+	const fromJwt = parseJwtToken(bearerToken);
+	if (fromJwt) return fromJwt;
+	return resolveClerkUser(bearerToken);
 }
 
 const authContext = async ({
@@ -38,15 +81,13 @@ const authContext = async ({
 	req: Request;
 	res: Response;
 }): Promise<IAuthContext> => {
-	// Get token from cookie or Authorization header
 	const tokenFromCookie = req.cookies?.token;
 	const authHeader = req.headers.authorization || req.headers.Authorization;
 	const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
 	const token = tokenFromCookie || tokenFromHeader;
 
-	const user = parseToken(token);
+	const user = await resolveUser(token);
 
-	// Debug: Log authentication status only in development
 	if (!user && process.env.NODE_ENV !== 'production') {
 		console.log('🔒 No authenticated user found');
 		console.log('  - Cookie token:', tokenFromCookie ? 'Present' : 'Missing');
@@ -62,12 +103,11 @@ const authContext = async ({
 		auth: {
 			user,
 			logIn: (args: { id: string; role: RoleType }) => {
-				const token = jwt.sign(args, process.env.JWT_SIKRIT!);
-				// Remove domain restriction to work with IP addresses and different origins
-				res.cookie('token', token, {
+				const t = jwt.sign(args, process.env.JWT_SIKRIT!);
+				res.cookie('token', t, {
 					httpOnly: true,
-					secure: false, // Set to true in production with HTTPS
-					sameSite: 'lax', // Helps with cross-origin requests
+					secure: false,
+					sameSite: 'lax',
 					expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
 					path: '/',
 				});
