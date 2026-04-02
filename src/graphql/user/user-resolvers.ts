@@ -5,6 +5,7 @@ import User from '../../database/models/user/user-schema.js';
 import { Resolvers } from '../../types/types.js';
 import type { IUser } from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
+import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -71,29 +72,6 @@ const mapUserToGraphQL = (
 		createdAt: user.createdAt?.toISOString(),
 		updatedAt: user.updatedAt?.toISOString(),
 	};
-};
-
-// Helper function to generate a unique 8-digit attendanceId
-const generateUniqueAttendanceId = async (): Promise<number> => {
-	const min = 10000000; // Minimum 8-digit number
-	const max = 99999999; // Maximum 8-digit number
-	const maxRetries = 100; // Maximum number of retries to avoid infinite loop
-
-	for (let attempt = 0; attempt < maxRetries; attempt++) {
-		// Generate a random 8-digit number
-		const attendanceId = Math.floor(Math.random() * (max - min + 1)) + min;
-
-		// Check if this attendanceId already exists
-		const existingUser = await User.findOne({ attendanceId }).lean();
-		if (!existingUser) {
-			return attendanceId;
-		}
-	}
-
-	// If we couldn't find a unique ID after maxRetries, throw an error
-	throw new Error(
-		'Unable to generate unique attendanceId. Please try again or contact support.'
-	);
 };
 
 const userResolvers: Resolvers = {

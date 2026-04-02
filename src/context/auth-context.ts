@@ -1,9 +1,12 @@
+import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { Request, Response } from 'express';
 import z from 'zod';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { verifyToken, createClerkClient } from '@clerk/backend';
 import User, { RoleType } from '../database/models/user/user-schema.js';
+import { generateUniqueAttendanceId } from '../database/generateUniqueAttendanceId.js';
 
 export interface IAuthContext {
 	db: typeof mongoose;
@@ -36,6 +39,79 @@ function escapeRegex(s: string) {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function roleFromPublicMetadata(meta: unknown): RoleType | null {
+	if (!meta || typeof meta !== 'object') return null;
+	const r = (meta as Record<string, unknown>).role;
+	if (r === 'admin' || r === 'coach' || r === 'member') return r;
+	return null;
+}
+
+async function resolveProvisionRole(normalizedEmail: string): Promise<RoleType> {
+	const adminEmails = (process.env.CLERK_ADMIN_EMAILS ?? '')
+		.split(',')
+		.map((s) => s.trim().toLowerCase())
+		.filter(Boolean);
+	if (adminEmails.length > 0 && adminEmails.includes(normalizedEmail)) {
+		return 'admin';
+	}
+	const total = await User.countDocuments();
+	if (total === 0) {
+		return 'admin';
+	}
+	return 'member';
+}
+
+type ClerkUserResource = Awaited<ReturnType<ReturnType<typeof createClerkClient>['users']['getUser']>>;
+
+async function provisionClerkUser(
+	sub: string,
+	cu: ClerkUserResource,
+	primaryEmail: string
+): Promise<{ id: string; role: RoleType } | null> {
+	const normalizedEmail = primaryEmail.trim().toLowerCase();
+
+	let firstName = (cu.firstName || '').trim();
+	let lastName = (cu.lastName || '').trim();
+	if (!firstName && !lastName && cu.username) {
+		firstName = String(cu.username).trim();
+	}
+	if (!firstName) {
+		firstName = normalizedEmail.split('@')[0] || 'User';
+	}
+	if (!lastName) {
+		lastName = '-';
+	}
+
+	const fromMeta = roleFromPublicMetadata(cu.publicMetadata);
+	const role: RoleType = fromMeta ?? (await resolveProvisionRole(normalizedEmail));
+
+	const hashedPassword = await bcrypt.hash(crypto.randomBytes(48).toString('hex'), 10);
+	const attendanceId = await generateUniqueAttendanceId();
+
+	try {
+		const doc = await User.create({
+			firstName,
+			lastName,
+			email: normalizedEmail,
+			password: hashedPassword,
+			role,
+			clerkId: sub,
+			gender: 'Prefer not to say',
+			attendanceId,
+		});
+		return { id: doc._id!.toString(), role: doc.role as RoleType };
+	} catch (err: unknown) {
+		const code = err && typeof err === 'object' && 'code' in err ? (err as { code: number }).code : 0;
+		if (code === 11000) {
+			const again = await User.findOne({ clerkId: sub }).lean();
+			if (again) {
+				return { id: again._id!.toString(), role: again.role as RoleType };
+			}
+		}
+		throw err;
+	}
+}
+
 async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role: RoleType } | null> {
 	const secret = process.env.CLERK_SECRET_KEY;
 	if (!secret) return null;
@@ -58,10 +134,12 @@ async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role
 		if (!email) return null;
 
 		doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
-		if (!doc) return null;
+		if (doc) {
+			await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+			return { id: doc._id!.toString(), role: doc.role as RoleType };
+		}
 
-		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
-		return { id: doc._id!.toString(), role: doc.role as RoleType };
+		return provisionClerkUser(sub, cu, email);
 	} catch {
 		return null;
 	}
