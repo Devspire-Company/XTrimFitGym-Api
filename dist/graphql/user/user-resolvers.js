@@ -3,8 +3,6 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../../database/models/user/user-schema.js';
-import AdminCreateVerification from '../../database/models/admin-create-verification.js';
-import { sendAdminCreateVerificationEmail } from '../../lib/mail.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
 // Helper function to convert Mongoose document to GraphQL User type
@@ -82,27 +80,6 @@ const userResolvers = {
         },
     },
     Mutation: {
-        requestCreateAdminVerificationCode: async (_, __, context) => {
-            const userId = context.auth.user?.id;
-            const userRole = context.auth.user?.role;
-            if (!userId || userRole !== 'admin') {
-                throw new Error('Unauthorized: Only admins can request this code');
-            }
-            const actor = await User.findById(userId);
-            if (!actor?.email) {
-                throw new Error('Your account has no email on file');
-            }
-            await AdminCreateVerification.deleteMany({ userId: actor._id });
-            const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-            const codeHash = await bcrypt.hash(code, 10);
-            await AdminCreateVerification.create({
-                userId: actor._id,
-                codeHash,
-                expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-            });
-            await sendAdminCreateVerificationEmail(actor.email, code);
-            return true;
-        },
         login: async (_, { input }, context) => {
             const { email, password } = input;
             const normalizedEmail = (email || '').trim().toLowerCase();
@@ -154,31 +131,13 @@ const userResolvers = {
             };
         },
         createUser: async (_, { input }, context) => {
-            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, adminVerificationCode, } = input;
-            // Check if user is authenticated
+            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, } = input;
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
-            // Only admins can create admin accounts (confirmed via email code)
             if (role === 'admin') {
                 if (!userId || userRole !== 'admin') {
                     throw new Error('Unauthorized: Only admins can create admin accounts');
                 }
-                const code = (adminVerificationCode || '').trim().replace(/\s/g, '');
-                if (!code) {
-                    throw new Error('Email verification code is required. Click “Send verification code” first (requestCreateAdminVerificationCode).');
-                }
-                const uid = new mongoose.Types.ObjectId(userId);
-                const record = await AdminCreateVerification.findOne({ userId: uid }).sort({
-                    createdAt: -1,
-                });
-                if (!record || record.expiresAt.getTime() < Date.now()) {
-                    throw new Error('Invalid or expired verification code. Request a new code.');
-                }
-                const ok = await bcrypt.compare(code, record.codeHash);
-                if (!ok) {
-                    throw new Error('Invalid verification code');
-                }
-                await AdminCreateVerification.deleteMany({ userId: uid });
             }
             // Check if user already exists
             const existingUser = await User.findOne({ email });

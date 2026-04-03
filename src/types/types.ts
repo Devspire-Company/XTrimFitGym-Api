@@ -247,8 +247,6 @@ export type CreateSubscriptionRequestInput = {
 };
 
 export type CreateUserInput = {
-  /** Required when role is admin: code from requestCreateAdminVerificationCode (sent to your email). */
-  adminVerificationCode?: InputMaybe<Scalars['String']['input']>;
   agreedToLiabilityWaiver?: InputMaybe<Scalars['Boolean']['input']>;
   agreedToPrivacyPolicy?: InputMaybe<Scalars['Boolean']['input']>;
   agreedToTermsAndConditions?: InputMaybe<Scalars['Boolean']['input']>;
@@ -457,8 +455,6 @@ export type Mutation = {
   purchaseMembership: MembershipTransaction;
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
-  /** Sends a one-time code to the signed-in admin's email to authorize createUser(role: admin). */
-  requestCreateAdminVerificationCode: Scalars['Boolean']['output'];
   requestToJoinClassSession: Session;
   respondToClassInvitation: Session;
   updateCoachRating: CoachRating;
@@ -1788,7 +1784,6 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
-  requestCreateAdminVerificationCode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   requestToJoinClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRequestToJoinClassSessionArgs, 'sessionId'>>;
   respondToClassInvitation?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRespondToClassInvitationArgs, 'accept' | 'sessionId'>>;
   updateCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationUpdateCoachRatingArgs, 'id'>>;

@@ -97,8 +97,6 @@ input CreateUserInput {
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 	currentPassword: String
-	"""Required when role is admin: code from requestCreateAdminVerificationCode (sent to your email)."""
-	adminVerificationCode: String
 }
 
 input UpdateUserInput {
@@ -142,8 +140,6 @@ type AuthResponse {
 # Mutations
 type Mutation {
 	login(input: LoginInput!): AuthResponse!
-	"""Sends a one-time code to the signed-in admin's email to authorize createUser(role: admin)."""
-	requestCreateAdminVerificationCode: Boolean!
 	createUser(input: CreateUserInput!): AuthResponse!
 	updateUser(id: ID!, input: UpdateUserInput!): User
 	deleteUser(id: ID!): Boolean
