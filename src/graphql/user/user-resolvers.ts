@@ -237,8 +237,11 @@ const userResolvers: Resolvers = {
 				throw new Error('User with this email already exists');
 			}
 
-			// Hash password
-			const hashedPassword = await bcrypt.hash(password, 10);
+			// Hash password (legacy auth) or generate one for Clerk-only users.
+			const hashedPassword =
+				password && password.trim().length > 0
+					? await bcrypt.hash(password, 10)
+					: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
 
 			// Generate unique attendanceId
 			const attendanceId = await generateUniqueAttendanceId();

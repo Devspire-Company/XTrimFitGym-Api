@@ -154,7 +154,7 @@ const userResolvers = {
             };
         },
         createUser: async (_, { input }, context) => {
-            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, currentPassword, adminVerificationCode, } = input;
+            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, adminVerificationCode, } = input;
             // Check if user is authenticated
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
@@ -185,8 +185,10 @@ const userResolvers = {
             if (existingUser) {
                 throw new Error('User with this email already exists');
             }
-            // Hash password
-            const hashedPassword = await bcrypt.hash(password, 10);
+            // Hash password (legacy auth) or generate one for Clerk-only users.
+            const hashedPassword = password && password.trim().length > 0
+                ? await bcrypt.hash(password, 10)
+                : await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
             // Generate unique attendanceId
             const attendanceId = await generateUniqueAttendanceId();
             // Create user

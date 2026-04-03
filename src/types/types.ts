@@ -262,7 +262,11 @@ export type CreateUserInput = {
   lastName: Scalars['String']['input'];
   membershipDetails?: InputMaybe<MemberDetailsInput>;
   middleName?: InputMaybe<Scalars['String']['input']>;
-  password: Scalars['String']['input'];
+  /**
+   * Password is optional for Clerk-based admin creation (backend generates one).
+   * Legacy email/password auth still uses this field.
+   */
+  password?: InputMaybe<Scalars['String']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
   role: RoleType;
 };
