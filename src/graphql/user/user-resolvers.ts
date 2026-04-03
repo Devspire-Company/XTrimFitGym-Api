@@ -7,6 +7,7 @@ import { Resolvers } from '../../types/types.js';
 import type { IUser } from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
+import { provisionClerkUserForAdmin } from '../../lib/clerk-provision.js';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -193,6 +194,15 @@ const userResolvers: Resolvers = {
 				throw new Error('User with this email already exists');
 			}
 
+			let clerkId: string | undefined;
+			if (role === 'admin') {
+				clerkId = await provisionClerkUserForAdmin({
+					email,
+					firstName,
+					lastName,
+				});
+			}
+
 			// Hash password (legacy auth) or generate one for Clerk-only users.
 			const hashedPassword =
 				password && password.trim().length > 0
@@ -209,6 +219,7 @@ const userResolvers: Resolvers = {
 				lastName,
 				email,
 				password: hashedPassword,
+				...(clerkId ? { clerkId } : {}),
 				role,
 				phoneNumber: phoneNumber ? parseInt(phoneNumber) : undefined,
 				dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
