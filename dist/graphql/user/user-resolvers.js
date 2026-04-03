@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import User from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
-import { provisionClerkUserForAdmin } from '../../lib/clerk-provision.js';
+import { provisionClerkUserForAdmin, provisionClerkUserForCoach, } from '../../lib/clerk-provision.js';
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (user) => {
     return {
@@ -135,9 +135,11 @@ const userResolvers = {
             const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, } = input;
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
-            if (role === 'admin') {
+            if (role === 'admin' || role === 'coach') {
                 if (!userId || userRole !== 'admin') {
-                    throw new Error('Unauthorized: Only admins can create admin accounts');
+                    throw new Error(role === 'admin'
+                        ? 'Unauthorized: Only admins can create admin accounts'
+                        : 'Unauthorized: Only admins can create coach accounts');
                 }
             }
             // Check if user already exists
@@ -151,6 +153,27 @@ const userResolvers = {
                     email,
                     firstName,
                     lastName,
+                });
+            }
+            else if (role === 'coach') {
+                clerkId = await provisionClerkUserForCoach({
+                    email,
+                    firstName,
+                    lastName,
+                    middleName,
+                    phoneNumber,
+                    gender,
+                    dateOfBirth,
+                    coachDetails: coachDetails
+                        ? {
+                            specialization: coachDetails.specialization ?? undefined,
+                            yearsOfExperience: coachDetails.yearsOfExperience ?? undefined,
+                            teachingDate: coachDetails.teachingDate ?? undefined,
+                            teachingTime: coachDetails.teachingTime ?? undefined,
+                            clientLimit: coachDetails.clientLimit ?? undefined,
+                            moreDetails: coachDetails.moreDetails ?? undefined,
+                        }
+                        : undefined,
                 });
             }
             // Hash password (legacy auth) or generate one for Clerk-only users.

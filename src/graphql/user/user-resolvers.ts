@@ -7,7 +7,10 @@ import { Resolvers } from '../../types/types.js';
 import type { IUser } from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
-import { provisionClerkUserForAdmin } from '../../lib/clerk-provision.js';
+import {
+	provisionClerkUserForAdmin,
+	provisionClerkUserForCoach,
+} from '../../lib/clerk-provision.js';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -182,9 +185,13 @@ const userResolvers: Resolvers = {
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 
-			if (role === 'admin') {
+			if (role === 'admin' || role === 'coach') {
 				if (!userId || userRole !== 'admin') {
-					throw new Error('Unauthorized: Only admins can create admin accounts');
+					throw new Error(
+						role === 'admin'
+							? 'Unauthorized: Only admins can create admin accounts'
+							: 'Unauthorized: Only admins can create coach accounts'
+					);
 				}
 			}
 
@@ -200,6 +207,27 @@ const userResolvers: Resolvers = {
 					email,
 					firstName,
 					lastName,
+				});
+			} else if (role === 'coach') {
+				const cd = coachDetails;
+				clerkId = await provisionClerkUserForCoach({
+					email,
+					firstName,
+					lastName,
+					middleName,
+					phoneNumber,
+					gender,
+					dateOfBirth,
+					coachDetails: cd
+						? {
+								specialization: cd.specialization?.filter((s): s is string => s != null),
+								yearsOfExperience: cd.yearsOfExperience ?? undefined,
+								teachingDate: cd.teachingDate?.filter((s): s is string => s != null),
+								teachingTime: cd.teachingTime?.filter((s): s is string => s != null),
+								clientLimit: cd.clientLimit ?? undefined,
+								moreDetails: cd.moreDetails ?? undefined,
+						  }
+						: undefined,
 				});
 			}
 
