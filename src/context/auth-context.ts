@@ -4,12 +4,13 @@ import z from 'zod';
 import jwt from 'jsonwebtoken';
 import { verifyToken, createClerkClient } from '@clerk/backend';
 import User, { RoleType } from '../database/models/user/user-schema.js';
-import { tryProvisionMemberFromClerk } from '../lib/clerk-member-provision.js';
 
 export interface IAuthContext {
 	db: typeof mongoose;
 	auth: {
 		user: { id: string; role: RoleType } | null;
+		/** Clerk user id when the Bearer token is a valid Clerk session JWT (even if no Mongo user yet). */
+		clerkSub: string | null;
 		logIn: (args: { id: string; role: RoleType }) => void;
 		logOut: () => void;
 	};
@@ -37,18 +38,37 @@ function escapeRegex(s: string) {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role: RoleType } | null> {
+async function resolveAuthFromBearer(token: string | undefined): Promise<{
+	user: { id: string; role: RoleType } | null;
+	clerkSub: string | null;
+}> {
+	if (!token) {
+		return { user: null, clerkSub: null };
+	}
+
+	const fromJwt = parseJwtToken(token);
+	if (fromJwt) {
+		return { user: fromJwt, clerkSub: null };
+	}
+
 	const secret = process.env.CLERK_SECRET_KEY;
-	if (!secret) return null;
+	if (!secret) {
+		return { user: null, clerkSub: null };
+	}
 
 	try {
-		const payload = await verifyToken(bearerToken, { secretKey: secret });
+		const payload = await verifyToken(token, { secretKey: secret });
 		const sub = payload.sub;
-		if (!sub) return null;
+		if (!sub) {
+			return { user: null, clerkSub: null };
+		}
 
 		let doc = await User.findOne({ clerkId: sub }).lean();
 		if (doc) {
-			return { id: doc._id!.toString(), role: doc.role as RoleType };
+			return {
+				user: { id: doc._id!.toString(), role: doc.role as RoleType },
+				clerkSub: sub,
+			};
 		}
 
 		const clerk = createClerkClient({ secretKey: secret });
@@ -56,30 +76,23 @@ async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role
 		const email =
 			cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
 			cu.emailAddresses[0]?.emailAddress;
-		if (!email) return null;
+		if (!email) {
+			return { user: null, clerkSub: sub };
+		}
 
 		doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
-		if (doc) {
-			await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
-			return { id: doc._id!.toString(), role: doc.role as RoleType };
+		if (!doc) {
+			return { user: null, clerkSub: sub };
 		}
 
-		const provisioned = await tryProvisionMemberFromClerk(cu, sub);
-		if (provisioned) {
-			return { id: provisioned.id, role: provisioned.role as RoleType };
-		}
-
-		return null;
+		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+		return {
+			user: { id: doc._id!.toString(), role: doc.role as RoleType },
+			clerkSub: sub,
+		};
 	} catch {
-		return null;
+		return { user: null, clerkSub: null };
 	}
-}
-
-async function resolveUser(bearerToken: string | undefined) {
-	if (!bearerToken) return null;
-	const fromJwt = parseJwtToken(bearerToken);
-	if (fromJwt) return fromJwt;
-	return resolveClerkUser(bearerToken);
 }
 
 const authContext = async ({
@@ -94,7 +107,7 @@ const authContext = async ({
 	const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
 	const token = tokenFromCookie || tokenFromHeader;
 
-	const user = await resolveUser(token);
+	const { user, clerkSub } = await resolveAuthFromBearer(token);
 
 	if (!user && process.env.NODE_ENV !== 'production') {
 		console.log('🔒 No authenticated user found');
@@ -104,12 +117,16 @@ const authContext = async ({
 		if (tokenFromHeader) {
 			console.log('  - Token length:', tokenFromHeader.length);
 		}
+		if (clerkSub) {
+			console.log('  - Clerk sub present (no Mongo user yet):', clerkSub.slice(0, 8) + '…');
+		}
 	}
 
 	return {
 		db: mongoose,
 		auth: {
 			user,
+			clerkSub,
 			logIn: (args: { id: string; role: RoleType }) => {
 				const t = jwt.sign(args, process.env.JWT_SIKRIT!);
 				res.cookie('token', t, {
