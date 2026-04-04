@@ -105,7 +105,8 @@ const authContext = async ({
 	const tokenFromCookie = req.cookies?.token;
 	const authHeader = req.headers.authorization || req.headers.Authorization;
 	const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
-	const token = tokenFromCookie || tokenFromHeader;
+	// Prefer Bearer (mobile / Clerk) over cookie so a stale cookie cannot hide a valid Clerk token.
+	const token = tokenFromHeader || tokenFromCookie;
 
 	const { user, clerkSub } = await resolveAuthFromBearer(token);
 
