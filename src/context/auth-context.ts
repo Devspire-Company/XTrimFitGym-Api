@@ -4,6 +4,7 @@ import z from 'zod';
 import jwt from 'jsonwebtoken';
 import { verifyToken, createClerkClient } from '@clerk/backend';
 import User, { RoleType } from '../database/models/user/user-schema.js';
+import { tryProvisionMemberFromClerk } from '../lib/clerk-member-provision.js';
 
 export interface IAuthContext {
 	db: typeof mongoose;
@@ -58,10 +59,17 @@ async function resolveClerkUser(bearerToken: string): Promise<{ id: string; role
 		if (!email) return null;
 
 		doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
-		if (!doc) return null;
+		if (doc) {
+			await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+			return { id: doc._id!.toString(), role: doc.role as RoleType };
+		}
 
-		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
-		return { id: doc._id!.toString(), role: doc.role as RoleType };
+		const provisioned = await tryProvisionMemberFromClerk(cu, sub);
+		if (provisioned) {
+			return { id: provisioned.id, role: provisioned.role as RoleType };
+		}
+
+		return null;
 	} catch {
 		return null;
 	}
