@@ -293,6 +293,10 @@ export type DateRangeInput = {
 export type DirectSubscribeInput = {
   memberId: Scalars['ID']['input'];
   membershipId: Scalars['ID']['input'];
+  /** Override plan length (months from startedAt). Defaults to the plan's monthDuration. */
+  monthDuration?: InputMaybe<Scalars['Int']['input']>;
+  /** When the subscription started (e.g. legacy walk-in). Defaults to now. ISO-8601 string. */
+  startedAt?: InputMaybe<Scalars['String']['input']>;
 };
 
 export enum DurationType {
@@ -414,6 +418,8 @@ export type MembershipTransaction = {
   id: Scalars['ID']['output'];
   membership?: Maybe<Membership>;
   membershipId: Scalars['ID']['output'];
+  /** Total months for this subscription from startedAt (matches expiry; may differ from plan default). */
+  monthDuration: Scalars['Int']['output'];
   priceAtPurchase: Scalars['Float']['output'];
   startedAt: Scalars['String']['output'];
   status: TransactionStatus;
@@ -451,10 +457,12 @@ export type Mutation = {
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
   directSubscribeMember: MembershipTransaction;
   inviteClientsToClassSession: Session;
+  leaveClassSession: Session;
   login: AuthResponse;
   purchaseMembership: MembershipTransaction;
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
+  removeClientFromClassSession: Session;
   requestToJoinClassSession: Session;
   respondToClassInvitation: Session;
   updateCoachRating: CoachRating;
@@ -462,6 +470,7 @@ export type Mutation = {
   updateEquipment: Equipment;
   updateGoal: Goal;
   updateMembership: Membership;
+  updateMembershipTransactionDuration: MembershipTransaction;
   updateProgressRating: ProgressRating;
   updateSession: Session;
   updateUser?: Maybe<User>;
@@ -620,6 +629,11 @@ export type MutationInviteClientsToClassSessionArgs = {
 };
 
 
+export type MutationLeaveClassSessionArgs = {
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type MutationLoginArgs = {
   input: LoginInput;
 };
@@ -637,6 +651,12 @@ export type MutationRejectSubscriptionRequestArgs = {
 
 export type MutationRemoveClientArgs = {
   clientId: Scalars['ID']['input'];
+};
+
+
+export type MutationRemoveClientFromClassSessionArgs = {
+  clientId: Scalars['ID']['input'];
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -679,6 +699,11 @@ export type MutationUpdateGoalArgs = {
 export type MutationUpdateMembershipArgs = {
   id: Scalars['ID']['input'];
   input: UpdateMembershipInput;
+};
+
+
+export type MutationUpdateMembershipTransactionDurationArgs = {
+  input: UpdateMembershipTransactionDurationInput;
 };
 
 
@@ -1188,6 +1213,12 @@ export type UpdateMembershipInput = {
   status?: InputMaybe<MembershipStatus>;
 };
 
+export type UpdateMembershipTransactionDurationInput = {
+  /** New total months from the transaction's startedAt (recalculates expiresAt). */
+  monthDuration: Scalars['Int']['input'];
+  transactionId: Scalars['ID']['input'];
+};
+
 export type UpdateProgressRatingInput = {
   comment?: InputMaybe<Scalars['String']['input']>;
   rating?: InputMaybe<Scalars['Int']['input']>;
@@ -1487,6 +1518,7 @@ export type ResolversTypes = {
   UpdateEquipmentInput: ResolverTypeWrapper<Partial<UpdateEquipmentInput>>;
   UpdateGoalInput: ResolverTypeWrapper<Partial<UpdateGoalInput>>;
   UpdateMembershipInput: ResolverTypeWrapper<Partial<UpdateMembershipInput>>;
+  UpdateMembershipTransactionDurationInput: ResolverTypeWrapper<Partial<UpdateMembershipTransactionDurationInput>>;
   UpdateProgressRatingInput: ResolverTypeWrapper<Partial<UpdateProgressRatingInput>>;
   UpdateSessionInput: ResolverTypeWrapper<Partial<UpdateSessionInput>>;
   UpdateUserInput: ResolverTypeWrapper<Partial<UpdateUserInput>>;
@@ -1566,6 +1598,7 @@ export type ResolversParentTypes = {
   UpdateEquipmentInput: Partial<UpdateEquipmentInput>;
   UpdateGoalInput: Partial<UpdateGoalInput>;
   UpdateMembershipInput: Partial<UpdateMembershipInput>;
+  UpdateMembershipTransactionDurationInput: Partial<UpdateMembershipTransactionDurationInput>;
   UpdateProgressRatingInput: Partial<UpdateProgressRatingInput>;
   UpdateSessionInput: Partial<UpdateSessionInput>;
   UpdateUserInput: Partial<UpdateUserInput>;
@@ -1744,6 +1777,7 @@ export type MembershipTransactionResolvers<ContextType = IAuthContext, ParentTyp
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   membership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType>;
   membershipId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  monthDuration?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   priceAtPurchase?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   startedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['TransactionStatus'], ParentType, ContextType>;
@@ -1780,10 +1814,12 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
   directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
   inviteClientsToClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationInviteClientsToClassSessionArgs, 'clientIds' | 'sessionId'>>;
+  leaveClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationLeaveClassSessionArgs, 'sessionId'>>;
   login?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationLoginArgs, 'input'>>;
   purchaseMembership?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationPurchaseMembershipArgs, 'input'>>;
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
+  removeClientFromClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRemoveClientFromClassSessionArgs, 'clientId' | 'sessionId'>>;
   requestToJoinClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRequestToJoinClassSessionArgs, 'sessionId'>>;
   respondToClassInvitation?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRespondToClassInvitationArgs, 'accept' | 'sessionId'>>;
   updateCoachRating?: Resolver<ResolversTypes['CoachRating'], ParentType, ContextType, RequireFields<MutationUpdateCoachRatingArgs, 'id'>>;
@@ -1791,6 +1827,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   updateEquipment?: Resolver<ResolversTypes['Equipment'], ParentType, ContextType, RequireFields<MutationUpdateEquipmentArgs, 'id' | 'input'>>;
   updateGoal?: Resolver<ResolversTypes['Goal'], ParentType, ContextType, RequireFields<MutationUpdateGoalArgs, 'id' | 'input'>>;
   updateMembership?: Resolver<ResolversTypes['Membership'], ParentType, ContextType, RequireFields<MutationUpdateMembershipArgs, 'id' | 'input'>>;
+  updateMembershipTransactionDuration?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationUpdateMembershipTransactionDurationArgs, 'input'>>;
   updateProgressRating?: Resolver<ResolversTypes['ProgressRating'], ParentType, ContextType, RequireFields<MutationUpdateProgressRatingArgs, 'id' | 'input'>>;
   updateSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationUpdateSessionArgs, 'id' | 'input'>>;
   updateUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationUpdateUserArgs, 'id' | 'input'>>;

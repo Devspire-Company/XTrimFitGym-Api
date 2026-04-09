@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { createClerkClient } from '@clerk/backend';
 import User from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
@@ -135,6 +136,7 @@ const userResolvers = {
             const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, } = input;
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
+            const clerkSub = context.auth.clerkSub;
             if (role === 'admin' || role === 'coach') {
                 if (!userId || userRole !== 'admin') {
                     throw new Error(role === 'admin'
@@ -156,6 +158,7 @@ const userResolvers = {
                 });
             }
             else if (role === 'coach') {
+                const cd = coachDetails;
                 clerkId = await provisionClerkUserForCoach({
                     email,
                     firstName,
@@ -164,17 +167,43 @@ const userResolvers = {
                     phoneNumber,
                     gender,
                     dateOfBirth,
-                    coachDetails: coachDetails
+                    coachDetails: cd
                         ? {
-                            specialization: coachDetails.specialization ?? undefined,
-                            yearsOfExperience: coachDetails.yearsOfExperience ?? undefined,
-                            teachingDate: coachDetails.teachingDate ?? undefined,
-                            teachingTime: coachDetails.teachingTime ?? undefined,
-                            clientLimit: coachDetails.clientLimit ?? undefined,
-                            moreDetails: coachDetails.moreDetails ?? undefined,
+                            specialization: cd.specialization?.filter((s) => s != null),
+                            yearsOfExperience: cd.yearsOfExperience ?? undefined,
+                            teachingDate: cd.teachingDate?.filter((s) => s != null),
+                            teachingTime: cd.teachingTime?.filter((s) => s != null),
+                            clientLimit: cd.clientLimit ?? undefined,
+                            moreDetails: cd.moreDetails ?? undefined,
                         }
                         : undefined,
                 });
+            }
+            else if (role === 'member' && clerkSub) {
+                const secret = process.env.CLERK_SECRET_KEY;
+                if (!secret) {
+                    throw new Error('CLERK_SECRET_KEY is not set; cannot complete member registration.');
+                }
+                const clerk = createClerkClient({ secretKey: secret });
+                const cu = await clerk.users.getUser(clerkSub);
+                const clerkEmail = cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
+                    cu.emailAddresses[0]?.emailAddress;
+                if (!clerkEmail) {
+                    throw new Error('Your Clerk account has no verified email.');
+                }
+                if (email.trim().toLowerCase() !== clerkEmail.trim().toLowerCase()) {
+                    throw new Error('Email must match your Clerk sign-in email.');
+                }
+                const dupeClerk = await User.findOne({ clerkId: clerkSub });
+                if (dupeClerk) {
+                    throw new Error('This sign-in is already linked to a gym account.');
+                }
+                clerkId = clerkSub;
+            }
+            else if (role === 'member') {
+                if (!password || password.trim().length < 6) {
+                    throw new Error('Password must be at least 6 characters');
+                }
             }
             // Hash password (legacy auth) or generate one for Clerk-only users.
             const hashedPassword = password && password.trim().length > 0

@@ -36,6 +36,10 @@ input RejectSubscriptionRequestInput {
 input DirectSubscribeInput {
 	memberId: ID!
 	membershipId: ID!
+	"""Override plan length (months from startedAt). Defaults to the plan's monthDuration."""
+	monthDuration: Int
+	"""When the subscription started (e.g. legacy walk-in). Defaults to now. ISO-8601 string."""
+	startedAt: String
 }
 
 # Extend Query type

@@ -22,6 +22,12 @@ const membershipTransactionSchema = new Schema({
         type: Date,
         required: true,
     },
+    /** Total subscription length in months from startedAt (may differ from catalog plan). */
+    monthDuration: {
+        type: Number,
+        required: false,
+        min: 1,
+    },
     status: {
         type: String,
         enum: ['Active', 'Canceled', 'Expired'],

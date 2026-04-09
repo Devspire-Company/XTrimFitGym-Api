@@ -175,6 +175,10 @@ extend type Mutation {
 	respondToClassInvitation(sessionId: ID!, accept: Boolean!): Session!
 	# Coach accepts or rejects a member's join request
 	coachRespondToJoinRequest(sessionId: ID!, clientId: ID!, accept: Boolean!): Session!
+	# Coach removes a member from a group class roster (scheduled only)
+	removeClientFromClassSession(sessionId: ID!, clientId: ID!): Session!
+	# Member leaves a group class, cancels a pending request, or declines an invite
+	leaveClassSession(sessionId: ID!): Session!
 }
 
 # Input for creating session from template

@@ -23,49 +23,59 @@ function parseJwtToken(token) {
 function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-async function resolveClerkUser(bearerToken) {
+async function resolveAuthFromBearer(token) {
+    if (!token) {
+        return { user: null, clerkSub: null };
+    }
+    const fromJwt = parseJwtToken(token);
+    if (fromJwt) {
+        return { user: fromJwt, clerkSub: null };
+    }
     const secret = process.env.CLERK_SECRET_KEY;
-    if (!secret)
-        return null;
+    if (!secret) {
+        return { user: null, clerkSub: null };
+    }
     try {
-        const payload = await verifyToken(bearerToken, { secretKey: secret });
+        const payload = await verifyToken(token, { secretKey: secret });
         const sub = payload.sub;
-        if (!sub)
-            return null;
+        if (!sub) {
+            return { user: null, clerkSub: null };
+        }
         let doc = await User.findOne({ clerkId: sub }).lean();
         if (doc) {
-            return { id: doc._id.toString(), role: doc.role };
+            return {
+                user: { id: doc._id.toString(), role: doc.role },
+                clerkSub: sub,
+            };
         }
         const clerk = createClerkClient({ secretKey: secret });
         const cu = await clerk.users.getUser(sub);
         const email = cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
             cu.emailAddresses[0]?.emailAddress;
-        if (!email)
-            return null;
+        if (!email) {
+            return { user: null, clerkSub: sub };
+        }
         doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
-        if (!doc)
-            return null;
+        if (!doc) {
+            return { user: null, clerkSub: sub };
+        }
         await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
-        return { id: doc._id.toString(), role: doc.role };
+        return {
+            user: { id: doc._id.toString(), role: doc.role },
+            clerkSub: sub,
+        };
     }
     catch {
-        return null;
+        return { user: null, clerkSub: null };
     }
-}
-async function resolveUser(bearerToken) {
-    if (!bearerToken)
-        return null;
-    const fromJwt = parseJwtToken(bearerToken);
-    if (fromJwt)
-        return fromJwt;
-    return resolveClerkUser(bearerToken);
 }
 const authContext = async ({ req, res, }) => {
     const tokenFromCookie = req.cookies?.token;
     const authHeader = req.headers.authorization || req.headers.Authorization;
     const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
-    const token = tokenFromCookie || tokenFromHeader;
-    const user = await resolveUser(token);
+    // Prefer Bearer (mobile / Clerk) over cookie so a stale cookie cannot hide a valid Clerk token.
+    const token = tokenFromHeader || tokenFromCookie;
+    const { user, clerkSub } = await resolveAuthFromBearer(token);
     if (!user && process.env.NODE_ENV !== 'production') {
         console.log('🔒 No authenticated user found');
         console.log('  - Cookie token:', tokenFromCookie ? 'Present' : 'Missing');
@@ -74,11 +84,15 @@ const authContext = async ({ req, res, }) => {
         if (tokenFromHeader) {
             console.log('  - Token length:', tokenFromHeader.length);
         }
+        if (clerkSub) {
+            console.log('  - Clerk sub present (no Mongo user yet):', clerkSub.slice(0, 8) + '…');
+        }
     }
     return {
         db: mongoose,
         auth: {
             user,
+            clerkSub,
             logIn: (args) => {
                 const t = jwt.sign(args, process.env.JWT_SIKRIT);
                 res.cookie('token', t, {

@@ -9,6 +9,11 @@ import {
 	onSubscriptionCreated,
 	onSubscriptionSwitched,
 } from '../../database/models/analytics/analytics-helper.js';
+import {
+	computeExpiresAtFromStart,
+	planMonthDuration,
+	resolveTransactionMonthDuration,
+} from '../../database/utils/membership-expiry.js';
 
 // Helper to map membership to GraphQL format
 const mapMembershipToGraphQL = (membership: any) => {
@@ -106,10 +111,12 @@ const mapSubscriptionRequestToGraphQL = (request: any, membershipData?: any, mem
 };
 
 const mapTransactionToGraphQL = (transaction: any, membershipData?: any) => {
-	// If membershipData is provided, use it; otherwise use the transaction's membership_id
-	const membership = membershipData 
-		? mapMembershipToGraphQL(membershipData)
-		: transaction.membership_id;
+	const rawPlan =
+		membershipData ||
+		(typeof transaction.membership_id === 'object' && transaction.membership_id?._id
+			? transaction.membership_id
+			: null);
+	const membership = rawPlan ? mapMembershipToGraphQL(rawPlan) : transaction.membership_id;
 
 	return {
 		id: transaction._id.toString(),
@@ -120,17 +127,24 @@ const mapTransactionToGraphQL = (transaction: any, membershipData?: any) => {
 		priceAtPurchase: transaction.priceAtPurchase,
 		startedAt: transaction.startedAt?.toISOString(),
 		expiresAt: transaction.expiresAt?.toISOString(),
+		monthDuration: resolveTransactionMonthDuration(transaction, rawPlan),
 		status: transaction.status?.toUpperCase() || 'ACTIVE',
 		createdAt: transaction.createdAt?.toISOString(),
 		updatedAt: transaction.updatedAt?.toISOString(),
 	};
 };
 
+type CreateMembershipTransactionOptions = {
+	approvedBy?: string;
+	monthDuration?: number;
+	startedAt?: Date;
+};
+
 // Helper function to create membership transaction
 const createMembershipTransaction = async (
 	memberId: string,
 	membershipId: string,
-	approvedBy?: string
+	options?: CreateMembershipTransactionOptions
 ) => {
 	const membership = await Membership.findById(membershipId).lean();
 	if (!membership) {
@@ -172,23 +186,26 @@ const createMembershipTransaction = async (
 		}
 	);
 
-	// Calculate expiry date based on month duration + remaining days
-	const now = new Date();
-	const expiresAt = new Date(now);
-	const monthDuration = membership.monthDuration || 1;
-	expiresAt.setMonth(expiresAt.getMonth() + monthDuration);
-	
-	// Add remaining days from previous subscription
-	if (remainingDays > 0) {
-		expiresAt.setDate(expiresAt.getDate() + remainingDays);
-	}
+	const startedAt =
+		options?.startedAt && !Number.isNaN(options.startedAt.getTime())
+			? options.startedAt
+			: new Date();
+
+	const planMonths = planMonthDuration(membership);
+	const monthDuration =
+		options?.monthDuration != null && options.monthDuration >= 1
+			? options.monthDuration
+			: planMonths;
+
+	const expiresAt = computeExpiresAtFromStart(startedAt, monthDuration, remainingDays);
 
 	const transaction = new MembershipTransaction({
 		client_id: new mongoose.Types.ObjectId(memberId),
 		membership_id: new mongoose.Types.ObjectId(membershipId),
 		priceAtPurchase: membership.monthlyPrice,
-		startedAt: now,
+		startedAt,
 		expiresAt,
+		monthDuration,
 		status: 'Active',
 	});
 
@@ -579,7 +596,7 @@ export default {
 			const transaction = await createMembershipTransaction(
 				request.member_id.toString(),
 				request.membership_id.toString(),
-				userId
+				{ approvedBy: userId }
 			);
 
 			// Update request status
@@ -671,7 +688,16 @@ export default {
 
 		directSubscribeMember: async (
 			_: any,
-			{ input }: { input: { memberId: string; membershipId: string } },
+			{
+				input,
+			}: {
+				input: {
+					memberId: string;
+					membershipId: string;
+					monthDuration?: number;
+					startedAt?: string;
+				};
+			},
 			context: Context
 		) => {
 			// Authorization: Only admin can directly subscribe members
@@ -695,12 +721,24 @@ export default {
 				throw new Error('User is not a member');
 			}
 
+			let startedAt: Date | undefined;
+			if (input.startedAt) {
+				startedAt = new Date(input.startedAt);
+				if (Number.isNaN(startedAt.getTime())) {
+					throw new Error('Invalid startedAt: use a valid ISO-8601 date string');
+				}
+			}
+
+			if (input.monthDuration != null && input.monthDuration < 1) {
+				throw new Error('monthDuration must be at least 1');
+			}
+
 			// Create membership transaction
-			const transaction = await createMembershipTransaction(
-				input.memberId,
-				input.membershipId,
-				userId
-			);
+			const transaction = await createMembershipTransaction(input.memberId, input.membershipId, {
+				approvedBy: userId,
+				monthDuration: input.monthDuration,
+				startedAt,
+			});
 
 			return transaction;
 		},

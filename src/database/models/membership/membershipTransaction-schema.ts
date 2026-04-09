@@ -3,6 +3,7 @@ import mongoose, { Schema } from 'mongoose';
 export type TransactionStatusType = 'Active' | 'Canceled' | 'Expired';
 export interface IMembershipTransaction {
 	status: TransactionStatusType;
+	monthDuration?: number;
 }
 
 const membershipTransactionSchema = new Schema(
@@ -28,6 +29,12 @@ const membershipTransactionSchema = new Schema(
 		expiresAt: {
 			type: Date,
 			required: true,
+		},
+		/** Total subscription length in months from startedAt (may differ from catalog plan). */
+		monthDuration: {
+			type: Number,
+			required: false,
+			min: 1,
 		},
 		status: {
 			type: String,

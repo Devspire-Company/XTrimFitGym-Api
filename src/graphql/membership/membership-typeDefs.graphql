@@ -34,6 +34,8 @@ type MembershipTransaction {
 	priceAtPurchase: Float!
 	startedAt: String!
 	expiresAt: String!
+	"""Total months for this subscription from startedAt (matches expiry; may differ from plan default)."""
+	monthDuration: Int!
 	status: TransactionStatus!
 	createdAt: String
 	updatedAt: String
@@ -79,6 +81,12 @@ input UpdateMembershipInput {
 	monthDuration: Int
 }
 
+input UpdateMembershipTransactionDurationInput {
+	transactionId: ID!
+	"""New total months from the transaction's startedAt (recalculates expiresAt)."""
+	monthDuration: Int!
+}
+
 # Extend Query type
 extend type Query {
 	# Get all available memberships
@@ -103,6 +111,10 @@ extend type Mutation {
 	purchaseMembership(input: PurchaseMembershipInput!): MembershipTransaction!
 	# Cancel membership
 	cancelMembership(transactionId: ID!): Boolean!
+	# Adjust active subscription length (admin only); recalculates expiresAt from startedAt
+	updateMembershipTransactionDuration(
+		input: UpdateMembershipTransactionDurationInput!
+	): MembershipTransaction!
 }
 
 # Extend Subscription type
