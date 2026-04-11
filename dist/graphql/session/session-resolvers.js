@@ -59,6 +59,19 @@ function getEnrollmentForClient(session, clientIdStr) {
 function acceptedCount(session) {
     return (session.clients_ids || []).length;
 }
+/** Member should not see group classes they left or were removed from (declined/rejected, off roster). */
+function clientVisibleInGroupClassSession(session, clientIdStr) {
+    if (session.sessionKind !== 'group_class')
+        return true;
+    const inRoster = (session.clients_ids || []).some((x) => x.toString() === clientIdStr);
+    const myEn = (session.enrollments || []).find((e) => e.client_id?.toString() === clientIdStr);
+    if (!inRoster &&
+        myEn &&
+        (myEn.status === 'declined' || myEn.status === 'rejected')) {
+        return false;
+    }
+    return true;
+}
 const mapSessionToGraphQL = (session) => {
     // Handle coach_id - it might be an ObjectId or a populated object
     let coachId;
@@ -339,10 +352,15 @@ export default {
                         ? sessionId._id.toString()
                         : String(sessionId);
             }));
-            // Filter out completed sessions
+            // Filter out completed sessions and group classes the member has left / been removed from
             const sessions = allSessions.filter((session) => {
                 const sessionId = session._id.toString();
-                return !completedSessionIds.has(sessionId);
+                if (completedSessionIds.has(sessionId))
+                    return false;
+                if (!clientVisibleInGroupClassSession(session, String(clientId))) {
+                    return false;
+                }
+                return true;
             });
             return sessions.map(mapSessionToGraphQL);
         },
@@ -377,7 +395,10 @@ export default {
                 .sort({ date: 1, startTime: 1 })
                 .limit(10)
                 .lean();
-            return sessions.map(mapSessionToGraphQL);
+            const filtered = userRole === 'member'
+                ? sessions.filter((s) => clientVisibleInGroupClassSession(s, String(userId)))
+                : sessions;
+            return filtered.map(mapSessionToGraphQL);
         },
         getJoinableGroupClasses: async (_, __, context) => {
             const userId = context.auth.user?.id;
@@ -1307,6 +1328,64 @@ export default {
                 doc.clients_ids = doc.clients_ids || [];
                 doc.clients_ids.push(oid);
             }
+            await doc.save();
+            return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+        },
+        removeClientFromClassSession: async (_, { sessionId, clientId }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || (userRole !== 'coach' && userRole !== 'admin')) {
+                throw new Error('Unauthorized');
+            }
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            if (doc.coach_id.toString() !== userId && userRole !== 'admin') {
+                throw new Error('Unauthorized');
+            }
+            if (doc.sessionKind !== 'group_class') {
+                throw new Error('Not a group class');
+            }
+            if (doc.status !== 'scheduled') {
+                throw new Error('Cannot change roster for this session');
+            }
+            const cid = String(clientId);
+            const en = getEnrollmentForClient(doc, cid);
+            if (!en) {
+                throw new Error('Member is not on this class');
+            }
+            doc.clients_ids = (doc.clients_ids || []).filter((x) => x.toString() !== cid);
+            en.status = 'rejected';
+            await doc.save();
+            return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
+        },
+        leaveClassSession: async (_, { sessionId }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || userRole !== 'member') {
+                throw new Error('Unauthorized: Only members can leave a class');
+            }
+            const doc = await Session.findById(sessionId);
+            if (!doc)
+                throw new Error('Session not found');
+            if (doc.sessionKind !== 'group_class') {
+                throw new Error('Not a group class');
+            }
+            if (doc.status !== 'scheduled') {
+                throw new Error('You cannot leave this session anymore');
+            }
+            const cid = String(userId);
+            const en = getEnrollmentForClient(doc, cid);
+            if (!en) {
+                throw new Error('You are not part of this class');
+            }
+            if (en.status !== 'accepted' &&
+                en.status !== 'pending' &&
+                en.status !== 'invited') {
+                throw new Error('Nothing to leave for this class');
+            }
+            doc.clients_ids = (doc.clients_ids || []).filter((x) => x.toString() !== cid);
+            en.status = 'declined';
             await doc.save();
             return mapSessionToGraphQL(await fetchSessionDocument(sessionId));
         },

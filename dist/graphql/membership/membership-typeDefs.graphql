@@ -22,6 +22,8 @@ enum DurationType {
 	MONTHLY
 	YEARLY
 	QUARTERLY
+	"""Fixed calendar-day promos (plan `monthDuration` = number of days)."""
+	DAILY
 }
 
 # Membership transaction (user's subscription)
@@ -36,6 +38,8 @@ type MembershipTransaction {
 	expiresAt: String!
 	"""Total months for this subscription from startedAt (matches expiry; may differ from plan default)."""
 	monthDuration: Int!
+	"""When set, subscription length is day-based from startedAt (promo / daily plans)."""
+	dayDuration: Int
 	status: TransactionStatus!
 	createdAt: String
 	updatedAt: String
@@ -83,8 +87,12 @@ input UpdateMembershipInput {
 
 input UpdateMembershipTransactionDurationInput {
 	transactionId: ID!
-	"""New total months from the transaction's startedAt (recalculates expiresAt)."""
-	monthDuration: Int!
+	"""New total months from the transaction's startedAt (recalculates expiresAt). Omit when using dayDuration."""
+	monthDuration: Int
+	"""New total calendar days from startedAt (recalculates expiresAt). Omit when using monthDuration."""
+	dayDuration: Int
+	"""Optional ISO 8601 start datetime. When set, replaces the transaction startedAt and recalculates expiresAt from it (walk-ins / legacy corrections). Omit to keep the existing start date."""
+	startedAt: String
 }
 
 # Extend Query type
@@ -111,7 +119,7 @@ extend type Mutation {
 	purchaseMembership(input: PurchaseMembershipInput!): MembershipTransaction!
 	# Cancel membership
 	cancelMembership(transactionId: ID!): Boolean!
-	# Adjust active subscription length (admin only); recalculates expiresAt from startedAt
+	# Adjust active subscription length (admin only); recalculates expiresAt from startedAt (optionally overridden)
 	updateMembershipTransactionDuration(
 		input: UpdateMembershipTransactionDurationInput!
 	): MembershipTransaction!

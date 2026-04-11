@@ -5,7 +5,7 @@ import MembershipTransaction from '../../database/models/membership/membershipTr
 import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
 import { onSubscriptionCreated, onSubscriptionSwitched, } from '../../database/models/analytics/analytics-helper.js';
-import { computeExpiresAtFromStart, planMonthDuration, resolveTransactionMonthDuration, } from '../../database/utils/membership-expiry.js';
+import { isDailyDurationType, resolveSubscriptionLength, resolveTransactionMonthDuration, } from '../../database/utils/membership-expiry.js';
 // Helper to map membership to GraphQL format
 const mapMembershipToGraphQL = (membership) => {
     if (!membership)
@@ -22,9 +22,14 @@ const mapMembershipToGraphQL = (membership) => {
         console.error('⚠️ Cannot map membership: missing _id or id', membership);
         throw new Error('Invalid membership: missing ID');
     }
-    // Calculate monthDuration based on durationType if not set
+    // Calculate monthDuration based on durationType if not set (DAILY: field stores calendar days)
     let monthDuration = membership.monthDuration;
-    if (!monthDuration || monthDuration < 1) {
+    if (isDailyDurationType(membership.durationType)) {
+        if (!monthDuration || monthDuration < 1) {
+            monthDuration = 1;
+        }
+    }
+    else if (!monthDuration || monthDuration < 1) {
         const durationType = membership.durationType?.toLowerCase() || 'monthly';
         if (durationType === 'monthly') {
             monthDuration = 1;
@@ -112,6 +117,9 @@ const mapTransactionToGraphQL = (transaction, membershipData) => {
         startedAt: transaction.startedAt?.toISOString(),
         expiresAt: transaction.expiresAt?.toISOString(),
         monthDuration: resolveTransactionMonthDuration(transaction, rawPlan),
+        dayDuration: transaction.dayDuration != null && transaction.dayDuration >= 1
+            ? transaction.dayDuration
+            : null,
         status: transaction.status?.toUpperCase() || 'ACTIVE',
         createdAt: transaction.createdAt?.toISOString(),
         updatedAt: transaction.updatedAt?.toISOString(),
@@ -153,11 +161,22 @@ const createMembershipTransaction = async (memberId, membershipId, options) => {
     const startedAt = options?.startedAt && !Number.isNaN(options.startedAt.getTime())
         ? options.startedAt
         : new Date();
-    const planMonths = planMonthDuration(membership);
-    const monthDuration = options?.monthDuration != null && options.monthDuration >= 1
-        ? options.monthDuration
-        : planMonths;
-    const expiresAt = computeExpiresAtFromStart(startedAt, monthDuration, remainingDays);
+    const isDaily = isDailyDurationType(membership.durationType);
+    const { expiresAt, monthDuration, dayDuration } = resolveSubscriptionLength(startedAt, membership, isDaily
+        ? {
+            lengthDays: options?.dayDuration != null && options.dayDuration >= 1
+                ? options.dayDuration
+                : options?.monthDuration != null && options.monthDuration >= 1
+                    ? options.monthDuration
+                    : null,
+            extraDays: remainingDays,
+        }
+        : {
+            lengthMonths: options?.monthDuration != null && options.monthDuration >= 1
+                ? options.monthDuration
+                : null,
+            extraDays: remainingDays,
+        });
     const transaction = new MembershipTransaction({
         client_id: new mongoose.Types.ObjectId(memberId),
         membership_id: new mongoose.Types.ObjectId(membershipId),
@@ -165,6 +184,7 @@ const createMembershipTransaction = async (memberId, membershipId, options) => {
         startedAt,
         expiresAt,
         monthDuration,
+        ...(dayDuration != null ? { dayDuration } : {}),
         status: 'Active',
     });
     await transaction.save();
@@ -578,7 +598,7 @@ export default {
                 }
             }
             if (input.monthDuration != null && input.monthDuration < 1) {
-                throw new Error('monthDuration must be at least 1');
+                throw new Error('monthDuration override must be at least 1 when provided');
             }
             // Create membership transaction
             const transaction = await createMembershipTransaction(input.memberId, input.membershipId, {

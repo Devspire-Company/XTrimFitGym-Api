@@ -5,11 +5,16 @@ import User from '../../database/models/user/user-schema.js';
 import mongoose from 'mongoose';
 import { onSubscriptionCreated, onSubscriptionCanceled, onSubscriptionSwitched, } from '../../database/models/analytics/analytics-helper.js';
 import { pubsub, EVENTS } from '../pubsub.js';
-import { computeExpiresAtFromStart, planMonthDuration, resolveTransactionMonthDuration, } from '../../database/utils/membership-expiry.js';
+import { isDailyDurationType, resolveSubscriptionLength, resolveTransactionMonthDuration, } from '../../database/utils/membership-expiry.js';
 const mapMembershipToGraphQL = (membership) => {
-    // Calculate monthDuration based on durationType if not set
+    // Calculate monthDuration based on durationType if not set (DAILY: field stores calendar days)
     let monthDuration = membership.monthDuration;
-    if (!monthDuration || monthDuration < 1) {
+    if (isDailyDurationType(membership.durationType)) {
+        if (!monthDuration || monthDuration < 1) {
+            monthDuration = 1;
+        }
+    }
+    else if (!monthDuration || monthDuration < 1) {
         const durationType = membership.durationType?.toLowerCase() || 'monthly';
         if (durationType === 'monthly') {
             monthDuration = 1;
@@ -54,6 +59,9 @@ const mapTransactionToGraphQL = (transaction, membershipPlan) => {
         startedAt: transaction.startedAt?.toISOString(),
         expiresAt: transaction.expiresAt?.toISOString(),
         monthDuration: resolveTransactionMonthDuration(transaction, plan),
+        dayDuration: transaction.dayDuration != null && transaction.dayDuration >= 1
+            ? transaction.dayDuration
+            : null,
         status: transaction.status?.toUpperCase() || 'ACTIVE',
         createdAt: transaction.createdAt?.toISOString(),
         updatedAt: transaction.updatedAt?.toISOString(),
@@ -244,8 +252,7 @@ export default {
                 status: 'Canceled',
             });
             const now = new Date();
-            const monthDuration = planMonthDuration(membership);
-            const expiresAt = computeExpiresAtFromStart(now, monthDuration, remainingDays);
+            const { expiresAt, monthDuration, dayDuration } = resolveSubscriptionLength(now, membership, { extraDays: remainingDays });
             const transaction = new MembershipTransaction({
                 client_id: new mongoose.Types.ObjectId(userId),
                 membership_id: new mongoose.Types.ObjectId(input.membershipId),
@@ -253,6 +260,7 @@ export default {
                 startedAt: now,
                 expiresAt,
                 monthDuration,
+                ...(dayDuration != null ? { dayDuration } : {}),
                 status: 'Active',
             });
             await transaction.save();
@@ -277,13 +285,15 @@ export default {
             const planLean = typeof planDoc === 'object' && planDoc && '_id' in planDoc ? planDoc : membership;
             return mapTransactionToGraphQL(populatedTransaction, planLean);
         },
-        updateMembershipTransactionDuration: async (_, { input }, context) => {
+        updateMembershipTransactionDuration: async (_, { input, }, context) => {
             const userRole = context.auth.user?.role;
             if (userRole !== 'admin') {
                 throw new Error('Unauthorized: Only admins can update subscription duration');
             }
-            if (!input.monthDuration || input.monthDuration < 1) {
-                throw new Error('monthDuration must be at least 1');
+            const hasMonths = input.monthDuration != null && Number.isFinite(input.monthDuration) && input.monthDuration >= 1;
+            const hasDays = input.dayDuration != null && Number.isFinite(input.dayDuration) && input.dayDuration >= 1;
+            if (hasMonths === hasDays) {
+                throw new Error('Provide exactly one of monthDuration (months) or dayDuration (days)');
             }
             const transaction = await MembershipTransaction.findById(input.transactionId)
                 .populate('membership_id')
@@ -294,13 +304,39 @@ export default {
             if (transaction.status !== 'Active') {
                 throw new Error('Only active subscriptions can be adjusted');
             }
-            const startedAt = new Date(transaction.startedAt);
-            const expiresAt = computeExpiresAtFromStart(startedAt, input.monthDuration, 0);
+            const planLeanRaw = transaction.membership_id;
+            const planLean = typeof planLeanRaw === 'object' && planLeanRaw && '_id' in planLeanRaw
+                ? planLeanRaw
+                : await Membership.findById(transaction.membership_id).lean();
+            if (!planLean) {
+                throw new Error('Membership plan not found for this transaction');
+            }
+            let effectiveStart;
+            if (input.startedAt != null && String(input.startedAt).trim() !== '') {
+                effectiveStart = new Date(input.startedAt);
+                if (Number.isNaN(effectiveStart.getTime())) {
+                    throw new Error('Invalid startedAt: use a valid ISO date/time string');
+                }
+            }
+            else {
+                effectiveStart = new Date(transaction.startedAt);
+            }
+            const { expiresAt, monthDuration, dayDuration } = resolveSubscriptionLength(effectiveStart, planLean, hasDays
+                ? { lengthDays: input.dayDuration, extraDays: 0 }
+                : {
+                    lengthMonths: input.monthDuration,
+                    extraDays: 0,
+                    forceMonthBased: true,
+                });
             const now = new Date();
             const updatePayload = {
                 expiresAt,
-                monthDuration: input.monthDuration,
+                monthDuration,
+                dayDuration: dayDuration ?? null,
             };
+            if (input.startedAt != null && String(input.startedAt).trim() !== '') {
+                updatePayload.startedAt = effectiveStart;
+            }
             if (expiresAt <= now) {
                 updatePayload.status = 'Expired';
             }
@@ -317,10 +353,10 @@ export default {
             if (expiresAt <= now) {
                 await onSubscriptionCanceled(input.transactionId);
             }
-            const planLean = typeof updated.membership_id === 'object' && updated.membership_id && '_id' in updated.membership_id
+            const planForMap = typeof updated.membership_id === 'object' && updated.membership_id && '_id' in updated.membership_id
                 ? updated.membership_id
                 : await Membership.findById(updated.membership_id).lean();
-            return mapTransactionToGraphQL(updated, planLean);
+            return mapTransactionToGraphQL(updated, planForMap);
         },
         cancelMembership: async (_, { transactionId }, context) => {
             const userId = context.auth.user?.id;

@@ -293,13 +293,15 @@ export type DateRangeInput = {
 export type DirectSubscribeInput = {
   memberId: Scalars['ID']['input'];
   membershipId: Scalars['ID']['input'];
-  /** Override plan length (months from startedAt). Defaults to the plan's monthDuration. */
+  /** Override plan length: months from startedAt for monthly/quarterly/yearly plans; **calendar days** for DAILY plans. Defaults to the plan's monthDuration. */
   monthDuration?: InputMaybe<Scalars['Int']['input']>;
   /** When the subscription started (e.g. legacy walk-in). Defaults to now. ISO-8601 string. */
   startedAt?: InputMaybe<Scalars['String']['input']>;
 };
 
 export enum DurationType {
+  /** Fixed calendar-day promos (plan `monthDuration` = number of days). */
+  Daily = 'DAILY',
   Monthly = 'MONTHLY',
   Quarterly = 'QUARTERLY',
   Yearly = 'YEARLY'
@@ -414,6 +416,8 @@ export type MembershipTransaction = {
   client?: Maybe<User>;
   clientId: Scalars['ID']['output'];
   createdAt?: Maybe<Scalars['String']['output']>;
+  /** When set, subscription length is day-based from startedAt (promo / daily plans). */
+  dayDuration?: Maybe<Scalars['Int']['output']>;
   expiresAt: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   membership?: Maybe<Membership>;
@@ -1214,8 +1218,12 @@ export type UpdateMembershipInput = {
 };
 
 export type UpdateMembershipTransactionDurationInput = {
-  /** New total months from the transaction's startedAt (recalculates expiresAt). */
-  monthDuration: Scalars['Int']['input'];
+  /** New total calendar days from startedAt (recalculates expiresAt). Omit when using monthDuration. */
+  dayDuration?: InputMaybe<Scalars['Int']['input']>;
+  /** New total months from the transaction's startedAt (recalculates expiresAt). Omit when using dayDuration. */
+  monthDuration?: InputMaybe<Scalars['Int']['input']>;
+  /** Optional ISO 8601 start datetime. When set, replaces the transaction startedAt and recalculates expiresAt from it (walk-ins / legacy corrections). Omit to keep the existing start date. */
+  startedAt?: InputMaybe<Scalars['String']['input']>;
   transactionId: Scalars['ID']['input'];
 };
 
@@ -1773,6 +1781,7 @@ export type MembershipTransactionResolvers<ContextType = IAuthContext, ParentTyp
   client?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   clientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   createdAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  dayDuration?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   expiresAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   membership?: Resolver<Maybe<ResolversTypes['Membership']>, ParentType, ContextType>;

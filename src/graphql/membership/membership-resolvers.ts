@@ -390,6 +390,7 @@ export default {
 					transactionId: string;
 					monthDuration?: number | null;
 					dayDuration?: number | null;
+					startedAt?: string | null;
 				};
 			},
 			context: Context
@@ -428,9 +429,18 @@ export default {
 				throw new Error('Membership plan not found for this transaction');
 			}
 
-			const startedAt = new Date(transaction.startedAt);
+			let effectiveStart: Date;
+			if (input.startedAt != null && String(input.startedAt).trim() !== '') {
+				effectiveStart = new Date(input.startedAt as string);
+				if (Number.isNaN(effectiveStart.getTime())) {
+					throw new Error('Invalid startedAt: use a valid ISO date/time string');
+				}
+			} else {
+				effectiveStart = new Date(transaction.startedAt);
+			}
+
 			const { expiresAt, monthDuration, dayDuration } = resolveSubscriptionLength(
-				startedAt,
+				effectiveStart,
 				planLean as { durationType?: string | null; monthDuration?: number | null },
 				hasDays
 					? { lengthDays: input.dayDuration as number, extraDays: 0 }
@@ -447,6 +457,10 @@ export default {
 				monthDuration,
 				dayDuration: dayDuration ?? null,
 			};
+
+			if (input.startedAt != null && String(input.startedAt).trim() !== '') {
+				updatePayload.startedAt = effectiveStart;
+			}
 
 			if (expiresAt <= now) {
 				updatePayload.status = 'Expired';

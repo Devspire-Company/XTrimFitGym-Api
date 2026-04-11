@@ -103,23 +103,48 @@ export default {
                         personNameParams.push(`%${name}%`);
                     });
                     if (personNameConditions.length > 0) {
-                        // Match by cardNo OR by personName (since cardNo might be empty in MySQL)
+                        // Match by cardNo (string or numeric, so leading zeros / padding match iVMS) OR personName
                         conditions.push(`(
-							(CAST(cardNo AS CHAR) = CAST(? AS CHAR) AND cardNo IS NOT NULL AND cardNo != '')
+							(
+								cardNo IS NOT NULL AND cardNo != '' AND (
+									CAST(cardNo AS CHAR) = CAST(? AS CHAR)
+									OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
+								)
+							)
 							OR (${personNameConditions.join(' OR ')})
 						)`);
-                        params.push(filter.cardNo, ...personNameParams);
+                        params.push(filter.cardNo, filter.cardNo, ...personNameParams);
                     }
                     else {
-                        // Fallback to just cardNo if no person names available
-                        conditions.push('CAST(cardNo AS CHAR) = CAST(? AS CHAR)');
-                        params.push(filter.cardNo);
+                        conditions.push(`(
+							cardNo IS NOT NULL AND cardNo != '' AND (
+								CAST(cardNo AS CHAR) = CAST(? AS CHAR)
+								OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
+							)
+						)`);
+                        params.push(filter.cardNo, filter.cardNo);
                     }
                 }
                 else if (filter?.cardNo) {
-                    // Admin or simple cardNo filter
-                    conditions.push('CAST(cardNo AS CHAR) = CAST(? AS CHAR)');
-                    params.push(filter.cardNo);
+                    conditions.push(`(
+						cardNo IS NOT NULL AND cardNo != '' AND (
+							CAST(cardNo AS CHAR) = CAST(? AS CHAR)
+							OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
+						)
+					)`);
+                    params.push(filter.cardNo, filter.cardNo);
+                }
+                else if (filter?.possiblePersonNames && userRole !== 'admin') {
+                    const personNameConditions = [];
+                    const personNameParams = [];
+                    filter.possiblePersonNames.forEach((name) => {
+                        personNameConditions.push('personName LIKE ?');
+                        personNameParams.push(`%${name}%`);
+                    });
+                    if (personNameConditions.length > 0) {
+                        conditions.push(`(${personNameConditions.join(' OR ')})`);
+                        params.push(...personNameParams);
+                    }
                 }
                 const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
                 // Get total count

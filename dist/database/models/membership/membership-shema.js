@@ -20,7 +20,7 @@ const membershipSchema = new Schema({
     },
     durationType: {
         type: String,
-        enum: ['Monthly', 'Yearly', 'Quarterly'],
+        enum: ['Monthly', 'Yearly', 'Quarterly', 'Daily'],
         required: true,
     },
     monthDuration: {
