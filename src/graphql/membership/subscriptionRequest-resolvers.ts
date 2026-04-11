@@ -10,8 +10,8 @@ import {
 	onSubscriptionSwitched,
 } from '../../database/models/analytics/analytics-helper.js';
 import {
-	computeExpiresAtFromStart,
-	planMonthDuration,
+	isDailyDurationType,
+	resolveSubscriptionLength,
 	resolveTransactionMonthDuration,
 } from '../../database/utils/membership-expiry.js';
 
@@ -32,9 +32,13 @@ const mapMembershipToGraphQL = (membership: any) => {
 		throw new Error('Invalid membership: missing ID');
 	}
 	
-	// Calculate monthDuration based on durationType if not set
+	// Calculate monthDuration based on durationType if not set (DAILY: field stores calendar days)
 	let monthDuration = membership.monthDuration;
-	if (!monthDuration || monthDuration < 1) {
+	if (isDailyDurationType(membership.durationType)) {
+		if (!monthDuration || monthDuration < 1) {
+			monthDuration = 1;
+		}
+	} else if (!monthDuration || monthDuration < 1) {
 		const durationType = membership.durationType?.toLowerCase() || 'monthly';
 		if (durationType === 'monthly') {
 			monthDuration = 1;
@@ -128,6 +132,10 @@ const mapTransactionToGraphQL = (transaction: any, membershipData?: any) => {
 		startedAt: transaction.startedAt?.toISOString(),
 		expiresAt: transaction.expiresAt?.toISOString(),
 		monthDuration: resolveTransactionMonthDuration(transaction, rawPlan),
+		dayDuration:
+			transaction.dayDuration != null && transaction.dayDuration >= 1
+				? transaction.dayDuration
+				: null,
 		status: transaction.status?.toUpperCase() || 'ACTIVE',
 		createdAt: transaction.createdAt?.toISOString(),
 		updatedAt: transaction.updatedAt?.toISOString(),
@@ -137,6 +145,7 @@ const mapTransactionToGraphQL = (transaction: any, membershipData?: any) => {
 type CreateMembershipTransactionOptions = {
 	approvedBy?: string;
 	monthDuration?: number;
+	dayDuration?: number;
 	startedAt?: Date;
 };
 
@@ -191,13 +200,28 @@ const createMembershipTransaction = async (
 			? options.startedAt
 			: new Date();
 
-	const planMonths = planMonthDuration(membership);
-	const monthDuration =
-		options?.monthDuration != null && options.monthDuration >= 1
-			? options.monthDuration
-			: planMonths;
-
-	const expiresAt = computeExpiresAtFromStart(startedAt, monthDuration, remainingDays);
+	const isDaily = isDailyDurationType(membership.durationType);
+	const { expiresAt, monthDuration, dayDuration } = resolveSubscriptionLength(
+		startedAt,
+		membership,
+		isDaily
+			? {
+					lengthDays:
+						options?.dayDuration != null && options.dayDuration >= 1
+							? options.dayDuration
+							: options?.monthDuration != null && options.monthDuration >= 1
+								? options.monthDuration
+								: null,
+					extraDays: remainingDays,
+			  }
+			: {
+					lengthMonths:
+						options?.monthDuration != null && options.monthDuration >= 1
+							? options.monthDuration
+							: null,
+					extraDays: remainingDays,
+			  }
+	);
 
 	const transaction = new MembershipTransaction({
 		client_id: new mongoose.Types.ObjectId(memberId),
@@ -206,6 +230,7 @@ const createMembershipTransaction = async (
 		startedAt,
 		expiresAt,
 		monthDuration,
+		...(dayDuration != null ? { dayDuration } : {}),
 		status: 'Active',
 	});
 
@@ -730,7 +755,7 @@ export default {
 			}
 
 			if (input.monthDuration != null && input.monthDuration < 1) {
-				throw new Error('monthDuration must be at least 1');
+				throw new Error('monthDuration override must be at least 1 when provided');
 			}
 
 			// Create membership transaction

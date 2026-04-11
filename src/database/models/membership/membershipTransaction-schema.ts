@@ -34,6 +34,12 @@ const membershipTransactionSchema = new Schema(
 		monthDuration: {
 			type: Number,
 			required: false,
+			min: 0,
+		},
+		/** When set, expiry is computed as startedAt + dayDuration calendar days. */
+		dayDuration: {
+			type: Number,
+			required: false,
 			min: 1,
 		},
 		status: {
