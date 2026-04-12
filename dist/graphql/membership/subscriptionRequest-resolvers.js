@@ -243,7 +243,7 @@ export default {
             })
                 .populate('member_id', 'firstName lastName email')
                 .populate('membership_id')
-                .sort({ requestedAt: -1 })
+                .sort({ updatedAt: -1, requestedAt: -1 })
                 .lean();
             // Map requests and ensure member data is properly formatted
             return requests.map((request) => {
@@ -272,7 +272,7 @@ export default {
                 .populate('membership_id')
                 .populate('approvedBy', 'firstName lastName')
                 .populate('rejectedBy', 'firstName lastName')
-                .sort({ createdAt: -1 })
+                .sort({ updatedAt: -1, requestedAt: -1 })
                 .lean();
             // Map requests and ensure member data is properly formatted
             return requests.map((request) => {
@@ -357,7 +357,7 @@ export default {
                 .populate('membership_id')
                 .populate('approvedBy', 'firstName lastName')
                 .populate('rejectedBy', 'firstName lastName')
-                .sort({ createdAt: -1 })
+                .sort({ updatedAt: -1, requestedAt: -1 })
                 .lean();
             return requests.map((request) => {
                 // Format member data if populated
