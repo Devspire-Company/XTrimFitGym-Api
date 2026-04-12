@@ -6,7 +6,7 @@ const memberSchema = new Schema({
     },
     physiqueGoalType: {
         type: String,
-        enum: ['Ectomorph', 'Endomorph', 'Mesomorph'],
+        enum: ['Ectomorph', 'Endomorph', 'Mesomorph', 'Not sure'],
     },
     fitnessGoal: {
         type: [String],

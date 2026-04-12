@@ -2,7 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 
 export type RoleType = 'admin' | 'coach' | 'member';
 export type GenderType = 'Male' | 'Female' | 'Prefer not to say';
-export type PhysiqueType = 'Ectomorph' | 'Endomorph' | 'Mesomorph';
+export type PhysiqueType = 'Ectomorph' | 'Endomorph' | 'Mesomorph' | 'Not sure';
 // FitnessGoalType is now a string type - predefined values are managed in config/fitness-goal-types.ts
 export type FitnessGoalType = string;
 export interface IUser {
@@ -58,7 +58,7 @@ const memberSchema = new Schema({
 	},
 	physiqueGoalType: {
 		type: String,
-		enum: ['Ectomorph', 'Endomorph', 'Mesomorph'],
+		enum: ['Ectomorph', 'Endomorph', 'Mesomorph', 'Not sure'],
 	},
 	fitnessGoal: {
 		type: [String],
