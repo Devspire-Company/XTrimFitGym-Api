@@ -15,6 +15,10 @@ export interface IWalkInClient {
 	email?: string;
 	gender: WalkInGenderValue;
 	notes?: string;
+	/** Whole years; used with guardian waiver when under 18 */
+	ageYears?: number;
+	minorWaiverGuardianName?: string;
+	minorWaiverAcceptedAt?: Date;
 	createdByAdminId?: mongoose.Types.ObjectId;
 	createdAt?: Date;
 	updatedAt?: Date;
@@ -33,6 +37,9 @@ const walkInClientSchema = new Schema(
 			required: true,
 		},
 		notes: { type: String, trim: true },
+		ageYears: { type: Number, min: 0, max: 120 },
+		minorWaiverGuardianName: { type: String, trim: true },
+		minorWaiverAcceptedAt: { type: Date },
 		createdByAdminId: {
 			type: Schema.Types.ObjectId,
 			ref: 'User',
@@ -78,13 +85,11 @@ const walkInAttendanceLogSchema = new Schema(
 walkInAttendanceLogSchema.index({ localDate: 1, timedInAt: -1 });
 walkInAttendanceLogSchema.index({ walkInClientId: 1, timedInAt: -1 });
 
-const WalkInClient = mongoose.model<IWalkInClient>(
-	'WalkInClient',
-	walkInClientSchema,
-);
-const WalkInAttendanceLog = mongoose.model<IWalkInAttendanceLog>(
-	'WalkInAttendanceLog',
-	walkInAttendanceLogSchema,
-);
+const WalkInClient =
+	(mongoose.models.WalkInClient as mongoose.Model<IWalkInClient>) ||
+	mongoose.model<IWalkInClient>('WalkInClient', walkInClientSchema);
+const WalkInAttendanceLog =
+	(mongoose.models.WalkInAttendanceLog as mongoose.Model<IWalkInAttendanceLog>) ||
+	mongoose.model<IWalkInAttendanceLog>('WalkInAttendanceLog', walkInAttendanceLogSchema);
 
 export { WalkInClient, WalkInAttendanceLog };

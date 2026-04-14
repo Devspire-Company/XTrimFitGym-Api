@@ -18,13 +18,59 @@ const toDateOrNull = (value?: string | null) => {
 	return d;
 };
 
+const toObjectIdString = (value: unknown): string | null => {
+	if (!value) return null;
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+	if (value instanceof mongoose.Types.ObjectId) {
+		return value.toString();
+	}
+	if (typeof value === 'object') {
+		const obj = value as Record<string, unknown>;
+		const nestedCandidate =
+			obj.id ??
+			obj._id ??
+			obj.value ??
+			(obj.$oid as unknown) ??
+			((obj._id as Record<string, unknown> | undefined)?.$oid as unknown);
+		if (typeof nestedCandidate === 'string' && nestedCandidate.trim().length > 0) {
+			return nestedCandidate.trim();
+		}
+		if (nestedCandidate instanceof mongoose.Types.ObjectId) {
+			return nestedCandidate.toString();
+		}
+	}
+	return null;
+};
+
+const mapDownloadedByUser = (value: unknown) => {
+	if (!value || typeof value !== 'object') return null;
+	if (value instanceof mongoose.Types.ObjectId) return null;
+	const obj = value as Record<string, unknown>;
+	const id = toObjectIdString(obj.id ?? obj._id);
+	const firstName = typeof obj.firstName === 'string' ? obj.firstName : null;
+	const lastName = typeof obj.lastName === 'string' ? obj.lastName : null;
+	const email = typeof obj.email === 'string' ? obj.email : null;
+	const role = typeof obj.role === 'string' ? obj.role : null;
+	if (!id && !firstName && !lastName && !email && !role) return null;
+	return {
+		id: id ?? '',
+		firstName,
+		lastName,
+		email,
+		role,
+	};
+};
+
 const mapLog = (doc: any) => ({
 	id: doc._id.toString(),
 	reportType: doc.reportType,
 	format: doc.format,
-	downloadedById: doc.downloadedBy?.toString?.() ?? String(doc.downloadedBy),
+	downloadedById: toObjectIdString(doc.downloadedBy) ?? '',
 	downloadedByRole: doc.downloadedByRole,
-	downloadedBy: doc.downloadedBy ?? null,
+	downloadedBy: mapDownloadedByUser(doc.downloadedBy),
 	fileName: doc.fileName ?? null,
 	dateRange: doc.dateRange
 		? {
@@ -118,10 +164,11 @@ export default {
 	},
 	ReportDownloadLog: {
 		downloadedBy: async (parent: any) => {
-			if (parent.downloadedBy && typeof parent.downloadedBy === 'object') {
-				return parent.downloadedBy;
+			const mapped = mapDownloadedByUser(parent.downloadedBy);
+			if (mapped) {
+				return mapped;
 			}
-			const id = parent.downloadedById || parent.downloadedBy;
+			const id = toObjectIdString(parent.downloadedById) || toObjectIdString(parent.downloadedBy);
 			if (!id) return null;
 			const user = await User.findById(id).select('firstName lastName email role').lean();
 			if (!user) return null;
