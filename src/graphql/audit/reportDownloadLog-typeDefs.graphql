@@ -1,0 +1,48 @@
+enum ReportType {
+	ATTENDANCE
+	WALK_IN
+	NEAR_ENDING_MEMBERSHIPS
+	REVENUE
+	EQUIPMENT
+}
+
+type ReportDownloadDateRange {
+	startDate: String
+	endDate: String
+}
+
+type ReportDownloadLog {
+	id: ID!
+	reportType: ReportType!
+	format: String!
+	downloadedById: ID!
+	downloadedByRole: RoleType!
+	downloadedBy: User
+	fileName: String
+	dateRange: ReportDownloadDateRange
+	filterSummary: String
+	metadataJson: String
+	createdAt: String
+	updatedAt: String
+}
+
+input ReportDownloadDateRangeInput {
+	startDate: String
+	endDate: String
+}
+
+input LogReportDownloadInput {
+	reportType: ReportType!
+	fileName: String
+	dateRange: ReportDownloadDateRangeInput
+	filterSummary: String
+	metadataJson: String
+}
+
+extend type Query {
+	getReportDownloadLogs(limit: Int, offset: Int, reportType: ReportType): [ReportDownloadLog!]!
+}
+
+extend type Mutation {
+	logReportDownload(input: LogReportDownloadInput!): ReportDownloadLog!
+}

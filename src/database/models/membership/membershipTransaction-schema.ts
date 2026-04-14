@@ -4,6 +4,7 @@ export type TransactionStatusType = 'Active' | 'Canceled' | 'Expired';
 export interface IMembershipTransaction {
 	status: TransactionStatusType;
 	monthDuration?: number;
+	canceledReason?: string;
 }
 
 const membershipTransactionSchema = new Schema(
@@ -47,13 +48,33 @@ const membershipTransactionSchema = new Schema(
 			enum: ['Active', 'Canceled', 'Expired'],
 			default: 'Active',
 		},
+		canceledReason: {
+			type: String,
+			trim: true,
+		},
+		canceledBy: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'User',
+		},
+		canceledAt: Date,
+		lastAdjustedReason: {
+			type: String,
+			trim: true,
+		},
+		lastAdjustedBy: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'User',
+		},
+		lastAdjustedAt: Date,
 	},
 	{ timestamps: true }
 );
 
-const MembershipTransaction = mongoose.model<IMembershipTransaction>(
-	'MembershipTransaction',
-	membershipTransactionSchema
-);
+const MembershipTransaction =
+	(mongoose.models.MembershipTransaction as mongoose.Model<IMembershipTransaction>) ||
+	mongoose.model<IMembershipTransaction>(
+		'MembershipTransaction',
+		membershipTransactionSchema
+	);
 
 export default MembershipTransaction;

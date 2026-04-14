@@ -47,6 +47,10 @@ export interface IUser {
 		userAgent?: string;
 		loginAt: Date;
 	}>;
+	isDisabled?: boolean;
+	disabledAt?: Date;
+	disabledBy?: mongoose.Types.ObjectId;
+	disableReason?: string;
 	createdAt?: Date;
 	updatedAt?: Date;
 }
@@ -173,12 +177,25 @@ const userSchema = new Schema(
 				},
 			},
 		],
+		isDisabled: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		disabledAt: Date,
+		disabledBy: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'User',
+		},
+		disableReason: String,
 	},
 	{
 		timestamps: true,
 	}
 );
 
-const User = mongoose.model<IUser>('User', userSchema);
+const User =
+	(mongoose.models.User as mongoose.Model<IUser>) ||
+	mongoose.model<IUser>('User', userSchema);
 
 export default User;

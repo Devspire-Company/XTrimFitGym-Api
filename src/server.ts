@@ -8,6 +8,7 @@ import { useServer } from 'graphql-ws/use/ws';
 import connectDb from './database/connectDb.js';
 import { connectMySQL } from './database/mysql/connectMysql.js';
 import { attendanceMonitor } from './services/attendance-monitor.js';
+import { notificationAutomationService } from './services/notification-automation.js';
 import cookieParser from 'cookie-parser';
 import schema from './graphql/schema.js';
 import authContext from './context/auth-context.js';
@@ -83,6 +84,9 @@ async function startServer() {
 			`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`,
 		);
 	}
+
+	// Start automated notification checks (expiry + inactivity)
+	notificationAutomationService.start();
 
 	// Middleware order matters! cookieParser must come before expressMiddleware
 	app.use(cookieParser()); // Global cookie parser

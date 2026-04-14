@@ -48,6 +48,10 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 
 	const fromJwt = parseJwtToken(token);
 	if (fromJwt) {
+		const dbUser = await User.findById(fromJwt.id).select('isDisabled').lean();
+		if (dbUser?.isDisabled) {
+			return { user: null, clerkSub: null };
+		}
 		return { user: fromJwt, clerkSub: null };
 	}
 
@@ -65,6 +69,9 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 
 		let doc = await User.findOne({ clerkId: sub }).lean();
 		if (doc) {
+		if (doc.isDisabled) {
+			return { user: null, clerkSub: sub };
+		}
 			return {
 				user: { id: doc._id!.toString(), role: doc.role as RoleType },
 				clerkSub: sub,
@@ -84,6 +91,9 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 		if (!doc) {
 			return { user: null, clerkSub: sub };
 		}
+	if (doc.isDisabled) {
+		return { user: null, clerkSub: sub };
+	}
 
 		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
 		return {

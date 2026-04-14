@@ -41,6 +41,12 @@ type MembershipTransaction {
 	"""When set, subscription length is day-based from startedAt (promo / daily plans)."""
 	dayDuration: Int
 	status: TransactionStatus!
+	canceledReason: String
+	canceledAt: String
+	canceledById: ID
+	lastAdjustedReason: String
+	lastAdjustedAt: String
+	lastAdjustedById: ID
 	createdAt: String
 	updatedAt: String
 }
@@ -93,6 +99,8 @@ input UpdateMembershipTransactionDurationInput {
 	dayDuration: Int
 	"""Optional ISO 8601 start datetime. When set, replaces the transaction startedAt and recalculates expiresAt from it (walk-ins / legacy corrections). Omit to keep the existing start date."""
 	startedAt: String
+	"""Required audit reason for changing length/start date."""
+	reason: String!
 }
 
 # Extend Query type
@@ -118,7 +126,7 @@ extend type Mutation {
 	# Purchase/upgrade membership
 	purchaseMembership(input: PurchaseMembershipInput!): MembershipTransaction!
 	# Cancel membership
-	cancelMembership(transactionId: ID!): Boolean!
+	cancelMembership(transactionId: ID!, reason: String!): Boolean!
 	# Adjust active subscription length (admin only); recalculates expiresAt from startedAt (optionally overridden)
 	updateMembershipTransactionDuration(
 		input: UpdateMembershipTransactionDurationInput!

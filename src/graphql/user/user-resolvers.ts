@@ -75,6 +75,9 @@ const mapUserToGraphQL = (
 					loginAt: entry.loginAt?.toISOString() || new Date().toISOString(),
 			  }))
 			: [],
+		isDisabled: !!user.isDisabled,
+		disabledAt: user.disabledAt?.toISOString() || null,
+		disableReason: user.disableReason || null,
 		createdAt: user.createdAt?.toISOString(),
 		updatedAt: user.updatedAt?.toISOString(),
 	};
@@ -94,8 +97,11 @@ const userResolvers: Resolvers = {
 			if (!user) return null;
 			return mapUserToGraphQL(user as any);
 		},
-		getUsers: async (_, { role }, context) => {
-			const query = role ? { role } : {};
+		getUsers: async (_, { role, includeDisabled }, context) => {
+			const query: Record<string, unknown> = role ? { role } : {};
+			if (!includeDisabled) {
+				query.isDisabled = { $ne: true };
+			}
 			const users = await User.find(query).lean();
 			return users.map((user) => mapUserToGraphQL(user as any));
 		},
@@ -113,6 +119,9 @@ const userResolvers: Resolvers = {
 			});
 			if (!user) {
 				throw new Error('Invalid email or password');
+			}
+			if (user.isDisabled) {
+				throw new Error(user.disableReason || 'This account is disabled');
 			}
 
 			// Verify password
@@ -514,7 +523,7 @@ const userResolvers: Resolvers = {
 			return mapUserToGraphQL(updatedUser as any);
 		},
 		deleteUser: async (_, { id }, context) => {
-			// Check if user is authenticated and can delete this user
+			// Soft-disable for safety and auditability.
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 
@@ -522,11 +531,24 @@ const userResolvers: Resolvers = {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			if (userId !== id && userRole !== 'admin') {
-				throw new Error('Unauthorized: You can only delete your own account');
+			if (userRole !== 'admin') {
+				throw new Error('Unauthorized: Only admins can disable users');
 			}
-
-			const user = await User.findByIdAndDelete(id);
+			if (userId === id) {
+				throw new Error('You cannot disable your own account');
+			}
+			const user = await User.findByIdAndUpdate(
+				id,
+				{
+					$set: {
+						isDisabled: true,
+						disabledAt: new Date(),
+						disabledBy: new mongoose.Types.ObjectId(userId),
+						disableReason: 'Disabled via deleteUser legacy action',
+					},
+				},
+				{ new: true }
+			);
 			
 			// Publish event for user updates
 			if (user) {
@@ -534,6 +556,57 @@ const userResolvers: Resolvers = {
 			}
 			
 			return !!user;
+		},
+		disableUser: async (
+			_: any,
+			{ id, reason }: { id: string; reason: string },
+			context: any
+		) => {
+			const userId = context.auth.user?.id;
+			const userRole = context.auth.user?.role;
+			if (!userId || userRole !== 'admin') {
+				throw new Error('Unauthorized: Only admins can disable users');
+			}
+			if (!reason?.trim()) {
+				throw new Error('Disable reason is required');
+			}
+			if (userId === id) {
+				throw new Error('You cannot disable your own account');
+			}
+			const user = await User.findByIdAndUpdate(
+				id,
+				{
+					$set: {
+						isDisabled: true,
+						disabledAt: new Date(),
+						disabledBy: new mongoose.Types.ObjectId(userId),
+						disableReason: reason.trim(),
+					},
+				},
+				{ new: true }
+			).lean();
+			if (!user) {
+				throw new Error('User not found');
+			}
+			pubsub.publish(EVENTS.USERS_UPDATED, {});
+			return mapUserToGraphQL(user as any);
+		},
+		enableUser: async (_: any, { id }: { id: string }, context: any) => {
+			const userRole = context.auth.user?.role;
+			if (userRole !== 'admin') {
+				throw new Error('Unauthorized: Only admins can enable users');
+			}
+			const user = await User.findByIdAndUpdate(
+				id,
+				{
+					$set: { isDisabled: false },
+					$unset: { disabledAt: '', disabledBy: '', disableReason: '' },
+				},
+				{ new: true }
+			).lean();
+			if (!user) throw new Error('User not found');
+			pubsub.publish(EVENTS.USERS_UPDATED, {});
+			return mapUserToGraphQL(user as any);
 		},
 		removeClient: async (_, { clientId }, context) => {
 			const userId = context.auth.user?.id;

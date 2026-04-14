@@ -50,6 +50,9 @@ type User {
 	membershipDetails: MemberDetails
 	coachDetails: CoachDetails
 	loginHistory: [LoginHistoryEntry]
+	isDisabled: Boolean!
+	disabledAt: String
+	disableReason: String
 	createdAt: String
 	updatedAt: String
 }
@@ -122,7 +125,7 @@ type Query {
 	"""Current user from Authorization (JWT or Clerk session token)."""
 	me: User
 	getUser(id: ID!): User
-	getUsers(role: RoleType): [User]
+	getUsers(role: RoleType, includeDisabled: Boolean): [User]
 }
 
 # Login input
@@ -143,6 +146,8 @@ type Mutation {
 	createUser(input: CreateUserInput!): AuthResponse!
 	updateUser(id: ID!, input: UpdateUserInput!): User
 	deleteUser(id: ID!): Boolean
+	disableUser(id: ID!, reason: String!): User
+	enableUser(id: ID!): User
 	removeClient(clientId: ID!): Boolean!
 }
 
