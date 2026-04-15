@@ -146,10 +146,8 @@ const userResolvers: Resolvers = {
 
 			console.log('[API] Login attempt for:', normalizedEmail ? `${normalizedEmail.slice(0, 3)}***` : '(no email)');
 
-			// Find user by email (case-insensitive so Admin@x.com and admin@x.com match)
-			const user = await User.findOne({
-				email: buildExactEmailRegex(normalizedEmail),
-			});
+			// Match legacy rows with odd casing or surrounding whitespace too
+			const user = await findUserByNormalizedEmail(normalizedEmail);
 			if (!user) {
 				throw new Error('Invalid email or password');
 			}

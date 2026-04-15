@@ -66,6 +66,36 @@ async function findUserByNormalizedEmail(normalizedEmail: string) {
 	}).lean();
 }
 
+function extractEmailFromVerifiedClerkToken(payload: Record<string, unknown>): string | null {
+	const direct =
+		typeof payload.email === 'string'
+			? payload.email
+			: typeof payload.email_address === 'string'
+				? payload.email_address
+				: null;
+	if (direct?.trim()) return direct.trim();
+
+	const primaryObj =
+		payload.primary_email_address &&
+		typeof payload.primary_email_address === 'object' &&
+		!Array.isArray(payload.primary_email_address)
+			? (payload.primary_email_address as Record<string, unknown>)
+			: null;
+	if (typeof primaryObj?.email_address === 'string' && primaryObj.email_address.trim()) {
+		return primaryObj.email_address.trim();
+	}
+
+	const emails = Array.isArray(payload.email_addresses) ? payload.email_addresses : [];
+	for (const item of emails) {
+		if (!item || typeof item !== 'object') continue;
+		const record = item as Record<string, unknown>;
+		if (typeof record.email_address === 'string' && record.email_address.trim()) {
+			return record.email_address.trim();
+		}
+	}
+	return null;
+}
+
 async function resolveAuthFromBearer(token: string | undefined): Promise<{
 	user: { id: string; role: RoleType } | null;
 	clerkSub: string | null;
@@ -97,13 +127,46 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 
 		let doc = await User.findOne({ clerkId: sub }).lean();
 		if (doc) {
-		if (doc.isDisabled) {
-			return { user: null, clerkSub: sub };
-		}
+			if (doc.isDisabled) {
+				return { user: null, clerkSub: sub };
+			}
 			return {
 				user: { id: doc._id!.toString(), role: doc.role as RoleType },
 				clerkSub: sub,
 			};
+		}
+
+		const payloadRecord = payload as unknown as Record<string, unknown>;
+		const emailFromToken = extractEmailFromVerifiedClerkToken(payloadRecord);
+		if (emailFromToken) {
+			const normalizedFromToken = normalizeEmail(emailFromToken);
+			if (normalizedFromToken) {
+				doc = await findUserByNormalizedEmail(normalizedFromToken);
+				if (doc) {
+					if (doc.isDisabled) {
+						return { user: null, clerkSub: sub };
+					}
+					try {
+						await User.updateOne(
+							{ _id: doc._id },
+							{ $set: { clerkId: sub, email: normalizedFromToken } }
+						);
+					} catch {
+						const linked = await User.findOne({ clerkId: sub }).lean();
+						if (linked && !linked.isDisabled) {
+							return {
+								user: { id: linked._id!.toString(), role: linked.role as RoleType },
+								clerkSub: sub,
+							};
+						}
+						return { user: null, clerkSub: sub };
+					}
+					return {
+						user: { id: doc._id!.toString(), role: doc.role as RoleType },
+						clerkSub: sub,
+					};
+				}
+			}
 		}
 
 		const clerk = createClerkClient({ secretKey: secret });
@@ -120,11 +183,25 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 		if (!doc) {
 			return { user: null, clerkSub: sub };
 		}
-	if (doc.isDisabled) {
-		return { user: null, clerkSub: sub };
-	}
+		if (doc.isDisabled) {
+			return { user: null, clerkSub: sub };
+		}
 
-		await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });
+		try {
+			await User.updateOne(
+				{ _id: doc._id },
+				{ $set: { clerkId: sub, email: normalizedClerkEmail } }
+			);
+		} catch {
+			const linked = await User.findOne({ clerkId: sub }).lean();
+			if (linked && !linked.isDisabled) {
+				return {
+					user: { id: linked._id!.toString(), role: linked.role as RoleType },
+					clerkSub: sub,
+				};
+			}
+			return { user: null, clerkSub: sub };
+		}
 		return {
 			user: { id: doc._id!.toString(), role: doc.role as RoleType },
 			clerkSub: sub,
