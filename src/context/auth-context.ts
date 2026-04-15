@@ -38,6 +38,34 @@ function escapeRegex(s: string) {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeEmail(email?: string | null) {
+	return (email || '').trim().toLowerCase();
+}
+
+async function findUserByNormalizedEmail(normalizedEmail: string) {
+	if (!normalizedEmail) return null;
+
+	// Fast path for common case.
+	const exactCi = await User.findOne({
+		email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i'),
+	}).lean();
+	if (exactCi) return exactCi;
+
+	// Fallback for legacy rows with leading/trailing spaces or odd casing.
+	return User.findOne({
+		$expr: {
+			$eq: [
+				{
+					$toLower: {
+						$trim: { input: '$email' },
+					},
+				},
+				normalizedEmail,
+			],
+		},
+	}).lean();
+}
+
 async function resolveAuthFromBearer(token: string | undefined): Promise<{
 	user: { id: string; role: RoleType } | null;
 	clerkSub: string | null;
@@ -83,11 +111,12 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 		const email =
 			cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
 			cu.emailAddresses[0]?.emailAddress;
-		if (!email) {
+		const normalizedClerkEmail = normalizeEmail(email);
+		if (!normalizedClerkEmail) {
 			return { user: null, clerkSub: sub };
 		}
 
-		doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
+		doc = await findUserByNormalizedEmail(normalizedClerkEmail);
 		if (!doc) {
 			return { user: null, clerkSub: sub };
 		}

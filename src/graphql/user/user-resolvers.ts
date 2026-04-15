@@ -13,6 +13,34 @@ import {
 	provisionClerkUserForCoach,
 } from '../../lib/clerk-provision.js';
 
+function normalizeEmail(email?: string | null) {
+	return (email || '').trim().toLowerCase();
+}
+
+function buildExactEmailRegex(normalizedEmail: string) {
+	return new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+}
+
+async function findUserByNormalizedEmail(normalizedEmail: string) {
+	if (!normalizedEmail) return null;
+
+	const exactCi = await User.findOne({ email: buildExactEmailRegex(normalizedEmail) });
+	if (exactCi) return exactCi;
+
+	return User.findOne({
+		$expr: {
+			$eq: [
+				{
+					$toLower: {
+						$trim: { input: '$email' },
+					},
+				},
+				normalizedEmail,
+			],
+		},
+	});
+}
+
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
 	user: IUser & {
@@ -114,13 +142,13 @@ const userResolvers: Resolvers = {
 	Mutation: {
 		login: async (_, { input }, context) => {
 			const { email, password } = input;
-			const normalizedEmail = (email || '').trim().toLowerCase();
+			const normalizedEmail = normalizeEmail(email);
 
 			console.log('[API] Login attempt for:', normalizedEmail ? `${normalizedEmail.slice(0, 3)}***` : '(no email)');
 
 			// Find user by email (case-insensitive so Admin@x.com and admin@x.com match)
 			const user = await User.findOne({
-				email: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+				email: buildExactEmailRegex(normalizedEmail),
 			});
 			if (!user) {
 				throw new Error('Invalid email or password');
@@ -199,6 +227,7 @@ const userResolvers: Resolvers = {
 				membershipDetails,
 				coachDetails,
 			} = input;
+			const normalizedEmail = normalizeEmail(email);
 
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
@@ -215,7 +244,7 @@ const userResolvers: Resolvers = {
 			}
 
 			// Check if user already exists
-			const existingUser = await User.findOne({ email });
+			const existingUser = await findUserByNormalizedEmail(normalizedEmail);
 			if (existingUser) {
 				throw new Error('User with this email already exists');
 			}
@@ -261,7 +290,7 @@ const userResolvers: Resolvers = {
 				if (!clerkEmail) {
 					throw new Error('Your Clerk account has no verified email.');
 				}
-				if (email.trim().toLowerCase() !== clerkEmail.trim().toLowerCase()) {
+				if (normalizedEmail !== normalizeEmail(clerkEmail)) {
 					throw new Error('Email must match your Clerk sign-in email.');
 				}
 				const dupeClerk = await User.findOne({ clerkId: clerkSub });
@@ -289,7 +318,7 @@ const userResolvers: Resolvers = {
 				firstName,
 				middleName,
 				lastName,
-				email,
+				email: normalizedEmail,
 				password: hashedPassword,
 				...(clerkId ? { clerkId } : {}),
 				role,
@@ -390,7 +419,8 @@ const userResolvers: Resolvers = {
 				}
 				
 				// Check email uniqueness if email is being changed (for admin updating another user)
-				const existingUser = await User.findOne({ email: input.email });
+				const normalizedInputEmail = normalizeEmail(input.email);
+				const existingUser = await findUserByNormalizedEmail(normalizedInputEmail);
 				if (existingUser && existingUser._id.toString() !== id) {
 					throw new Error('Email is already in use');
 				}
@@ -427,7 +457,7 @@ const userResolvers: Resolvers = {
 			if (input.lastName != null) userDoc.lastName = input.lastName;
 			// Only allow email update if admin is updating another user (not their own profile)
 			if (input.email != null && (isAdmin && !isUpdatingOwnProfile)) {
-				userDoc.email = input.email;
+				userDoc.email = normalizeEmail(input.email);
 			}
 			if (input.password) {
 				userDoc.password = await bcrypt.hash(input.password, 10);
