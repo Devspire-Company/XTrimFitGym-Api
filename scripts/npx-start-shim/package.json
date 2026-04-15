@@ -1,0 +1,9 @@
+{
+  "name": "start",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local shim so `npx start` runs this app's Expo dev server (muscle-memory friendly).",
+  "bin": {
+    "start": "./cli.js"
+  }
+}

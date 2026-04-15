@@ -1,0 +1,21 @@
+/** Guest equipment with images from assets/equipments. Names match file names. */
+export const GUEST_EQUIPMENT = [
+	{ name: 'Adjustable Incline Bench', image: require('@/assets/equipments/Adjustable Incline Bench.jpg') },
+	{ name: 'Battle Rope', image: require('@/assets/equipments/Battle Rope.jpg') },
+	{ name: 'Cable Crossover Machine', image: require('@/assets/equipments/Cable Crossover Machine.jpg') },
+	{ name: 'Chest press machine', image: require('@/assets/equipments/Chest press machine.jpg') },
+	{ name: 'dumbbells', image: require('@/assets/equipments/dumbbells.jpg') },
+	{ name: 'Flat Bench 2', image: require('@/assets/equipments/Flat Bench 2.jpg') },
+	{ name: 'Flat Bench', image: require('@/assets/equipments/Flat Bench.jpg') },
+	{ name: 'Kettball', image: require('@/assets/equipments/Kettball.jpg') },
+	{ name: 'leg Curl machine', image: require('@/assets/equipments/leg Curl machine.jpg') },
+	{ name: 'Leg press machine', image: require('@/assets/equipments/Leg press machine.jpg') },
+	{ name: 'Multi Station Cable', image: require('@/assets/equipments/Multi Station Cable.jpg') },
+	{ name: 'Pec Deck', image: require('@/assets/equipments/Pec Deck.jpg') },
+	{ name: 'Plate loaded chest press machine', image: require('@/assets/equipments/Plate loaded chest press machine.jpg') },
+	{ name: 'Preacher Curl Bench', image: require('@/assets/equipments/Preacher Curl Bench.jpg') },
+	{ name: 'Smith machine', image: require('@/assets/equipments/Smith machine.jpg') },
+	{ name: 'Stationary Bike', image: require('@/assets/equipments/Stationary Bike.jpg') },
+	{ name: 'T-bar row machine', image: require('@/assets/equipments/T-bar row machine.jpg') },
+	{ name: 'Treadmill', image: require('@/assets/equipments/Treadmill.jpg') },
+] as const;

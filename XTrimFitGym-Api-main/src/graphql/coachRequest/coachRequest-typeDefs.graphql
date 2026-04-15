@@ -1,0 +1,48 @@
+# Coach Request types
+type CoachRequest {
+	id: ID!
+	clientId: ID!
+	client: User # Populated client details
+	coachId: ID!
+	coach: User # Populated coach details
+	status: CoachRequestStatus!
+	message: String
+	createdAt: String
+	updatedAt: String
+}
+
+enum CoachRequestStatus {
+	pending
+	approved
+	denied
+}
+
+input CreateCoachRequestInput {
+	coachId: ID!
+	message: String
+}
+
+input UpdateCoachRequestInput {
+	status: CoachRequestStatus!
+}
+
+# Extend Query type
+extend type Query {
+	# Get coach requests for a coach
+	getCoachRequests(coachId: ID!, status: CoachRequestStatus): [CoachRequest!]!
+	# Get coach requests for a client
+	getClientRequests(clientId: ID!, status: CoachRequestStatus): [CoachRequest!]!
+	# Get pending requests for current coach
+	getPendingCoachRequests: [CoachRequest!]!
+}
+
+# Extend Mutation type
+extend type Mutation {
+	# Create a coach request (client only, requires active membership)
+	createCoachRequest(input: CreateCoachRequestInput!): CoachRequest!
+	# Approve or deny a coach request (coach only)
+	updateCoachRequest(id: ID!, input: UpdateCoachRequestInput!): CoachRequest!
+	# Cancel a coach request (client only)
+	cancelCoachRequest(id: ID!): Boolean!
+}
+

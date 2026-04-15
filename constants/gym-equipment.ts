@@ -1,0 +1,30 @@
+/** Static list of gym equipment for guest/member view. Replace or load from backend when API exists. */
+export const GYM_EQUIPMENT = [
+	'Barbells',
+	'Dumbbells',
+	'Kettlebells',
+	'Bench press',
+	'Smith machine',
+	'Pull-up bar',
+	'Cable machine',
+	'Leg press',
+	'Leg curl machine',
+	'Squat rack',
+	'Treadmills',
+	'Stationary bikes',
+	'Rowing machine',
+	'Elliptical',
+	'Resistance bands',
+	'Medicine balls',
+	'Jump ropes',
+	'Ab roller',
+	'Preacher curl bench',
+	'Lat pulldown machine',
+	'Pec deck',
+	'Leg extension machine',
+	'Calf raise machine',
+	'Dip station',
+	'TRX / suspension',
+] as const;
+
+export type GymEquipmentItem = (typeof GYM_EQUIPMENT)[number];
