@@ -142,3 +142,23 @@ This runs a **MySQL 5.5** container on Railway with **SSL disabled** and legacy 
 - **Render API** reads from the same MySQL using the same host, port, user, and database.
 
 If iVMS still fails, confirm in iVMS: **Port** in iVMS is the **TCP proxy port**, not 3306. If your plan doesn’t show TCP Proxy for this service, use the same Docker setup on **Fly.io** or a **VPS** and expose 3306 there instead.
+
+---
+
+## Troubleshooting: Web shows `totalCount: 0` but GraphQL returns 200
+
+1. **Confirm the same MySQL everywhere**  
+   Render API `MYSQLHOST` / `MYSQLPORT` / `MYSQLUSER` / `MYSQLPASSWORD` / `MYSQLDATABASE` must match the **Railway TCP proxy** and **`ivms`** user for the database where iVMS writes (`railway` by default).
+
+2. **Check Render API logs after deploy**  
+   On successful MySQL connect you should see: `📊 attendance table row count: N`. If **`N` is 0**, the table is empty: iVMS is not inserting yet, or it is pointing at a **different** MySQL host/port than this one.
+
+3. **Railway service layout**  
+   You should have **one** service that is the **MySQL** Docker (`railway-mysql` root) and **separately** the **Node API** on Render (recommended). If the only Railway service builds `railway-mysql/Dockerfile`, that service is **MySQL only** — the GraphQL API still runs on Render and must reach this MySQL via the **public TCP proxy**.
+
+4. **Performance (optional)**  
+   After data exists, run `railway-mysql/05-index-attendance-datetime.sql` once on the DB to speed up list queries.
+
+5. **Mobile app (Expo / React Native, etc.)**  
+   Use the **same** `https://…/graphql` (or your API URL) and **Clerk publishable key** as the web app. Attendance is not stored on the phone; it is read from this API → MySQL path above.
+

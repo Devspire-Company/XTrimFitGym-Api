@@ -51,6 +51,21 @@ async function startServer() {
 		await connectMySQL(mysqlConfig);
 		console.log('✅ MySQL connected for attendance monitoring');
 
+		// One-line health: helps Render logs show whether iVMS data is reaching MySQL
+		try {
+			const { ensureMySQLConnection } = await import('./database/mysql/connectMysql.js');
+			const mc = await ensureMySQLConnection();
+			const [rows] = await mc.execute('SELECT COUNT(*) AS c FROM attendance');
+			const row = (rows as { c: number }[])[0];
+			const n = row != null && typeof row.c === 'number' ? row.c : Number(row?.c);
+			console.log(`📊 attendance table row count: ${Number.isFinite(n) ? n : 'unknown'}`);
+		} catch (countErr: any) {
+			console.warn(
+				'⚠️  Could not read attendance row count (table missing?):',
+				countErr?.message || countErr,
+			);
+		}
+
 		// Initialize and start attendance monitoring
 		// Don't throw if initialization fails - it might just be that the table doesn't exist yet
 		try {
