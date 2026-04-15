@@ -30,6 +30,8 @@ export interface IUser {
 		workOutTime?: string[];
 		coaches_ids?: mongoose.Types.ObjectId[];
 		hasEnteredDetails?: boolean;
+		/** Member completed facility biometric enrollment (synced with mobile). */
+		facilityBiometricEnrollmentComplete?: boolean;
 	};
 	coachDetails?: {
 		clients_ids?: mongoose.Types.ObjectId[];
@@ -75,6 +77,10 @@ const memberSchema = new Schema({
 		ref: 'User',
 	},
 	hasEnteredDetails: {
+		type: Boolean,
+		default: false,
+	},
+	facilityBiometricEnrollmentComplete: {
 		type: Boolean,
 		default: false,
 	},

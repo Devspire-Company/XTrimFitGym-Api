@@ -389,6 +389,7 @@ export type LoginInput = {
 export type MemberDetails = {
   __typename?: 'MemberDetails';
   coachesIds?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
+  facilityBiometricEnrollmentComplete?: Maybe<Scalars['Boolean']['output']>;
   fitnessGoal?: Maybe<Array<Scalars['String']['output']>>;
   hasEnteredDetails?: Maybe<Scalars['Boolean']['output']>;
   membershipId?: Maybe<Scalars['ID']['output']>;
@@ -399,6 +400,7 @@ export type MemberDetails = {
 
 export type MemberDetailsInput = {
   coachesIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
+  facilityBiometricEnrollmentComplete?: InputMaybe<Scalars['Boolean']['input']>;
   fitnessGoal?: InputMaybe<Array<Scalars['String']['input']>>;
   hasEnteredDetails?: InputMaybe<Scalars['Boolean']['input']>;
   membershipId?: InputMaybe<Scalars['ID']['input']>;
@@ -1929,6 +1931,7 @@ export type LoginHistoryEntryResolvers<ContextType = IAuthContext, ParentType ex
 
 export type MemberDetailsResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['MemberDetails'] = ResolversParentTypes['MemberDetails']> = {
   coachesIds?: Resolver<Maybe<Array<Maybe<ResolversTypes['ID']>>>, ParentType, ContextType>;
+  facilityBiometricEnrollmentComplete?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   fitnessGoal?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   hasEnteredDetails?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   membershipId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;

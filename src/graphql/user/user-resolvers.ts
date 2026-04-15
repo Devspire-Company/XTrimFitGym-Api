@@ -47,6 +47,8 @@ const mapUserToGraphQL = (
 							(id: mongoose.Types.ObjectId) => id.toString()
 						) || [],
 					hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
+					facilityBiometricEnrollmentComplete:
+						user.membershipDetails.facilityBiometricEnrollmentComplete ?? false,
 			  }
 			: null,
 		coachDetails: user.coachDetails
@@ -301,6 +303,8 @@ const userResolvers: Resolvers = {
 							workOutTime: membershipDetails.workOutTime,
 							coaches_ids: membershipDetails.coachesIds,
 							hasEnteredDetails: membershipDetails.hasEnteredDetails ?? false,
+							facilityBiometricEnrollmentComplete:
+								membershipDetails.facilityBiometricEnrollmentComplete ?? false,
 					  }
 					: undefined,
 				coachDetails: coachDetails
@@ -452,7 +456,13 @@ const userResolvers: Resolvers = {
 					userDoc.membershipDetails.coaches_ids = (md.coachesIds ?? []).filter((id): id is string => id != null).map((id) => new mongoose.Types.ObjectId(id));
 				if (md.hasEnteredDetails !== undefined && md.hasEnteredDetails !== null)
 					userDoc.membershipDetails.hasEnteredDetails = md.hasEnteredDetails;
-				
+				if (
+					md.facilityBiometricEnrollmentComplete !== undefined &&
+					md.facilityBiometricEnrollmentComplete !== null
+				)
+					userDoc.membershipDetails.facilityBiometricEnrollmentComplete =
+						md.facilityBiometricEnrollmentComplete;
+
 				// Mark the nested object as modified to ensure Mongoose saves it
 				userDoc.markModified('membershipDetails');
 			}

@@ -11,6 +11,8 @@ type MemberDetails {
 	workOutTime: [String]
 	coachesIds: [ID]
 	hasEnteredDetails: Boolean
+	"""Member completed gym/facility biometric enrollment (mobile + web)."""
+	facilityBiometricEnrollmentComplete: Boolean
 }
 
 type CoachDetails {
@@ -65,6 +67,7 @@ input MemberDetailsInput {
 	workOutTime: [String]
 	coachesIds: [ID]
 	hasEnteredDetails: Boolean
+	facilityBiometricEnrollmentComplete: Boolean
 }
 
 input CoachDetailsInput {
