@@ -257,10 +257,13 @@ export type CreateUserInput = {
   email: Scalars['String']['input'];
   firstName: Scalars['String']['input'];
   gender?: InputMaybe<Scalars['String']['input']>;
+  guardianIdVerificationPhotoUrl?: InputMaybe<Scalars['String']['input']>;
   heardFrom?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
   lastName: Scalars['String']['input'];
   membershipDetails?: InputMaybe<MemberDetailsInput>;
   middleName?: InputMaybe<Scalars['String']['input']>;
+  minorLiabilityWaiverPrintedName?: InputMaybe<Scalars['String']['input']>;
+  minorLiabilityWaiverSignatureUrl?: InputMaybe<Scalars['String']['input']>;
   /**
    * Password is optional for Clerk-based admin creation (backend generates one).
    * Legacy email/password auth still uses this field.
@@ -271,11 +274,16 @@ export type CreateUserInput = {
 };
 
 export type CreateWalkInClientInput = {
+  ageYears: Scalars['Int']['input'];
   email?: InputMaybe<Scalars['String']['input']>;
   firstName: Scalars['String']['input'];
   gender: WalkInGender;
   lastName: Scalars['String']['input'];
   middleName?: InputMaybe<Scalars['String']['input']>;
+  /** Required when ageYears is under 18: admin confirms guardian waiver on file. */
+  minorWaiverAcknowledged?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Parent/guardian full name when under 18. */
+  minorWaiverGuardianName?: InputMaybe<Scalars['String']['input']>;
   notes?: InputMaybe<Scalars['String']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
 };
@@ -389,6 +397,7 @@ export type LoginInput = {
 export type MemberDetails = {
   __typename?: 'MemberDetails';
   coachesIds?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
+  /** Member completed gym/facility biometric enrollment (mobile + web). */
   facilityBiometricEnrollmentComplete?: Maybe<Scalars['Boolean']['output']>;
   fitnessGoal?: Maybe<Array<Scalars['String']['output']>>;
   hasEnteredDetails?: Maybe<Scalars['Boolean']['output']>;
@@ -1408,20 +1417,26 @@ export type UpdateUserInput = {
   email?: InputMaybe<Scalars['String']['input']>;
   firstName?: InputMaybe<Scalars['String']['input']>;
   gender?: InputMaybe<Scalars['String']['input']>;
+  guardianIdVerificationPhotoUrl?: InputMaybe<Scalars['String']['input']>;
   heardFrom?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
   lastName?: InputMaybe<Scalars['String']['input']>;
   membershipDetails?: InputMaybe<MemberDetailsInput>;
   middleName?: InputMaybe<Scalars['String']['input']>;
+  minorLiabilityWaiverPrintedName?: InputMaybe<Scalars['String']['input']>;
+  minorLiabilityWaiverSignatureUrl?: InputMaybe<Scalars['String']['input']>;
   password?: InputMaybe<Scalars['String']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type UpdateWalkInClientInput = {
+  ageYears: Scalars['Int']['input'];
   email?: InputMaybe<Scalars['String']['input']>;
   firstName: Scalars['String']['input'];
   gender: WalkInGender;
   lastName: Scalars['String']['input'];
   middleName?: InputMaybe<Scalars['String']['input']>;
+  minorWaiverAcknowledged?: InputMaybe<Scalars['Boolean']['input']>;
+  minorWaiverGuardianName?: InputMaybe<Scalars['String']['input']>;
   notes?: InputMaybe<Scalars['String']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
 };
@@ -1441,6 +1456,7 @@ export type User = {
   email: Scalars['String']['output'];
   firstName: Scalars['String']['output'];
   gender: Scalars['String']['output'];
+  guardianIdVerificationPhotoUrl?: Maybe<Scalars['String']['output']>;
   heardFrom?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
   id: Scalars['ID']['output'];
   isDisabled: Scalars['Boolean']['output'];
@@ -1448,6 +1464,8 @@ export type User = {
   loginHistory?: Maybe<Array<Maybe<LoginHistoryEntry>>>;
   membershipDetails?: Maybe<MemberDetails>;
   middleName?: Maybe<Scalars['String']['output']>;
+  minorLiabilityWaiverPrintedName?: Maybe<Scalars['String']['output']>;
+  minorLiabilityWaiverSignatureUrl?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
   role: RoleType;
   updatedAt?: Maybe<Scalars['String']['output']>;
@@ -1482,6 +1500,8 @@ export type WalkInAttendanceLog = {
 
 export type WalkInClient = {
   __typename?: 'WalkInClient';
+  /** Age in whole years (admin-entered). */
+  ageYears?: Maybe<Scalars['Int']['output']>;
   createdAt: Scalars['String']['output'];
   email?: Maybe<Scalars['String']['output']>;
   firstName: Scalars['String']['output'];
@@ -1489,6 +1509,10 @@ export type WalkInClient = {
   id: Scalars['ID']['output'];
   lastName: Scalars['String']['output'];
   middleName?: Maybe<Scalars['String']['output']>;
+  /** When the guardian liability waiver was recorded (ISO). */
+  minorWaiverAcceptedAt?: Maybe<Scalars['String']['output']>;
+  /** Parent/guardian name on file when under 18 with waiver. */
+  minorWaiverGuardianName?: Maybe<Scalars['String']['output']>;
   notes?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['String']['output'];
@@ -2258,6 +2282,7 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   firstName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gender?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  guardianIdVerificationPhotoUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   heardFrom?: Resolver<Maybe<Array<Maybe<ResolversTypes['String']>>>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   isDisabled?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
@@ -2265,6 +2290,8 @@ export type UserResolvers<ContextType = IAuthContext, ParentType extends Resolve
   loginHistory?: Resolver<Maybe<Array<Maybe<ResolversTypes['LoginHistoryEntry']>>>, ParentType, ContextType>;
   membershipDetails?: Resolver<Maybe<ResolversTypes['MemberDetails']>, ParentType, ContextType>;
   middleName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  minorLiabilityWaiverPrintedName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  minorLiabilityWaiverSignatureUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   role?: Resolver<ResolversTypes['RoleType'], ParentType, ContextType>;
   updatedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -2291,6 +2318,7 @@ export type WalkInAttendanceLogResolvers<ContextType = IAuthContext, ParentType 
 };
 
 export type WalkInClientResolvers<ContextType = IAuthContext, ParentType extends ResolversParentTypes['WalkInClient'] = ResolversParentTypes['WalkInClient']> = {
+  ageYears?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   firstName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -2298,6 +2326,8 @@ export type WalkInClientResolvers<ContextType = IAuthContext, ParentType extends
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   middleName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  minorWaiverAcceptedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  minorWaiverGuardianName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   notes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;

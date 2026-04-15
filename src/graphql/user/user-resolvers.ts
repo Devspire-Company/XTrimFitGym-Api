@@ -35,6 +35,9 @@ const mapUserToGraphQL = (
 		agreedToTermsAndConditions: user.agreedToTermsAndConditions,
 		agreedToPrivacyPolicy: user.agreedToPrivacyPolicy,
 		agreedToLiabilityWaiver: user.agreedToLiabilityWaiver,
+		guardianIdVerificationPhotoUrl: user.guardianIdVerificationPhotoUrl || null,
+		minorLiabilityWaiverPrintedName: user.minorLiabilityWaiverPrintedName || null,
+		minorLiabilityWaiverSignatureUrl: user.minorLiabilityWaiverSignatureUrl || null,
 		attendanceId: user.attendanceId || null,
 		membershipDetails: user.membershipDetails
 			? {
@@ -190,6 +193,9 @@ const userResolvers: Resolvers = {
 				agreedToTermsAndConditions,
 				agreedToPrivacyPolicy,
 				agreedToLiabilityWaiver,
+				guardianIdVerificationPhotoUrl,
+				minorLiabilityWaiverPrintedName,
+				minorLiabilityWaiverSignatureUrl,
 				membershipDetails,
 				coachDetails,
 			} = input;
@@ -294,6 +300,9 @@ const userResolvers: Resolvers = {
 				agreedToTermsAndConditions,
 				agreedToPrivacyPolicy,
 				agreedToLiabilityWaiver,
+				guardianIdVerificationPhotoUrl,
+				minorLiabilityWaiverPrintedName,
+				minorLiabilityWaiverSignatureUrl,
 				attendanceId,
 				membershipDetails: membershipDetails
 					? {
@@ -437,6 +446,18 @@ const userResolvers: Resolvers = {
 				userDoc.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
 			if (input.agreedToLiabilityWaiver !== undefined && input.agreedToLiabilityWaiver !== null)
 				userDoc.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
+			if (input.guardianIdVerificationPhotoUrl !== undefined) {
+				userDoc.guardianIdVerificationPhotoUrl =
+					input.guardianIdVerificationPhotoUrl ?? undefined;
+			}
+			if (input.minorLiabilityWaiverPrintedName !== undefined) {
+				userDoc.minorLiabilityWaiverPrintedName =
+					input.minorLiabilityWaiverPrintedName ?? undefined;
+			}
+			if (input.minorLiabilityWaiverSignatureUrl !== undefined) {
+				userDoc.minorLiabilityWaiverSignatureUrl =
+					input.minorLiabilityWaiverSignatureUrl ?? undefined;
+			}
 
 			// Update membershipDetails if provided
 			if (input.membershipDetails !== undefined && input.membershipDetails !== null) {

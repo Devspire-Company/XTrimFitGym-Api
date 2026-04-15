@@ -20,6 +20,9 @@ export interface IUser {
 	agreedToTermsAndConditions?: boolean;
 	agreedToPrivacyPolicy?: boolean;
 	agreedToLiabilityWaiver?: boolean;
+	guardianIdVerificationPhotoUrl?: string;
+	minorLiabilityWaiverPrintedName?: string;
+	minorLiabilityWaiverSignatureUrl?: string;
 	attendanceId?: number;
 	/** Linked Clerk user id (web/mobile OAuth). */
 	clerkId?: string;
@@ -159,6 +162,9 @@ const userSchema = new Schema(
 			type: Boolean,
 			default: false,
 		},
+		guardianIdVerificationPhotoUrl: String,
+		minorLiabilityWaiverPrintedName: String,
+		minorLiabilityWaiverSignatureUrl: String,
 		clerkId: {
 			type: String,
 			unique: true,

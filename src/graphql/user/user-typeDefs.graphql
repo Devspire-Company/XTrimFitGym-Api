@@ -48,6 +48,9 @@ type User {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	attendanceId: Int
 	membershipDetails: MemberDetails
 	coachDetails: CoachDetails
@@ -100,6 +103,9 @@ input CreateUserInput {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 	currentPassword: String
@@ -119,6 +125,9 @@ input UpdateUserInput {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 }
