@@ -41,6 +41,18 @@ async function findUserByNormalizedEmail(normalizedEmail: string) {
 	});
 }
 
+/** When DB still has `false` but the user has a facility card / VMS attendance id, treat enrollment as done for API consumers. */
+function resolveFacilityBiometricEnrollmentComplete(
+	attendanceId: IUser['attendanceId'],
+	stored: boolean | undefined | null
+): boolean {
+	const normalized = stored ?? false;
+	if (normalized !== false) return normalized;
+	const id = attendanceId;
+	if (typeof id === 'number' && Number.isFinite(id) && id > 0) return true;
+	return false;
+}
+
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
 	user: IUser & {
@@ -78,8 +90,10 @@ const mapUserToGraphQL = (
 							(id: mongoose.Types.ObjectId) => id.toString()
 						) || [],
 					hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
-					facilityBiometricEnrollmentComplete:
-						user.membershipDetails.facilityBiometricEnrollmentComplete ?? false,
+					facilityBiometricEnrollmentComplete: resolveFacilityBiometricEnrollmentComplete(
+						user.attendanceId,
+						user.membershipDetails.facilityBiometricEnrollmentComplete
+					),
 			  }
 			: null,
 		coachDetails: user.coachDetails
