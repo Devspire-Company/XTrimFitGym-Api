@@ -2,11 +2,22 @@ import { ensureMySQLConnection } from '../database/mysql/connectMysql.js';
 import type { RowDataPacket } from 'mysql2';
 
 const hitCache = new Map<string, { expiry: number; value: boolean }>();
-const CACHE_MS = 60_000;
+/** Cache positive matches only so "Check again" on the app sees new iVMS rows immediately after a miss. */
+const POSITIVE_CACHE_MS = 120_000;
+
+/** Single-flight MySQL work: mysql2 one connection + parallel GraphQL field resolves must not overlap executes. */
+let mysqlSerialTail: Promise<unknown> = Promise.resolve();
+
+function runMysqlSerial<T>(fn: () => Promise<T>): Promise<T> {
+	const run = mysqlSerialTail.then(() => fn());
+	mysqlSerialTail = run.catch(() => undefined);
+	return run;
+}
 
 /**
  * True if iVMS-synced Railway `attendance` has at least one row with a primary key `id`
  * whose `cardNo` matches the member's facility card (Mongo `attendanceId`).
+ * Uses the same card matching rules as attendance list filters (string + numeric).
  */
 export async function hasRailwayAttendanceRowForCardNo(
 	attendanceId: number | null | undefined,
@@ -17,20 +28,31 @@ export async function hasRailwayAttendanceRowForCardNo(
 	const key = String(Math.trunc(attendanceId));
 	const now = Date.now();
 	const cached = hitCache.get(key);
-	if (cached && cached.expiry > now) return cached.value;
+	if (cached && cached.expiry > now && cached.value === true) return true;
 
 	let value = false;
 	try {
-		const conn = await ensureMySQLConnection();
-		const [rows] = await conn.execute<RowDataPacket[]>(
-			'SELECT id FROM attendance WHERE TRIM(CAST(cardNo AS CHAR)) = ? LIMIT 1',
-			[key],
-		);
-		value = Array.isArray(rows) && rows.length > 0 && rows[0]?.id != null;
+		value = await runMysqlSerial(async () => {
+			const conn = await ensureMySQLConnection();
+			const [rows] = await conn.execute<RowDataPacket[]>(
+				`SELECT id FROM attendance WHERE (
+					cardNo IS NOT NULL AND cardNo != '' AND (
+						CAST(cardNo AS CHAR) = CAST(? AS CHAR)
+						OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
+					)
+				) LIMIT 1`,
+				[key, key],
+			);
+			return Array.isArray(rows) && rows.length > 0 && rows[0]?.id != null;
+		});
 	} catch {
 		value = false;
 	}
 
-	hitCache.set(key, { expiry: now + CACHE_MS, value });
+	if (value) {
+		hitCache.set(key, { expiry: now + POSITIVE_CACHE_MS, value: true });
+	} else {
+		hitCache.delete(key);
+	}
 	return value;
 }
