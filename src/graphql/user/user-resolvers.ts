@@ -12,6 +12,7 @@ import {
 	provisionClerkUserForAdmin,
 	provisionClerkUserForCoach,
 } from '../../lib/clerk-provision.js';
+import { hasRailwayAttendanceRowForCardNo } from '../../lib/railway-attendance-gate.js';
 
 function normalizeEmail(email?: string | null) {
 	return (email || '').trim().toLowerCase();
@@ -41,17 +42,8 @@ async function findUserByNormalizedEmail(normalizedEmail: string) {
 	});
 }
 
-/** When DB still has `false` but the user has a facility card / VMS attendance id, treat enrollment as done for API consumers. */
-function resolveFacilityBiometricEnrollmentComplete(
-	attendanceId: IUser['attendanceId'],
-	stored: boolean | undefined | null
-): boolean {
-	const normalized = stored ?? false;
-	if (normalized !== false) return normalized;
-	const id = attendanceId;
-	if (typeof id === 'number' && Number.isFinite(id) && id > 0) return true;
-	return false;
-}
+/** Internal only: used by MemberDetails field resolver (not in GraphQL schema). */
+const RAILWAY_GATE_ATTENDANCE_ID = '__railwayGateAttendanceId';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -90,10 +82,9 @@ const mapUserToGraphQL = (
 							(id: mongoose.Types.ObjectId) => id.toString()
 						) || [],
 					hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
-					facilityBiometricEnrollmentComplete: resolveFacilityBiometricEnrollmentComplete(
-						user.attendanceId,
-						user.membershipDetails.facilityBiometricEnrollmentComplete
-					),
+					facilityBiometricEnrollmentComplete:
+						user.membershipDetails.facilityBiometricEnrollmentComplete ?? false,
+					[RAILWAY_GATE_ATTENDANCE_ID]: user.attendanceId ?? null,
 			  }
 			: null,
 		coachDetails: user.coachDetails
@@ -755,6 +746,16 @@ const userResolvers: Resolvers = {
 				const users = await User.find(query).lean();
 				return users.map((user) => mapUserToGraphQL(user as any));
 			},
+		},
+	},
+	MemberDetails: {
+		facilityBiometricEnrollmentComplete: async (parent: Record<string, unknown>) => {
+			const stored = parent.facilityBiometricEnrollmentComplete;
+			const normalized = (stored ?? false) as boolean;
+			if (normalized !== false) return normalized;
+			const aid = parent[RAILWAY_GATE_ATTENDANCE_ID];
+			if (typeof aid !== 'number' || !Number.isFinite(aid) || aid <= 0) return false;
+			return hasRailwayAttendanceRowForCardNo(aid);
 		},
 	},
 };
