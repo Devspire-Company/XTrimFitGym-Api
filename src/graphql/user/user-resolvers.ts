@@ -12,6 +12,7 @@ import {
 	provisionClerkUserForAdmin,
 	provisionClerkUserForCoach,
 } from '../../lib/clerk-provision.js';
+import { hasRailwayAttendanceRowForCardNo } from '../../lib/railway-attendance-gate.js';
 
 function normalizeEmail(email?: string | null) {
 	return (email || '').trim().toLowerCase();
@@ -40,6 +41,9 @@ async function findUserByNormalizedEmail(normalizedEmail: string) {
 		},
 	});
 }
+
+/** Internal only: used by MemberDetails field resolver (not in GraphQL schema). */
+const RAILWAY_GATE_ATTENDANCE_ID = '__railwayGateAttendanceId';
 
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (
@@ -80,6 +84,7 @@ const mapUserToGraphQL = (
 					hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
 					facilityBiometricEnrollmentComplete:
 						user.membershipDetails.facilityBiometricEnrollmentComplete ?? false,
+					[RAILWAY_GATE_ATTENDANCE_ID]: user.attendanceId ?? null,
 			  }
 			: null,
 		coachDetails: user.coachDetails
@@ -146,10 +151,8 @@ const userResolvers: Resolvers = {
 
 			console.log('[API] Login attempt for:', normalizedEmail ? `${normalizedEmail.slice(0, 3)}***` : '(no email)');
 
-			// Find user by email (case-insensitive so Admin@x.com and admin@x.com match)
-			const user = await User.findOne({
-				email: buildExactEmailRegex(normalizedEmail),
-			});
+			// Match legacy rows with odd casing or surrounding whitespace too
+			const user = await findUserByNormalizedEmail(normalizedEmail);
 			if (!user) {
 				throw new Error('Invalid email or password');
 			}
@@ -753,6 +756,16 @@ const userResolvers: Resolvers = {
 				const users = await User.find(query).lean();
 				return users.map((user) => mapUserToGraphQL(user as any));
 			},
+		},
+	},
+	MemberDetails: {
+		facilityBiometricEnrollmentComplete: async (parent: Record<string, unknown>) => {
+			const stored = parent.facilityBiometricEnrollmentComplete;
+			const normalized = (stored ?? false) as boolean;
+			if (normalized !== false) return normalized;
+			const aid = parent[RAILWAY_GATE_ATTENDANCE_ID];
+			if (typeof aid !== 'number' || !Number.isFinite(aid) || aid <= 0) return false;
+			return hasRailwayAttendanceRowForCardNo(aid);
 		},
 	},
 };
