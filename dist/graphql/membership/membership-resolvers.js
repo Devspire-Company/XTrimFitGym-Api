@@ -63,6 +63,12 @@ const mapTransactionToGraphQL = (transaction, membershipPlan) => {
             ? transaction.dayDuration
             : null,
         status: transaction.status?.toUpperCase() || 'ACTIVE',
+        canceledReason: transaction.canceledReason ?? null,
+        canceledAt: transaction.canceledAt?.toISOString?.() ?? null,
+        canceledById: transaction.canceledBy?.toString?.() ?? null,
+        lastAdjustedReason: transaction.lastAdjustedReason ?? null,
+        lastAdjustedAt: transaction.lastAdjustedAt?.toISOString?.() ?? null,
+        lastAdjustedById: transaction.lastAdjustedBy?.toString?.() ?? null,
         createdAt: transaction.createdAt?.toISOString(),
         updatedAt: transaction.updatedAt?.toISOString(),
     };
@@ -287,8 +293,12 @@ export default {
         },
         updateMembershipTransactionDuration: async (_, { input, }, context) => {
             const userRole = context.auth.user?.role;
+            const userId = context.auth.user?.id;
             if (userRole !== 'admin') {
                 throw new Error('Unauthorized: Only admins can update subscription duration');
+            }
+            if (!input.reason?.trim()) {
+                throw new Error('A valid reason is required');
             }
             const hasMonths = input.monthDuration != null && Number.isFinite(input.monthDuration) && input.monthDuration >= 1;
             const hasDays = input.dayDuration != null && Number.isFinite(input.dayDuration) && input.dayDuration >= 1;
@@ -333,6 +343,9 @@ export default {
                 expiresAt,
                 monthDuration,
                 dayDuration: dayDuration ?? null,
+                lastAdjustedReason: input.reason.trim(),
+                lastAdjustedAt: new Date(),
+                ...(userId ? { lastAdjustedBy: new mongoose.Types.ObjectId(userId) } : {}),
             };
             if (input.startedAt != null && String(input.startedAt).trim() !== '') {
                 updatePayload.startedAt = effectiveStart;
@@ -358,11 +371,14 @@ export default {
                 : await Membership.findById(updated.membership_id).lean();
             return mapTransactionToGraphQL(updated, planForMap);
         },
-        cancelMembership: async (_, { transactionId }, context) => {
+        cancelMembership: async (_, { transactionId, reason }, context) => {
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
             if (!userId) {
                 throw new Error('Unauthorized: Please log in');
+            }
+            if (!reason?.trim()) {
+                throw new Error('Cancellation reason is required');
             }
             const transaction = await MembershipTransaction.findById(transactionId).lean();
             if (!transaction) {
@@ -378,6 +394,9 @@ export default {
             // doesn't deduct revenue (the transaction still exists with its priceAtPurchase)
             await MembershipTransaction.findByIdAndUpdate(transactionId, {
                 status: 'Canceled',
+                canceledReason: reason.trim(),
+                canceledAt: new Date(),
+                canceledBy: new mongoose.Types.ObjectId(userId),
             });
             // Update analytics: Revenue is NOT deducted (transaction still counts), only counts are updated
             await onSubscriptionCanceled(transactionId);

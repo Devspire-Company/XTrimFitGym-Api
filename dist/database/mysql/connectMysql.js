@@ -30,6 +30,10 @@ export const connectMySQL = async (config) => {
             password: config.password,
             database: config.database,
             multipleStatements: false,
+            // Render → Railway TCP proxy: fail fast instead of hanging; keep TCP alive across idle
+            connectTimeout: 25_000,
+            enableKeepAlive: true,
+            keepAliveInitialDelay: 10_000,
         });
         // Verify we're connected to the correct database
         const [dbRows] = await connection.execute('SELECT DATABASE() as current_db');

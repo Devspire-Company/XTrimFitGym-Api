@@ -11,6 +11,43 @@ const requireAdmin = (context) => {
         throw new Error('Unauthorized: Admin only');
     }
 };
+const normalizeAgeYears = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 120) {
+        throw new Error('Invalid age: enter a whole number from 0 to 120.');
+    }
+    return Math.floor(n);
+};
+const minorWaiverPayload = (ageYears, acknowledged, guardianName) => {
+    if (ageYears >= 18) {
+        return {
+            ageYears,
+            minorWaiverGuardianName: undefined,
+            minorWaiverAcceptedAt: undefined,
+        };
+    }
+    if (!acknowledged) {
+        throw new Error('Guests under 18 require a parent/guardian liability waiver on file. Confirm the waiver checkbox.');
+    }
+    const g = guardianName?.trim();
+    if (!g) {
+        throw new Error('Enter the parent/guardian full name for guests under 18.');
+    }
+    return {
+        ageYears,
+        minorWaiverGuardianName: g,
+        minorWaiverAcceptedAt: new Date(),
+    };
+};
+const assertCanTimeInMinor = (client) => {
+    const age = client.ageYears;
+    if (typeof age !== 'number' || age >= 18)
+        return;
+    const hasWaiver = Boolean(client.minorWaiverAcceptedAt) && Boolean(client.minorWaiverGuardianName?.trim());
+    if (!hasWaiver) {
+        throw new Error('Cannot time in: this guest is under 18 without a completed guardian waiver. Update their profile with age and waiver first.');
+    }
+};
 const mapClient = (doc) => ({
     id: doc._id.toString(),
     firstName: doc.firstName,
@@ -20,6 +57,11 @@ const mapClient = (doc) => ({
     email: doc.email?.trim() ? doc.email : null,
     gender: doc.gender,
     notes: doc.notes?.trim() ? doc.notes : null,
+    ageYears: typeof doc.ageYears === 'number' ? doc.ageYears : null,
+    minorWaiverGuardianName: doc.minorWaiverGuardianName?.trim()
+        ? doc.minorWaiverGuardianName
+        : null,
+    minorWaiverAcceptedAt: doc.minorWaiverAcceptedAt?.toISOString?.() ?? null,
     createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
     updatedAt: doc.updatedAt?.toISOString() ?? new Date().toISOString(),
 });
@@ -168,6 +210,8 @@ export default {
             if (!input.firstName?.trim() || !input.lastName?.trim()) {
                 throw new Error('First name and last name are required');
             }
+            const ageYears = normalizeAgeYears(input.ageYears);
+            const waiver = minorWaiverPayload(ageYears, input.minorWaiverAcknowledged, input.minorWaiverGuardianName);
             const client = new WalkInClient({
                 firstName: input.firstName.trim(),
                 middleName: input.middleName?.trim() || undefined,
@@ -176,6 +220,7 @@ export default {
                 email: input.email?.trim() || undefined,
                 gender: input.gender,
                 notes: input.notes?.trim() || undefined,
+                ...waiver,
                 createdByAdminId: adminId
                     ? new mongoose.Types.ObjectId(adminId)
                     : undefined,
@@ -213,17 +258,34 @@ export default {
             if (!input.firstName?.trim() || !input.lastName?.trim()) {
                 throw new Error('First name and last name are required');
             }
-            const updated = await WalkInClient.findByIdAndUpdate(walkInClientId, {
-                $set: {
-                    firstName: input.firstName.trim(),
-                    middleName: input.middleName?.trim() || undefined,
-                    lastName: input.lastName.trim(),
-                    phoneNumber: input.phoneNumber?.trim() || undefined,
-                    email: input.email?.trim() || undefined,
-                    gender: input.gender,
-                    notes: input.notes?.trim() || undefined,
-                },
-            }, { new: true, runValidators: true }).lean();
+            const ageYears = normalizeAgeYears(input.ageYears);
+            const waiver = minorWaiverPayload(ageYears, input.minorWaiverAcknowledged, input.minorWaiverGuardianName);
+            const baseSet = {
+                firstName: input.firstName.trim(),
+                middleName: input.middleName?.trim() || undefined,
+                lastName: input.lastName.trim(),
+                phoneNumber: input.phoneNumber?.trim() || undefined,
+                email: input.email?.trim() || undefined,
+                gender: input.gender,
+                notes: input.notes?.trim() || undefined,
+                ageYears,
+            };
+            const updateDoc = ageYears >= 18
+                ? {
+                    $set: baseSet,
+                    $unset: { minorWaiverGuardianName: '', minorWaiverAcceptedAt: '' },
+                }
+                : {
+                    $set: {
+                        ...baseSet,
+                        minorWaiverGuardianName: waiver.minorWaiverGuardianName,
+                        minorWaiverAcceptedAt: waiver.minorWaiverAcceptedAt,
+                    },
+                };
+            const updated = await WalkInClient.findByIdAndUpdate(walkInClientId, updateDoc, {
+                new: true,
+                runValidators: true,
+            }).lean();
             if (!updated) {
                 throw new Error('Walk-in client not found');
             }
@@ -237,6 +299,7 @@ export default {
                 throw new Error('Walk-in client not found');
             }
             const clientObj = client;
+            assertCanTimeInMinor(clientObj);
             let timedInAt;
             if (at?.trim()) {
                 timedInAt = new Date(at);

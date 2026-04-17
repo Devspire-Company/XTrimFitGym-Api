@@ -14,6 +14,12 @@ type WalkInClient {
 	email: String
 	gender: WalkInGender!
 	notes: String
+	"""Age in whole years (admin-entered)."""
+	ageYears: Int
+	"""Parent/guardian name on file when under 18 with waiver."""
+	minorWaiverGuardianName: String
+	"""When the guardian liability waiver was recorded (ISO)."""
+	minorWaiverAcceptedAt: String
 	createdAt: String!
 	updatedAt: String!
 }
@@ -65,6 +71,11 @@ input CreateWalkInClientInput {
 	email: String
 	gender: WalkInGender!
 	notes: String
+	ageYears: Int!
+	"""Required when ageYears is under 18: admin confirms guardian waiver on file."""
+	minorWaiverAcknowledged: Boolean
+	"""Parent/guardian full name when under 18."""
+	minorWaiverGuardianName: String
 }
 
 input UpdateWalkInClientInput {
@@ -75,6 +86,9 @@ input UpdateWalkInClientInput {
 	email: String
 	gender: WalkInGender!
 	notes: String
+	ageYears: Int!
+	minorWaiverAcknowledged: Boolean
+	minorWaiverGuardianName: String
 }
 
 input WalkInLogsFilter {

@@ -22,6 +22,10 @@ const memberSchema = new Schema({
         type: Boolean,
         default: false,
     },
+    facilityBiometricEnrollmentComplete: {
+        type: Boolean,
+        default: false,
+    },
 });
 const coachSchema = new Schema({
     clients_ids: {
@@ -94,6 +98,9 @@ const userSchema = new Schema({
         type: Boolean,
         default: false,
     },
+    guardianIdVerificationPhotoUrl: String,
+    minorLiabilityWaiverPrintedName: String,
+    minorLiabilityWaiverSignatureUrl: String,
     clerkId: {
         type: String,
         unique: true,
@@ -118,8 +125,20 @@ const userSchema = new Schema({
             },
         },
     ],
+    isDisabled: {
+        type: Boolean,
+        default: false,
+        index: true,
+    },
+    disabledAt: Date,
+    disabledBy: {
+        type: mongoose.SchemaTypes.ObjectId,
+        ref: 'User',
+    },
+    disableReason: String,
 }, {
     timestamps: true,
 });
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User ||
+    mongoose.model('User', userSchema);
 export default User;

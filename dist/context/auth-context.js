@@ -23,12 +23,42 @@ function parseJwtToken(token) {
 function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+function normalizeEmail(email) {
+    return (email || '').trim().toLowerCase();
+}
+async function findUserByNormalizedEmail(normalizedEmail) {
+    if (!normalizedEmail)
+        return null;
+    // Fast path for common case.
+    const exactCi = await User.findOne({
+        email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i'),
+    }).lean();
+    if (exactCi)
+        return exactCi;
+    // Fallback for legacy rows with leading/trailing spaces or odd casing.
+    return User.findOne({
+        $expr: {
+            $eq: [
+                {
+                    $toLower: {
+                        $trim: { input: '$email' },
+                    },
+                },
+                normalizedEmail,
+            ],
+        },
+    }).lean();
+}
 async function resolveAuthFromBearer(token) {
     if (!token) {
         return { user: null, clerkSub: null };
     }
     const fromJwt = parseJwtToken(token);
     if (fromJwt) {
+        const dbUser = await User.findById(fromJwt.id).select('isDisabled').lean();
+        if (dbUser?.isDisabled) {
+            return { user: null, clerkSub: null };
+        }
         return { user: fromJwt, clerkSub: null };
     }
     const secret = process.env.CLERK_SECRET_KEY;
@@ -43,6 +73,9 @@ async function resolveAuthFromBearer(token) {
         }
         let doc = await User.findOne({ clerkId: sub }).lean();
         if (doc) {
+            if (doc.isDisabled) {
+                return { user: null, clerkSub: sub };
+            }
             return {
                 user: { id: doc._id.toString(), role: doc.role },
                 clerkSub: sub,
@@ -52,11 +85,15 @@ async function resolveAuthFromBearer(token) {
         const cu = await clerk.users.getUser(sub);
         const email = cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
             cu.emailAddresses[0]?.emailAddress;
-        if (!email) {
+        const normalizedClerkEmail = normalizeEmail(email);
+        if (!normalizedClerkEmail) {
             return { user: null, clerkSub: sub };
         }
-        doc = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
+        doc = await findUserByNormalizedEmail(normalizedClerkEmail);
         if (!doc) {
+            return { user: null, clerkSub: sub };
+        }
+        if (doc.isDisabled) {
             return { user: null, clerkSub: sub };
         }
         await User.updateOne({ _id: doc._id }, { $set: { clerkId: sub } });

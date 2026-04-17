@@ -11,10 +11,23 @@ type Equipment {
 	imageUrl: String!
 	description: String
 	notes: String
+	acquiredAt: String
 	sortOrder: Int!
 	status: EquipmentStatus!
+	isArchived: Boolean!
+	archivedAt: String
+	archiveReason: String
+	lifecycleLogs: [EquipmentLifecycleLog!]!
 	createdAt: String
 	updatedAt: String
+}
+
+type EquipmentLifecycleLog {
+	action: String!
+	notes: String
+	status: EquipmentStatus
+	changedAt: String!
+	changedById: ID
 }
 
 input CreateEquipmentInput {
@@ -22,6 +35,7 @@ input CreateEquipmentInput {
 	imageUrl: String!
 	description: String
 	notes: String
+	acquiredAt: String
 	sortOrder: Int
 	status: EquipmentStatus
 }
@@ -31,13 +45,14 @@ input UpdateEquipmentInput {
 	imageUrl: String
 	description: String
 	notes: String
+	acquiredAt: String
 	sortOrder: Int
 	status: EquipmentStatus
 }
 
 extend type Query {
 	# Get all equipment (public / any authenticated user for app)
-	getEquipments: [Equipment!]!
+	getEquipments(includeArchived: Boolean): [Equipment!]!
 	# Get single equipment by ID
 	getEquipment(id: ID!): Equipment
 }
@@ -49,4 +64,6 @@ extend type Mutation {
 	updateEquipment(id: ID!, input: UpdateEquipmentInput!): Equipment!
 	# Delete equipment (admin only)
 	deleteEquipment(id: ID!): Boolean!
+	archiveEquipment(id: ID!, reason: String!): Equipment!
+	unarchiveEquipment(id: ID!): Equipment!
 }

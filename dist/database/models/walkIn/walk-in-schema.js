@@ -11,6 +11,9 @@ const walkInClientSchema = new Schema({
         required: true,
     },
     notes: { type: String, trim: true },
+    ageYears: { type: Number, min: 0, max: 120 },
+    minorWaiverGuardianName: { type: String, trim: true },
+    minorWaiverAcceptedAt: { type: Date },
     createdByAdminId: {
         type: Schema.Types.ObjectId,
         ref: 'User',
@@ -34,6 +37,8 @@ const walkInAttendanceLogSchema = new Schema({
 }, { timestamps: true });
 walkInAttendanceLogSchema.index({ localDate: 1, timedInAt: -1 });
 walkInAttendanceLogSchema.index({ walkInClientId: 1, timedInAt: -1 });
-const WalkInClient = mongoose.model('WalkInClient', walkInClientSchema);
-const WalkInAttendanceLog = mongoose.model('WalkInAttendanceLog', walkInAttendanceLogSchema);
+const WalkInClient = mongoose.models.WalkInClient ||
+    mongoose.model('WalkInClient', walkInClientSchema);
+const WalkInAttendanceLog = mongoose.models.WalkInAttendanceLog ||
+    mongoose.model('WalkInAttendanceLog', walkInAttendanceLogSchema);
 export { WalkInClient, WalkInAttendanceLog };

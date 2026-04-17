@@ -14,6 +14,8 @@ export var CoachRequestStatus;
 })(CoachRequestStatus || (CoachRequestStatus = {}));
 export var DurationType;
 (function (DurationType) {
+    /** Fixed calendar-day promos (plan `monthDuration` = number of days). */
+    DurationType["Daily"] = "DAILY";
     DurationType["Monthly"] = "MONTHLY";
     DurationType["Quarterly"] = "QUARTERLY";
     DurationType["Yearly"] = "YEARLY";
@@ -37,6 +39,11 @@ export var MembershipStatus;
     MembershipStatus["ComingSoon"] = "COMING_SOON";
     MembershipStatus["Inactive"] = "INACTIVE";
 })(MembershipStatus || (MembershipStatus = {}));
+export var NotificationType;
+(function (NotificationType) {
+    NotificationType["Inactivity"] = "INACTIVITY";
+    NotificationType["MembershipExpiring"] = "MEMBERSHIP_EXPIRING";
+})(NotificationType || (NotificationType = {}));
 export var ProgressVerdict;
 (function (ProgressVerdict) {
     ProgressVerdict["Achieved"] = "achieved";
@@ -44,6 +51,14 @@ export var ProgressVerdict;
     ProgressVerdict["Progressive"] = "progressive";
     ProgressVerdict["Regressing"] = "regressing";
 })(ProgressVerdict || (ProgressVerdict = {}));
+export var ReportType;
+(function (ReportType) {
+    ReportType["Attendance"] = "ATTENDANCE";
+    ReportType["Equipment"] = "EQUIPMENT";
+    ReportType["NearEndingMemberships"] = "NEAR_ENDING_MEMBERSHIPS";
+    ReportType["Revenue"] = "REVENUE";
+    ReportType["WalkIn"] = "WALK_IN";
+})(ReportType || (ReportType = {}));
 export var RoleType;
 (function (RoleType) {
     RoleType["Admin"] = "admin";

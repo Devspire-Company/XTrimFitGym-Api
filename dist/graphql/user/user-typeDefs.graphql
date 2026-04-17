@@ -11,6 +11,8 @@ type MemberDetails {
 	workOutTime: [String]
 	coachesIds: [ID]
 	hasEnteredDetails: Boolean
+	"""Member completed gym/facility biometric enrollment (mobile + web)."""
+	facilityBiometricEnrollmentComplete: Boolean
 }
 
 type CoachDetails {
@@ -46,10 +48,16 @@ type User {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	attendanceId: Int
 	membershipDetails: MemberDetails
 	coachDetails: CoachDetails
 	loginHistory: [LoginHistoryEntry]
+	isDisabled: Boolean!
+	disabledAt: String
+	disableReason: String
 	createdAt: String
 	updatedAt: String
 }
@@ -62,6 +70,7 @@ input MemberDetailsInput {
 	workOutTime: [String]
 	coachesIds: [ID]
 	hasEnteredDetails: Boolean
+	facilityBiometricEnrollmentComplete: Boolean
 }
 
 input CoachDetailsInput {
@@ -94,6 +103,9 @@ input CreateUserInput {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 	currentPassword: String
@@ -113,6 +125,9 @@ input UpdateUserInput {
 	agreedToTermsAndConditions: Boolean
 	agreedToPrivacyPolicy: Boolean
 	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 }
@@ -122,7 +137,7 @@ type Query {
 	"""Current user from Authorization (JWT or Clerk session token)."""
 	me: User
 	getUser(id: ID!): User
-	getUsers(role: RoleType): [User]
+	getUsers(role: RoleType, includeDisabled: Boolean): [User]
 }
 
 # Login input
@@ -143,6 +158,8 @@ type Mutation {
 	createUser(input: CreateUserInput!): AuthResponse!
 	updateUser(id: ID!, input: UpdateUserInput!): User
 	deleteUser(id: ID!): Boolean
+	disableUser(id: ID!, reason: String!): User
+	enableUser(id: ID!): User
 	removeClient(clientId: ID!): Boolean!
 }
 

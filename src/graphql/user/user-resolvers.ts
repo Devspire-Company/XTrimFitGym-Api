@@ -584,7 +584,6 @@ const userResolvers: Resolvers = {
 			return mapUserToGraphQL(updatedUser as any);
 		},
 		deleteUser: async (_, { id }, context) => {
-			// Soft-disable for safety and auditability.
 			const userId = context.auth.user?.id;
 			const userRole = context.auth.user?.role;
 
@@ -593,30 +592,41 @@ const userResolvers: Resolvers = {
 			}
 
 			if (userRole !== 'admin') {
-				throw new Error('Unauthorized: Only admins can disable users');
+				throw new Error('Unauthorized: Only admins can delete users');
 			}
 			if (userId === id) {
-				throw new Error('You cannot disable your own account');
+				throw new Error('You cannot delete your own account');
 			}
-			const user = await User.findByIdAndUpdate(
-				id,
-				{
-					$set: {
-						isDisabled: true,
-						disabledAt: new Date(),
-						disabledBy: new mongoose.Types.ObjectId(userId),
-						disableReason: 'Disabled via deleteUser legacy action',
-					},
-				},
-				{ new: true }
-			);
-			
-			// Publish event for user updates
-			if (user) {
-				pubsub.publish(EVENTS.USERS_UPDATED, {});
+
+			const targetUser = await User.findById(id).lean();
+			if (!targetUser) {
+				return false;
 			}
-			
-			return !!user;
+
+			const targetUserObjectId = new mongoose.Types.ObjectId(id);
+
+			// Keep related documents clean by removing references to the user being deleted.
+			if (targetUser.role === 'coach') {
+				await User.updateMany(
+					{ 'membershipDetails.coaches_ids': targetUserObjectId },
+					{ $pull: { 'membershipDetails.coaches_ids': targetUserObjectId } }
+				);
+			}
+
+			if (targetUser.role === 'member') {
+				await User.updateMany(
+					{ 'coachDetails.clients_ids': targetUserObjectId },
+					{ $pull: { 'coachDetails.clients_ids': targetUserObjectId } }
+				);
+			}
+
+			const deletedUser = await User.findByIdAndDelete(id);
+			if (!deletedUser) {
+				return false;
+			}
+
+			pubsub.publish(EVENTS.USERS_UPDATED, {});
+			return true;
 		},
 		disableUser: async (
 			_: any,

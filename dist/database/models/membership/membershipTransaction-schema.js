@@ -39,6 +39,25 @@ const membershipTransactionSchema = new Schema({
         enum: ['Active', 'Canceled', 'Expired'],
         default: 'Active',
     },
+    canceledReason: {
+        type: String,
+        trim: true,
+    },
+    canceledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+    canceledAt: Date,
+    lastAdjustedReason: {
+        type: String,
+        trim: true,
+    },
+    lastAdjustedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+    lastAdjustedAt: Date,
 }, { timestamps: true });
-const MembershipTransaction = mongoose.model('MembershipTransaction', membershipTransactionSchema);
+const MembershipTransaction = mongoose.models.MembershipTransaction ||
+    mongoose.model('MembershipTransaction', membershipTransactionSchema);
 export default MembershipTransaction;

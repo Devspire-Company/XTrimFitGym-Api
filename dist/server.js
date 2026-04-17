@@ -8,6 +8,7 @@ import { useServer } from 'graphql-ws/use/ws';
 import connectDb from './database/connectDb.js';
 import { connectMySQL } from './database/mysql/connectMysql.js';
 import { attendanceMonitor } from './services/attendance-monitor.js';
+import { notificationAutomationService } from './services/notification-automation.js';
 import cookieParser from 'cookie-parser';
 import schema from './graphql/schema.js';
 import authContext from './context/auth-context.js';
@@ -40,6 +41,18 @@ async function startServer() {
     try {
         await connectMySQL(mysqlConfig);
         console.log('✅ MySQL connected for attendance monitoring');
+        // One-line health: helps Render logs show whether iVMS data is reaching MySQL
+        try {
+            const { ensureMySQLConnection } = await import('./database/mysql/connectMysql.js');
+            const mc = await ensureMySQLConnection();
+            const [rows] = await mc.execute('SELECT COUNT(*) AS c FROM attendance');
+            const row = rows[0];
+            const n = row != null && typeof row.c === 'number' ? row.c : Number(row?.c);
+            console.log(`📊 attendance table row count: ${Number.isFinite(n) ? n : 'unknown'}`);
+        }
+        catch (countErr) {
+            console.warn('⚠️  Could not read attendance row count (table missing?):', countErr?.message || countErr);
+        }
         // Initialize and start attendance monitoring
         // Don't throw if initialization fails - it might just be that the table doesn't exist yet
         try {
@@ -60,6 +73,8 @@ async function startServer() {
         console.error('   Connection will be retried when attendance queries are made.');
         console.error(`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`);
     }
+    // Start automated notification checks (expiry + inactivity)
+    notificationAutomationService.start();
     // Middleware order matters! cookieParser must come before expressMiddleware
     app.use(cookieParser()); // Global cookie parser
     app.use(express.json()); // Global JSON parser

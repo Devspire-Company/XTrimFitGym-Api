@@ -7,6 +7,31 @@ import User from '../../database/models/user/user-schema.js';
 import { pubsub, EVENTS } from '../pubsub.js';
 import { generateUniqueAttendanceId } from '../../database/generateUniqueAttendanceId.js';
 import { provisionClerkUserForAdmin, provisionClerkUserForCoach, } from '../../lib/clerk-provision.js';
+function normalizeEmail(email) {
+    return (email || '').trim().toLowerCase();
+}
+function buildExactEmailRegex(normalizedEmail) {
+    return new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+}
+async function findUserByNormalizedEmail(normalizedEmail) {
+    if (!normalizedEmail)
+        return null;
+    const exactCi = await User.findOne({ email: buildExactEmailRegex(normalizedEmail) });
+    if (exactCi)
+        return exactCi;
+    return User.findOne({
+        $expr: {
+            $eq: [
+                {
+                    $toLower: {
+                        $trim: { input: '$email' },
+                    },
+                },
+                normalizedEmail,
+            ],
+        },
+    });
+}
 // Helper function to convert Mongoose document to GraphQL User type
 const mapUserToGraphQL = (user) => {
     return {
@@ -23,6 +48,9 @@ const mapUserToGraphQL = (user) => {
         agreedToTermsAndConditions: user.agreedToTermsAndConditions,
         agreedToPrivacyPolicy: user.agreedToPrivacyPolicy,
         agreedToLiabilityWaiver: user.agreedToLiabilityWaiver,
+        guardianIdVerificationPhotoUrl: user.guardianIdVerificationPhotoUrl || null,
+        minorLiabilityWaiverPrintedName: user.minorLiabilityWaiverPrintedName || null,
+        minorLiabilityWaiverSignatureUrl: user.minorLiabilityWaiverSignatureUrl || null,
         attendanceId: user.attendanceId || null,
         membershipDetails: user.membershipDetails
             ? {
@@ -32,6 +60,7 @@ const mapUserToGraphQL = (user) => {
                 workOutTime: user.membershipDetails.workOutTime || [],
                 coachesIds: user.membershipDetails.coaches_ids?.map((id) => id.toString()) || [],
                 hasEnteredDetails: user.membershipDetails.hasEnteredDetails || false,
+                facilityBiometricEnrollmentComplete: user.membershipDetails.facilityBiometricEnrollmentComplete ?? false,
             }
             : null,
         coachDetails: user.coachDetails
@@ -54,6 +83,9 @@ const mapUserToGraphQL = (user) => {
                 loginAt: entry.loginAt?.toISOString() || new Date().toISOString(),
             }))
             : [],
+        isDisabled: !!user.isDisabled,
+        disabledAt: user.disabledAt?.toISOString() || null,
+        disableReason: user.disableReason || null,
         createdAt: user.createdAt?.toISOString(),
         updatedAt: user.updatedAt?.toISOString(),
     };
@@ -75,8 +107,11 @@ const userResolvers = {
                 return null;
             return mapUserToGraphQL(user);
         },
-        getUsers: async (_, { role }, context) => {
+        getUsers: async (_, { role, includeDisabled }, context) => {
             const query = role ? { role } : {};
+            if (!includeDisabled) {
+                query.isDisabled = { $ne: true };
+            }
             const users = await User.find(query).lean();
             return users.map((user) => mapUserToGraphQL(user));
         },
@@ -84,14 +119,17 @@ const userResolvers = {
     Mutation: {
         login: async (_, { input }, context) => {
             const { email, password } = input;
-            const normalizedEmail = (email || '').trim().toLowerCase();
+            const normalizedEmail = normalizeEmail(email);
             console.log('[API] Login attempt for:', normalizedEmail ? `${normalizedEmail.slice(0, 3)}***` : '(no email)');
             // Find user by email (case-insensitive so Admin@x.com and admin@x.com match)
             const user = await User.findOne({
-                email: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                email: buildExactEmailRegex(normalizedEmail),
             });
             if (!user) {
                 throw new Error('Invalid email or password');
+            }
+            if (user.isDisabled) {
+                throw new Error(user.disableReason || 'This account is disabled');
             }
             // Verify password
             const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -133,7 +171,8 @@ const userResolvers = {
             };
         },
         createUser: async (_, { input }, context) => {
-            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, membershipDetails, coachDetails, } = input;
+            const { firstName, middleName, lastName, email, password, role, phoneNumber, dateOfBirth, gender, heardFrom, agreedToTermsAndConditions, agreedToPrivacyPolicy, agreedToLiabilityWaiver, guardianIdVerificationPhotoUrl, minorLiabilityWaiverPrintedName, minorLiabilityWaiverSignatureUrl, membershipDetails, coachDetails, } = input;
+            const normalizedEmail = normalizeEmail(email);
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
             const clerkSub = context.auth.clerkSub;
@@ -145,7 +184,7 @@ const userResolvers = {
                 }
             }
             // Check if user already exists
-            const existingUser = await User.findOne({ email });
+            const existingUser = await findUserByNormalizedEmail(normalizedEmail);
             if (existingUser) {
                 throw new Error('User with this email already exists');
             }
@@ -191,7 +230,7 @@ const userResolvers = {
                 if (!clerkEmail) {
                     throw new Error('Your Clerk account has no verified email.');
                 }
-                if (email.trim().toLowerCase() !== clerkEmail.trim().toLowerCase()) {
+                if (normalizedEmail !== normalizeEmail(clerkEmail)) {
                     throw new Error('Email must match your Clerk sign-in email.');
                 }
                 const dupeClerk = await User.findOne({ clerkId: clerkSub });
@@ -216,7 +255,7 @@ const userResolvers = {
                 firstName,
                 middleName,
                 lastName,
-                email,
+                email: normalizedEmail,
                 password: hashedPassword,
                 ...(clerkId ? { clerkId } : {}),
                 role,
@@ -227,6 +266,9 @@ const userResolvers = {
                 agreedToTermsAndConditions,
                 agreedToPrivacyPolicy,
                 agreedToLiabilityWaiver,
+                guardianIdVerificationPhotoUrl,
+                minorLiabilityWaiverPrintedName,
+                minorLiabilityWaiverSignatureUrl,
                 attendanceId,
                 membershipDetails: membershipDetails
                     ? {
@@ -236,6 +278,7 @@ const userResolvers = {
                         workOutTime: membershipDetails.workOutTime,
                         coaches_ids: membershipDetails.coachesIds,
                         hasEnteredDetails: membershipDetails.hasEnteredDetails ?? false,
+                        facilityBiometricEnrollmentComplete: membershipDetails.facilityBiometricEnrollmentComplete ?? false,
                     }
                     : undefined,
                 coachDetails: coachDetails
@@ -297,7 +340,8 @@ const userResolvers = {
                     throw new Error('You cannot change your own email address');
                 }
                 // Check email uniqueness if email is being changed (for admin updating another user)
-                const existingUser = await User.findOne({ email: input.email });
+                const normalizedInputEmail = normalizeEmail(input.email);
+                const existingUser = await findUserByNormalizedEmail(normalizedInputEmail);
                 if (existingUser && existingUser._id.toString() !== id) {
                     throw new Error('Email is already in use');
                 }
@@ -331,7 +375,7 @@ const userResolvers = {
                 userDoc.lastName = input.lastName;
             // Only allow email update if admin is updating another user (not their own profile)
             if (input.email != null && (isAdmin && !isUpdatingOwnProfile)) {
-                userDoc.email = input.email;
+                userDoc.email = normalizeEmail(input.email);
             }
             if (input.password) {
                 userDoc.password = await bcrypt.hash(input.password, 10);
@@ -352,6 +396,18 @@ const userResolvers = {
                 userDoc.agreedToPrivacyPolicy = input.agreedToPrivacyPolicy;
             if (input.agreedToLiabilityWaiver !== undefined && input.agreedToLiabilityWaiver !== null)
                 userDoc.agreedToLiabilityWaiver = input.agreedToLiabilityWaiver;
+            if (input.guardianIdVerificationPhotoUrl !== undefined) {
+                userDoc.guardianIdVerificationPhotoUrl =
+                    input.guardianIdVerificationPhotoUrl ?? undefined;
+            }
+            if (input.minorLiabilityWaiverPrintedName !== undefined) {
+                userDoc.minorLiabilityWaiverPrintedName =
+                    input.minorLiabilityWaiverPrintedName ?? undefined;
+            }
+            if (input.minorLiabilityWaiverSignatureUrl !== undefined) {
+                userDoc.minorLiabilityWaiverSignatureUrl =
+                    input.minorLiabilityWaiverSignatureUrl ?? undefined;
+            }
             // Update membershipDetails if provided
             if (input.membershipDetails !== undefined && input.membershipDetails !== null) {
                 if (!userDoc.membershipDetails) {
@@ -370,6 +426,10 @@ const userResolvers = {
                     userDoc.membershipDetails.coaches_ids = (md.coachesIds ?? []).filter((id) => id != null).map((id) => new mongoose.Types.ObjectId(id));
                 if (md.hasEnteredDetails !== undefined && md.hasEnteredDetails !== null)
                     userDoc.membershipDetails.hasEnteredDetails = md.hasEnteredDetails;
+                if (md.facilityBiometricEnrollmentComplete !== undefined &&
+                    md.facilityBiometricEnrollmentComplete !== null)
+                    userDoc.membershipDetails.facilityBiometricEnrollmentComplete =
+                        md.facilityBiometricEnrollmentComplete;
                 // Mark the nested object as modified to ensure Mongoose saves it
                 userDoc.markModified('membershipDetails');
             }
@@ -434,21 +494,71 @@ const userResolvers = {
             return mapUserToGraphQL(updatedUser);
         },
         deleteUser: async (_, { id }, context) => {
-            // Check if user is authenticated and can delete this user
+            // Soft-disable for safety and auditability.
             const userId = context.auth.user?.id;
             const userRole = context.auth.user?.role;
             if (!userId) {
                 throw new Error('Unauthorized: Please log in');
             }
-            if (userId !== id && userRole !== 'admin') {
-                throw new Error('Unauthorized: You can only delete your own account');
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can disable users');
             }
-            const user = await User.findByIdAndDelete(id);
+            if (userId === id) {
+                throw new Error('You cannot disable your own account');
+            }
+            const user = await User.findByIdAndUpdate(id, {
+                $set: {
+                    isDisabled: true,
+                    disabledAt: new Date(),
+                    disabledBy: new mongoose.Types.ObjectId(userId),
+                    disableReason: 'Disabled via deleteUser legacy action',
+                },
+            }, { new: true });
             // Publish event for user updates
             if (user) {
                 pubsub.publish(EVENTS.USERS_UPDATED, {});
             }
             return !!user;
+        },
+        disableUser: async (_, { id, reason }, context) => {
+            const userId = context.auth.user?.id;
+            const userRole = context.auth.user?.role;
+            if (!userId || userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can disable users');
+            }
+            if (!reason?.trim()) {
+                throw new Error('Disable reason is required');
+            }
+            if (userId === id) {
+                throw new Error('You cannot disable your own account');
+            }
+            const user = await User.findByIdAndUpdate(id, {
+                $set: {
+                    isDisabled: true,
+                    disabledAt: new Date(),
+                    disabledBy: new mongoose.Types.ObjectId(userId),
+                    disableReason: reason.trim(),
+                },
+            }, { new: true }).lean();
+            if (!user) {
+                throw new Error('User not found');
+            }
+            pubsub.publish(EVENTS.USERS_UPDATED, {});
+            return mapUserToGraphQL(user);
+        },
+        enableUser: async (_, { id }, context) => {
+            const userRole = context.auth.user?.role;
+            if (userRole !== 'admin') {
+                throw new Error('Unauthorized: Only admins can enable users');
+            }
+            const user = await User.findByIdAndUpdate(id, {
+                $set: { isDisabled: false },
+                $unset: { disabledAt: '', disabledBy: '', disableReason: '' },
+            }, { new: true }).lean();
+            if (!user)
+                throw new Error('User not found');
+            pubsub.publish(EVENTS.USERS_UPDATED, {});
+            return mapUserToGraphQL(user);
         },
         removeClient: async (_, { clientId }, context) => {
             const userId = context.auth.user?.id;
