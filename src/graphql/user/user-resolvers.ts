@@ -22,6 +22,22 @@ function buildExactEmailRegex(normalizedEmail: string) {
 	return new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 }
 
+function maskEmailForLogs(email?: string | null) {
+	const normalized = normalizeEmail(email);
+	if (!normalized) return '(no-email)';
+	const [localPart, domain = ''] = normalized.split('@');
+	const safeLocal = localPart.length <= 2
+		? `${localPart[0] || '*'}*`
+		: `${localPart.slice(0, 2)}***`;
+	return `${safeLocal}@${domain}`;
+}
+
+function maskIdForLogs(id?: string | null) {
+	if (!id) return '(no-id)';
+	if (id.length <= 6) return `${id[0]}***`;
+	return `${id.slice(0, 3)}***${id.slice(-3)}`;
+}
+
 async function findUserByNormalizedEmail(normalizedEmail: string) {
 	if (!normalizedEmail) return null;
 
@@ -281,8 +297,14 @@ const userResolvers: Resolvers = {
 						: undefined,
 				});
 			} else if (role === 'member' && clerkSub) {
+				console.log(
+					`[API][MEMBER_VERIFICATION] Start mobile member verification email=${maskEmailForLogs(normalizedEmail)} clerkSub=${maskIdForLogs(clerkSub)}`
+				);
 				const secret = process.env.CLERK_SECRET_KEY;
 				if (!secret) {
+					console.error(
+						`[API][MEMBER_VERIFICATION] Failed: missing CLERK_SECRET_KEY email=${maskEmailForLogs(normalizedEmail)}`
+					);
 					throw new Error('CLERK_SECRET_KEY is not set; cannot complete member registration.');
 				}
 				const clerk = createClerkClient({ secretKey: secret });
@@ -291,15 +313,27 @@ const userResolvers: Resolvers = {
 					cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ??
 					cu.emailAddresses[0]?.emailAddress;
 				if (!clerkEmail) {
+					console.warn(
+						`[API][MEMBER_VERIFICATION] Failed: no verified Clerk email clerkSub=${maskIdForLogs(clerkSub)}`
+					);
 					throw new Error('Your Clerk account has no verified email.');
 				}
 				if (normalizedEmail !== normalizeEmail(clerkEmail)) {
+					console.warn(
+						`[API][MEMBER_VERIFICATION] Failed: email mismatch input=${maskEmailForLogs(normalizedEmail)} clerk=${maskEmailForLogs(clerkEmail)} clerkSub=${maskIdForLogs(clerkSub)}`
+					);
 					throw new Error('Email must match your Clerk sign-in email.');
 				}
 				const dupeClerk = await User.findOne({ clerkId: clerkSub });
 				if (dupeClerk) {
+					console.warn(
+						`[API][MEMBER_VERIFICATION] Failed: clerkSub already linked clerkSub=${maskIdForLogs(clerkSub)} existingUser=${maskIdForLogs(dupeClerk._id?.toString())}`
+					);
 					throw new Error('This sign-in is already linked to a gym account.');
 				}
+				console.log(
+					`[API][MEMBER_VERIFICATION] Passed email=${maskEmailForLogs(clerkEmail)} clerkSub=${maskIdForLogs(clerkSub)}`
+				);
 				clerkId = clerkSub;
 			} else if (role === 'member') {
 				if (!password || password.trim().length < 6) {
@@ -364,6 +398,11 @@ const userResolvers: Resolvers = {
 			});
 
 			await user.save();
+			if (role === 'member') {
+				console.log(
+					`[API][MEMBER_VERIFICATION] Account created userId=${maskIdForLogs(user._id?.toString())} email=${maskEmailForLogs(user.email)}`
+				);
+			}
 
 			// Publish event for user updates
 			pubsub.publish(EVENTS.USERS_UPDATED, {});
