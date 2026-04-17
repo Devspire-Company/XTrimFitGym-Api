@@ -607,29 +607,73 @@ export default {
 				throw new Error('Unauthorized: Please log in');
 			}
 
-			const request = await SubscriptionRequest.findById(input.requestId).lean();
+			const approvalTime = new Date();
+			// Atomic "claim" of a pending request to prevent duplicate approvals on double-click.
+			const request = await SubscriptionRequest.findOneAndUpdate(
+				{
+					_id: new mongoose.Types.ObjectId(input.requestId),
+					status: 'Pending',
+				},
+				{
+					$set: {
+						status: 'Approved',
+						approvedAt: approvalTime,
+						approvedBy: new mongoose.Types.ObjectId(userId),
+					},
+				},
+				{ new: true }
+			).lean();
 
 			if (!request) {
-				throw new Error('Subscription request not found');
+				const existingRequest = await SubscriptionRequest.findById(input.requestId).lean();
+				if (!existingRequest) {
+					throw new Error('Subscription request not found');
+				}
+				if (existingRequest.status === 'Approved') {
+					// Idempotent fallback: return the already-created latest transaction.
+					const existingTransaction = await MembershipTransaction.findOne({
+						client_id: existingRequest.member_id,
+						membership_id: existingRequest.membership_id,
+					})
+						.sort({ createdAt: -1 })
+						.populate('membership_id')
+						.populate('client_id', 'firstName lastName email')
+						.lean();
+					if (!existingTransaction) {
+						throw new Error('Subscription request already approved');
+					}
+					const membershipData =
+						typeof existingTransaction.membership_id === 'object' &&
+						existingTransaction.membership_id?._id
+							? existingTransaction.membership_id
+							: await Membership.findById(existingRequest.membership_id).lean();
+					return mapTransactionToGraphQL(existingTransaction, membershipData);
+				}
+				throw new Error(`Cannot approve request with status: ${existingRequest.status}`);
 			}
 
-			if (request.status !== 'Pending') {
-				throw new Error(`Cannot approve request with status: ${request.status}`);
+			let transaction: any;
+			try {
+				// Create membership transaction
+				transaction = await createMembershipTransaction(
+					request.member_id.toString(),
+					request.membership_id.toString(),
+					{ approvedBy: userId }
+				);
+			} catch (error) {
+				// Rollback approval marker if transaction creation fails.
+				await SubscriptionRequest.findOneAndUpdate(
+					{
+						_id: new mongoose.Types.ObjectId(input.requestId),
+						status: 'Approved',
+					},
+					{
+						$set: { status: 'Pending' },
+						$unset: { approvedAt: '', approvedBy: '' },
+					}
+				);
+				throw error;
 			}
-
-			// Create membership transaction
-			const transaction = await createMembershipTransaction(
-				request.member_id.toString(),
-				request.membership_id.toString(),
-				{ approvedBy: userId }
-			);
-
-			// Update request status
-			await SubscriptionRequest.findByIdAndUpdate(input.requestId, {
-				status: 'Approved',
-				approvedAt: new Date(),
-				approvedBy: new mongoose.Types.ObjectId(userId),
-			});
 
 			// Ensure transaction has properly formatted membership
 			if (!transaction.membership || !transaction.membership.id) {
