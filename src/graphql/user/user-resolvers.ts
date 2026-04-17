@@ -47,6 +47,7 @@ type DevEmailVerificationEntry = {
 const DEV_EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const DEV_EMAIL_CODE_MAX_ATTEMPTS = 5;
 const devEmailVerificationStore = new Map<string, DevEmailVerificationEntry>();
+const devCoachSignInCodeStore = new Map<string, DevEmailVerificationEntry>();
 
 function generateDevVerificationCode() {
 	return String(Math.floor(100000 + Math.random() * 900000));
@@ -72,6 +73,29 @@ function consumeValidDevVerificationCode(email: string, code: string): boolean {
 	}
 
 	devEmailVerificationStore.delete(normalizedEmail);
+	return true;
+}
+
+function consumeValidDevCoachSignInCode(email: string, code: string): boolean {
+	const normalizedEmail = normalizeEmail(email);
+	const entry = devCoachSignInCodeStore.get(normalizedEmail);
+	if (!entry) return false;
+	if (Date.now() > entry.expiresAtMs) {
+		devCoachSignInCodeStore.delete(normalizedEmail);
+		return false;
+	}
+
+	if (entry.code !== code) {
+		entry.attempts += 1;
+		if (entry.attempts >= DEV_EMAIL_CODE_MAX_ATTEMPTS) {
+			devCoachSignInCodeStore.delete(normalizedEmail);
+		} else {
+			devCoachSignInCodeStore.set(normalizedEmail, entry);
+		}
+		return false;
+	}
+
+	devCoachSignInCodeStore.delete(normalizedEmail);
 	return true;
 }
 
@@ -837,6 +861,79 @@ const userResolvers: Resolvers = {
 				`[API][DEV_EMAIL_CODE] email=${maskEmailForLogs(normalizedEmail)} code=${code} expiresInMinutes=10`
 			);
 			return true;
+		},
+		requestDevCoachSignInCode: async (_: any, { email }: { email: string }) => {
+			const normalizedEmail = normalizeEmail(email);
+			if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+				throw new Error('A valid email address is required.');
+			}
+
+			const coach = await findUserByNormalizedEmail(normalizedEmail);
+			if (!coach || coach.role !== 'coach') {
+				throw new Error('Coach account not found for this email.');
+			}
+			if (coach.isDisabled) {
+				throw new Error(coach.disableReason || 'This account is disabled');
+			}
+
+			const code = generateDevVerificationCode();
+			const expiresAtMs = Date.now() + DEV_EMAIL_CODE_TTL_MS;
+			devCoachSignInCodeStore.set(normalizedEmail, {
+				code,
+				expiresAtMs,
+				attempts: 0,
+			});
+
+			console.log(
+				`[API][DEV_COACH_SIGNIN_CODE] email=${maskEmailForLogs(normalizedEmail)} code=${code} expiresInMinutes=10`
+			);
+			return true;
+		},
+		devCoachSignIn: async (_: any, { email, code }: { email: string; code: string }, context: any) => {
+			const normalizedEmail = normalizeEmail(email);
+			const normalizedCode = (code || '').replace(/\D/g, '');
+			if (!normalizedEmail || !normalizedCode) {
+				throw new Error('Email and verification code are required.');
+			}
+
+			const coach = await findUserByNormalizedEmail(normalizedEmail);
+			if (!coach || coach.role !== 'coach') {
+				throw new Error('Coach account not found for this email.');
+			}
+			if (coach.isDisabled) {
+				throw new Error(coach.disableReason || 'This account is disabled');
+			}
+
+			const verified = consumeValidDevCoachSignInCode(normalizedEmail, normalizedCode);
+			if (!verified) {
+				console.warn(
+					`[API][DEV_COACH_SIGNIN_CODE] Verification failed email=${maskEmailForLogs(normalizedEmail)}`
+				);
+				throw new Error('Invalid or expired verification code.');
+			}
+
+			console.log(
+				`[API][DEV_COACH_SIGNIN_CODE] Verification passed email=${maskEmailForLogs(normalizedEmail)}`
+			);
+
+			const token = jwt.sign(
+				{
+					id: coach._id!.toString(),
+					role: coach.role,
+				},
+				process.env.JWT_SIKRIT!
+			);
+
+			context.auth.logIn({
+				id: coach._id!.toString(),
+				role: coach.role,
+			});
+
+			const userObj = coach.toObject();
+			return {
+				user: mapUserToGraphQL(userObj as any),
+				token,
+			};
 		},
 	},
 	Subscription: {

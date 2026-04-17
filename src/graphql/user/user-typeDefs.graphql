@@ -166,6 +166,8 @@ type Mutation {
 	enableUser(id: ID!): User
 	removeClient(clientId: ID!): Boolean!
 	requestDevEmailVerificationCode(email: String!): Boolean!
+	requestDevCoachSignInCode(email: String!): Boolean!
+	devCoachSignIn(email: String!, code: String!): AuthResponse!
 }
 
 # Subscriptions

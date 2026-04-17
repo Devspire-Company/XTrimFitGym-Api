@@ -502,6 +502,7 @@ export type Mutation = {
   deleteProgressRating: Scalars['Boolean']['output'];
   deleteSubscriptionRequest: Scalars['Boolean']['output'];
   deleteUser?: Maybe<Scalars['Boolean']['output']>;
+  devCoachSignIn: AuthResponse;
   directSubscribeMember: MembershipTransaction;
   disableUser?: Maybe<User>;
   enableUser?: Maybe<User>;
@@ -515,6 +516,7 @@ export type Mutation = {
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
   removeClientFromClassSession: Session;
+  requestDevCoachSignInCode: Scalars['Boolean']['output'];
   requestDevEmailVerificationCode: Scalars['Boolean']['output'];
   requestToJoinClassSession: Session;
   respondToClassInvitation: Session;
@@ -679,6 +681,12 @@ export type MutationDeleteUserArgs = {
 };
 
 
+export type MutationDevCoachSignInArgs = {
+  code: Scalars['String']['input'];
+  email: Scalars['String']['input'];
+};
+
+
 export type MutationDirectSubscribeMemberArgs = {
   input: DirectSubscribeInput;
 };
@@ -739,6 +747,11 @@ export type MutationRemoveClientArgs = {
 export type MutationRemoveClientFromClassSessionArgs = {
   clientId: Scalars['ID']['input'];
   sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationRequestDevCoachSignInCodeArgs = {
+  email: Scalars['String']['input'];
 };
 
 
@@ -2043,6 +2056,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   deleteProgressRating?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteProgressRatingArgs, 'id'>>;
   deleteSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSubscriptionRequestArgs, 'id'>>;
   deleteUser?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteUserArgs, 'id'>>;
+  devCoachSignIn?: Resolver<ResolversTypes['AuthResponse'], ParentType, ContextType, RequireFields<MutationDevCoachSignInArgs, 'code' | 'email'>>;
   directSubscribeMember?: Resolver<ResolversTypes['MembershipTransaction'], ParentType, ContextType, RequireFields<MutationDirectSubscribeMemberArgs, 'input'>>;
   disableUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationDisableUserArgs, 'id' | 'reason'>>;
   enableUser?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, RequireFields<MutationEnableUserArgs, 'id'>>;
@@ -2056,6 +2070,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
   removeClientFromClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRemoveClientFromClassSessionArgs, 'clientId' | 'sessionId'>>;
+  requestDevCoachSignInCode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRequestDevCoachSignInCodeArgs, 'email'>>;
   requestDevEmailVerificationCode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRequestDevEmailVerificationCodeArgs, 'email'>>;
   requestToJoinClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRequestToJoinClassSessionArgs, 'sessionId'>>;
   respondToClassInvitation?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRespondToClassInvitationArgs, 'accept' | 'sessionId'>>;
