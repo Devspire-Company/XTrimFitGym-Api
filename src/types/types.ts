@@ -254,6 +254,8 @@ export type CreateUserInput = {
   coachDetails?: InputMaybe<CoachDetailsInput>;
   currentPassword?: InputMaybe<Scalars['String']['input']>;
   dateOfBirth?: InputMaybe<Scalars['String']['input']>;
+  /** Development-only fallback email verification code used when Clerk email quota is exceeded. */
+  devVerificationCode?: InputMaybe<Scalars['String']['input']>;
   email: Scalars['String']['input'];
   firstName: Scalars['String']['input'];
   gender?: InputMaybe<Scalars['String']['input']>;
@@ -513,6 +515,7 @@ export type Mutation = {
   rejectSubscriptionRequest: Scalars['Boolean']['output'];
   removeClient: Scalars['Boolean']['output'];
   removeClientFromClassSession: Session;
+  requestDevEmailVerificationCode: Scalars['Boolean']['output'];
   requestToJoinClassSession: Session;
   respondToClassInvitation: Session;
   unarchiveEquipment: Equipment;
@@ -736,6 +739,11 @@ export type MutationRemoveClientArgs = {
 export type MutationRemoveClientFromClassSessionArgs = {
   clientId: Scalars['ID']['input'];
   sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationRequestDevEmailVerificationCodeArgs = {
+  email: Scalars['String']['input'];
 };
 
 
@@ -2048,6 +2056,7 @@ export type MutationResolvers<ContextType = IAuthContext, ParentType extends Res
   rejectSubscriptionRequest?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRejectSubscriptionRequestArgs, 'input'>>;
   removeClient?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveClientArgs, 'clientId'>>;
   removeClientFromClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRemoveClientFromClassSessionArgs, 'clientId' | 'sessionId'>>;
+  requestDevEmailVerificationCode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRequestDevEmailVerificationCodeArgs, 'email'>>;
   requestToJoinClassSession?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRequestToJoinClassSessionArgs, 'sessionId'>>;
   respondToClassInvitation?: Resolver<ResolversTypes['Session'], ParentType, ContextType, RequireFields<MutationRespondToClassInvitationArgs, 'accept' | 'sessionId'>>;
   unarchiveEquipment?: Resolver<ResolversTypes['Equipment'], ParentType, ContextType, RequireFields<MutationUnarchiveEquipmentArgs, 'id'>>;

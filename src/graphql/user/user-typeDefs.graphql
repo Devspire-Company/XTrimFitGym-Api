@@ -109,6 +109,10 @@ input CreateUserInput {
 	membershipDetails: MemberDetailsInput
 	coachDetails: CoachDetailsInput
 	currentPassword: String
+	"""
+	Development-only fallback email verification code used when Clerk email quota is exceeded.
+	"""
+	devVerificationCode: String
 }
 
 input UpdateUserInput {
@@ -161,6 +165,7 @@ type Mutation {
 	disableUser(id: ID!, reason: String!): User
 	enableUser(id: ID!): User
 	removeClient(clientId: ID!): Boolean!
+	requestDevEmailVerificationCode(email: String!): Boolean!
 }
 
 # Subscriptions
