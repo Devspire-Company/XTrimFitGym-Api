@@ -545,6 +545,12 @@ export default {
 				canceledBy: new mongoose.Types.ObjectId(userId),
 			});
 
+			// Keep user record consistent: remove stored plan id so clients that still read
+			// membershipDetails.membershipId do not think the member is subscribed.
+			await User.findByIdAndUpdate(transaction.client_id, {
+				$unset: { 'membershipDetails.membership_id': '' },
+			});
+
 			// Update analytics: Revenue is NOT deducted (transaction still counts), only counts are updated
 			await onSubscriptionCanceled(transactionId);
 
