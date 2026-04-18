@@ -456,15 +456,16 @@ export default {
 			{ input }: { input: { membershipId: string } },
 			context: Context
 		) => {
-			// Authorization: Only members can create subscription requests
+			// Authorization: Only authenticated members can create subscription requests.
+			// Resolve role from DB to avoid stale/missing role claims in tokens.
 			const userId = context.auth.user?.id;
-			const userRole = context.auth.user?.role;
-			if (userRole !== 'member') {
-				throw new Error('Unauthorized: Only members can create subscription requests');
-			}
-
 			if (!userId) {
 				throw new Error('Unauthorized: Please log in');
+			}
+
+			const requester = await User.findById(userId).select('role').lean();
+			if (!requester || requester.role !== 'member') {
+				throw new Error('Unauthorized: Only members can create subscription requests');
 			}
 
 			// Check if membership exists and is active
