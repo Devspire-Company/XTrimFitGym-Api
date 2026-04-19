@@ -2,11 +2,50 @@ import ProgressRating from '../../database/models/progress/progressRating-schema
 import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import Session from '../../database/models/session/session-schema.js';
 import Goal from '../../database/models/goal/goal-schema.js';
-import User from '../../database/models/user/user-schema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
 type Context = IAuthContext;
+
+/** Ensures progress ratings are only created/updated when tied to real completed coach–client sessions. */
+async function assertSessionLogsSupportProgressRating(params: {
+	coachId: string;
+	clientId: string;
+	goalId: string;
+	sessionLogIds: string[];
+}) {
+	const { coachId, clientId, goalId, sessionLogIds } = params;
+	if (!Array.isArray(sessionLogIds) || sessionLogIds.length === 0) {
+		throw new Error(
+			'At least one completed session log is required. Rate progress only after you have completed a session with this member for this goal.'
+		);
+	}
+	const coachOid = new mongoose.Types.ObjectId(coachId);
+	const clientOid = new mongoose.Types.ObjectId(clientId);
+	const sessionLogs = await SessionLog.find({
+		_id: { $in: sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
+		client_id: clientOid,
+		coach_id: coachOid,
+	}).populate('session_id');
+
+	if (sessionLogs.length !== sessionLogIds.length) {
+		throw new Error(
+			'Some session logs were not found, do not belong to this client, or are not sessions you coached.'
+		);
+	}
+
+	for (const log of sessionLogs) {
+		if (!log.completedAt) {
+			throw new Error(
+				'Each linked session must be completed before it can be used for a progress rating.'
+			);
+		}
+		const session = log.session_id as any;
+		if (!session || session.goalId?.toString() !== goalId) {
+			throw new Error('All session logs must be for sessions linked to this goal.');
+		}
+	}
+}
 
 const mapProgressRatingToGraphQL = (rating: any) => {
 	return {
@@ -139,10 +178,11 @@ export default {
 			const end = new Date(endDate);
 			end.setHours(23, 59, 59, 999); // Include the entire end date
 
-			// Get all sessions for this goal
+			// Sessions for this goal with this client, coached by the current user only
 			const sessions = await Session.find({
 				goalId: new mongoose.Types.ObjectId(goalId),
 				clients_ids: new mongoose.Types.ObjectId(clientId),
+				coach_id: new mongoose.Types.ObjectId(userId),
 			});
 
 			const sessionIds = sessions.map((s: any) => s._id);
@@ -247,9 +287,9 @@ export default {
 				throw new Error('Start date must be before end date');
 			}
 
-			// Validate rating
-			if (input.rating < 1 || input.rating > 10) {
-				throw new Error('Rating must be between 1 and 10');
+			// Validate rating (mobile coach UI uses 1–5 stars)
+			if (input.rating < 1 || input.rating > 5) {
+				throw new Error('Rating must be between 1 and 5');
 			}
 
 			// Check if a progress rating already exists for the same client, goal, and overlapping date range
@@ -273,25 +313,29 @@ export default {
 				);
 			}
 
-			// Validate session logs exist and belong to the client and goal
-			if (input.sessionLogIds && input.sessionLogIds.length > 0) {
-				const sessionLogs = await SessionLog.find({
-					_id: { $in: input.sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
-					client_id: new mongoose.Types.ObjectId(input.clientId),
-				}).populate('session_id');
-
-				if (sessionLogs.length !== input.sessionLogIds.length) {
-					throw new Error('Some session logs not found or do not belong to this client');
-				}
-
-				// Verify all session logs are for the specified goal
-				for (const log of sessionLogs) {
-					const session = log.session_id as any;
-					if (session.goalId?.toString() !== input.goalId) {
-						throw new Error('All session logs must be for the specified goal');
-					}
-				}
+			const goalDoc = await Goal.findById(input.goalId).lean();
+			if (!goalDoc) {
+				throw new Error('Goal not found');
 			}
+			if (goalDoc.client_id.toString() !== input.clientId) {
+				throw new Error('Goal does not belong to this client');
+			}
+			if (
+				userRole === 'coach' &&
+				goalDoc.coach_id &&
+				goalDoc.coach_id.toString() !== userId
+			) {
+				throw new Error(
+					'Unauthorized: Only this goal’s assigned coach can rate progress for it.'
+				);
+			}
+
+			await assertSessionLogsSupportProgressRating({
+				coachId: userId,
+				clientId: input.clientId,
+				goalId: input.goalId,
+				sessionLogIds: input.sessionLogIds || [],
+			});
 
 			const rating = new ProgressRating({
 				coach_id: new mongoose.Types.ObjectId(userId),
@@ -302,9 +346,9 @@ export default {
 				rating: input.rating,
 				comment: input.comment,
 				verdict: input.verdict,
-				sessionLogIds: (input.sessionLogIds && input.sessionLogIds.length > 0)
-					? input.sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id))
-					: [],
+				sessionLogIds: input.sessionLogIds.map(
+					(id: string) => new mongoose.Types.ObjectId(id)
+				),
 			});
 
 			await rating.save();
@@ -344,8 +388,8 @@ export default {
 
 			const updateData: any = {};
 			if (input.rating !== undefined) {
-				if (input.rating < 1 || input.rating > 10) {
-					throw new Error('Rating must be between 1 and 10');
+				if (input.rating < 1 || input.rating > 5) {
+					throw new Error('Rating must be between 1 and 5');
 				}
 				updateData.rating = input.rating;
 			}
@@ -356,6 +400,12 @@ export default {
 				updateData.verdict = input.verdict;
 			}
 			if (input.sessionLogIds !== undefined) {
+				await assertSessionLogsSupportProgressRating({
+					coachId: rating.coach_id.toString(),
+					clientId: rating.client_id.toString(),
+					goalId: rating.goal_id.toString(),
+					sessionLogIds: input.sessionLogIds,
+				});
 				updateData.sessionLogIds = input.sessionLogIds.map((id: string) =>
 					new mongoose.Types.ObjectId(id)
 				);
