@@ -70,7 +70,18 @@ type Context = IAuthContext;
 /** GraphQL User requires non-null email/firstName/lastName; DB may have nulls on legacy rows. */
 const gqlUserSubset = (raw: any) => {
 	if (!raw) return null;
-	const id = raw._id != null ? String(raw._id) : raw.id != null ? String(raw.id) : null;
+	let id: string | null = null;
+	if (typeof raw.toHexString === 'function') {
+		try {
+			id = raw.toHexString();
+		} catch {
+			id = null;
+		}
+	} else if (raw._id != null) {
+		id = String(raw._id);
+	} else if (raw.id != null && typeof raw.id === 'string' && mongoose.Types.ObjectId.isValid(raw.id)) {
+		id = raw.id;
+	}
 	if (!id) return null;
 	return {
 		id,
@@ -78,6 +89,38 @@ const gqlUserSubset = (raw: any) => {
 		lastName: raw.lastName ?? '',
 		email: raw.email ?? '',
 	};
+};
+
+const subscriptionUserRefId = (ref: any): string | null => {
+	if (!ref) return null;
+	if (typeof ref === 'string' && mongoose.Types.ObjectId.isValid(ref)) return ref;
+	if (typeof ref === 'object') {
+		if (typeof ref.toHexString === 'function') {
+			try {
+				const hex = ref.toHexString();
+				return mongoose.Types.ObjectId.isValid(hex) ? hex : null;
+			} catch {
+				return null;
+			}
+		}
+		if (ref._id != null) {
+			const s = String(ref._id);
+			return mongoose.Types.ObjectId.isValid(s) ? s : null;
+		}
+		if (typeof ref.id === 'string' && mongoose.Types.ObjectId.isValid(ref.id)) return ref.id;
+	}
+	return null;
+};
+
+/** Load User when ref is an id / ObjectId / partial object without names. */
+const resolveSubscriptionUserRef = async (ref: any) => {
+	if (!ref) return null;
+	const quick = gqlUserSubset(ref);
+	if (quick && (quick.firstName.trim() || quick.lastName.trim())) return quick;
+	const id = subscriptionUserRefId(ref);
+	if (!id) return null;
+	const user = await User.findById(id).select('firstName lastName email').lean();
+	return gqlUserSubset(user);
 };
 
 const isUserLikeObject = (v: any) =>
@@ -774,21 +817,15 @@ export default {
 	SubscriptionRequest: {
 		member: async (parent: any) => {
 			if (typeof parent.member === 'string') {
-				const user = await User.findById(parent.member)
-					.select('firstName lastName email')
-					.lean();
-				return gqlUserSubset(user);
+				return resolveSubscriptionUserRef(parent.member);
 			}
 			if (parent.member && typeof parent.member === 'object') {
-				if (parent.member.id || parent.member._id) {
-					return gqlUserSubset(parent.member);
+				if (parent.member.id || parent.member._id || typeof parent.member.toHexString === 'function') {
+					return resolveSubscriptionUserRef(parent.member);
 				}
 			}
 			if (parent.memberId) {
-				const user = await User.findById(parent.memberId)
-					.select('firstName lastName email')
-					.lean();
-				return gqlUserSubset(user);
+				return resolveSubscriptionUserRef(parent.memberId);
 			}
 			return null;
 		},
@@ -816,32 +853,8 @@ export default {
 			}
 			return null;
 		},
-		approvedBy: async (parent: any) => {
-			if (!parent.approvedBy) return null;
-			if (typeof parent.approvedBy === 'string') {
-				const user = await User.findById(parent.approvedBy)
-					.select('firstName lastName email')
-					.lean();
-				return gqlUserSubset(user);
-			}
-			if (typeof parent.approvedBy === 'object') {
-				return gqlUserSubset(parent.approvedBy);
-			}
-			return null;
-		},
-		rejectedBy: async (parent: any) => {
-			if (!parent.rejectedBy) return null;
-			if (typeof parent.rejectedBy === 'string') {
-				const user = await User.findById(parent.rejectedBy)
-					.select('firstName lastName email')
-					.lean();
-				return gqlUserSubset(user);
-			}
-			if (typeof parent.rejectedBy === 'object') {
-				return gqlUserSubset(parent.rejectedBy);
-			}
-			return null;
-		},
+		approvedBy: async (parent: any) => resolveSubscriptionUserRef(parent.approvedBy),
+		rejectedBy: async (parent: any) => resolveSubscriptionUserRef(parent.rejectedBy),
 	},
 };
 
