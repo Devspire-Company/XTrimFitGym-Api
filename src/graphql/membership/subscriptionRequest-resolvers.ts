@@ -67,35 +67,58 @@ const mapMembershipToGraphQL = (membership: any) => {
 
 type Context = IAuthContext;
 
+/** GraphQL User requires non-null email/firstName/lastName; DB may have nulls on legacy rows. */
+const gqlUserSubset = (raw: any) => {
+	if (!raw) return null;
+	const id = raw._id != null ? String(raw._id) : raw.id != null ? String(raw.id) : null;
+	if (!id) return null;
+	return {
+		id,
+		firstName: raw.firstName ?? '',
+		lastName: raw.lastName ?? '',
+		email: raw.email ?? '',
+	};
+};
+
+const isUserLikeObject = (v: any) =>
+	Boolean(v && typeof v === 'object' && (v._id != null || v.id != null));
+
 const mapSubscriptionRequestToGraphQL = (request: any, membershipData?: any, memberData?: any) => {
-	// If membershipData is provided, use it; otherwise use the request's membership_id
-	const membership = membershipData 
+	const membership = membershipData
 		? mapMembershipToGraphQL(membershipData)
 		: request.membership_id;
 
-	// Handle member data - use provided memberData or format from request.member_id
-	let member = memberData;
-	if (!member) {
+	let member: any;
+	if (memberData != null && isUserLikeObject(memberData)) {
+		member = gqlUserSubset(memberData);
+	} else if (memberData != null) {
+		member = memberData;
+	} else {
 		const memberId = request.member_id;
-		if (memberId && typeof memberId === 'object' && memberId._id) {
-			// If it's a populated object, format it properly
-			member = {
-				id: memberId._id.toString(),
-				firstName: memberId.firstName,
-				lastName: memberId.lastName,
-				email: memberId.email,
-			};
+		if (isUserLikeObject(memberId)) {
+			member = gqlUserSubset(memberId);
 		} else {
-			// Otherwise, it's an ID string - will be resolved by the resolver
 			member = memberId;
 		}
 	}
 
-	// Handle EXPIRED status - convert to REJECTED since EXPIRED is no longer in the enum
 	let status = request.status?.toUpperCase() || 'PENDING';
 	if (status === 'EXPIRED') {
 		status = 'REJECTED';
 	}
+
+	const approvedBy =
+		request.approvedBy == null
+			? null
+			: isUserLikeObject(request.approvedBy)
+				? gqlUserSubset(request.approvedBy)
+				: request.approvedBy;
+	const rejectedBy =
+		request.rejectedBy == null
+			? null
+			: isUserLikeObject(request.rejectedBy)
+				? gqlUserSubset(request.rejectedBy)
+				: request.rejectedBy;
 
 	return {
 		id: request._id.toString(),
@@ -106,9 +129,9 @@ const mapSubscriptionRequestToGraphQL = (request: any, membershipData?: any, mem
 		status: status,
 		requestedAt: request.requestedAt?.toISOString(),
 		approvedAt: request.approvedAt?.toISOString() || null,
-		approvedBy: request.approvedBy || null,
+		approvedBy,
 		rejectedAt: request.rejectedAt?.toISOString() || null,
-		rejectedBy: request.rejectedBy || null,
+		rejectedBy,
 		createdAt: request.createdAt?.toISOString(),
 		updatedAt: request.updatedAt?.toISOString(),
 	};
@@ -304,20 +327,12 @@ export default {
 				.sort({ updatedAt: -1, requestedAt: -1 })
 				.lean();
 
-			// Map requests and ensure member data is properly formatted
 			return requests.map((request) => {
-				// Ensure member is properly formatted before mapping
 				let memberData: any = null;
-				if (request.member_id && typeof request.member_id === 'object' && request.member_id._id) {
-					// If it's a populated object, format it properly
-					memberData = {
-						id: request.member_id._id.toString(),
-						firstName: request.member_id.firstName,
-						lastName: request.member_id.lastName,
-						email: request.member_id.email,
-					};
+				if (isUserLikeObject(request.member_id)) {
+					memberData = gqlUserSubset(request.member_id);
 				}
-				
+
 				return mapSubscriptionRequestToGraphQL(request, undefined, memberData);
 			});
 		},
@@ -332,53 +347,18 @@ export default {
 			const requests = await SubscriptionRequest.find({})
 				.populate('member_id', 'firstName lastName email')
 				.populate('membership_id')
-				.populate('approvedBy', 'firstName lastName')
-				.populate('rejectedBy', 'firstName lastName')
+				.populate('approvedBy', 'firstName lastName email')
+				.populate('rejectedBy', 'firstName lastName email')
 				.sort({ updatedAt: -1, requestedAt: -1 })
 				.lean();
 
-			// Map requests and ensure member data is properly formatted
 			return requests.map((request) => {
-				// Ensure member is properly formatted before mapping
 				let memberData: any = null;
-				if (request.member_id && typeof request.member_id === 'object' && request.member_id._id) {
-					// If it's a populated object, format it properly
-					memberData = {
-						id: request.member_id._id.toString(),
-						firstName: request.member_id.firstName,
-						lastName: request.member_id.lastName,
-						email: request.member_id.email,
-					};
+				if (isUserLikeObject(request.member_id)) {
+					memberData = gqlUserSubset(request.member_id);
 				}
-				
-				// Format approvedBy and rejectedBy if populated
-				let approvedByData: any = null;
-				if (request.approvedBy && typeof request.approvedBy === 'object' && request.approvedBy._id) {
-					approvedByData = {
-						id: request.approvedBy._id.toString(),
-						firstName: request.approvedBy.firstName,
-						lastName: request.approvedBy.lastName,
-					};
-				}
-				
-				let rejectedByData: any = null;
-				if (request.rejectedBy && typeof request.rejectedBy === 'object' && request.rejectedBy._id) {
-					rejectedByData = {
-						id: request.rejectedBy._id.toString(),
-						firstName: request.rejectedBy.firstName,
-						lastName: request.rejectedBy.lastName,
-					};
-				}
-				
-				const mapped = mapSubscriptionRequestToGraphQL(request, undefined, memberData);
-				// Override approvedBy and rejectedBy with properly formatted data
-				if (approvedByData) {
-					mapped.approvedBy = approvedByData;
-				}
-				if (rejectedByData) {
-					mapped.rejectedBy = rejectedByData;
-				}
-				return mapped;
+
+				return mapSubscriptionRequestToGraphQL(request, undefined, memberData);
 			});
 		},
 
@@ -392,8 +372,8 @@ export default {
 			const request = await SubscriptionRequest.findById(id)
 				.populate('member_id', 'firstName lastName email')
 				.populate('membership_id')
-				.populate('approvedBy', 'firstName lastName')
-				.populate('rejectedBy', 'firstName lastName')
+				.populate('approvedBy', 'firstName lastName email')
+				.populate('rejectedBy', 'firstName lastName email')
 				.lean();
 
 			if (!request) {
@@ -405,15 +385,9 @@ export default {
 				throw new Error('Unauthorized: You cannot view this request');
 			}
 
-			// Format member data if populated
 			let memberData: any = null;
-			if (request.member_id && typeof request.member_id === 'object' && request.member_id._id) {
-				memberData = {
-					id: request.member_id._id.toString(),
-					firstName: request.member_id.firstName,
-					lastName: request.member_id.lastName,
-					email: request.member_id.email,
-				};
+			if (isUserLikeObject(request.member_id)) {
+				memberData = gqlUserSubset(request.member_id);
 			}
 
 			return mapSubscriptionRequestToGraphQL(request, undefined, memberData);
@@ -429,21 +403,15 @@ export default {
 				member_id: new mongoose.Types.ObjectId(userId),
 			})
 				.populate('membership_id')
-				.populate('approvedBy', 'firstName lastName')
-				.populate('rejectedBy', 'firstName lastName')
+				.populate('approvedBy', 'firstName lastName email')
+				.populate('rejectedBy', 'firstName lastName email')
 				.sort({ updatedAt: -1, requestedAt: -1 })
 				.lean();
 
 			return requests.map((request) => {
-				// Format member data if populated
 				let memberData: any = null;
-				if (request.member_id && typeof request.member_id === 'object' && request.member_id._id) {
-					memberData = {
-						id: request.member_id._id.toString(),
-						firstName: request.member_id.firstName,
-						lastName: request.member_id.lastName,
-						email: request.member_id.email,
-					};
+				if (isUserLikeObject(request.member_id)) {
+					memberData = gqlUserSubset(request.member_id);
 				}
 				return mapSubscriptionRequestToGraphQL(request, undefined, memberData);
 			});
@@ -534,15 +502,9 @@ export default {
 				throw new Error('Invalid membership data: missing ID');
 			}
 
-			// Format member data if populated
 			let memberData: any = null;
-			if (populatedRequest.member_id && typeof populatedRequest.member_id === 'object' && populatedRequest.member_id._id) {
-				memberData = {
-					id: populatedRequest.member_id._id.toString(),
-					firstName: populatedRequest.member_id.firstName,
-					lastName: populatedRequest.member_id.lastName,
-					email: populatedRequest.member_id.email,
-				};
+			if (isUserLikeObject(populatedRequest.member_id)) {
+				memberData = gqlUserSubset(populatedRequest.member_id);
 			}
 
 			// Map the request with properly formatted membership and member
@@ -578,12 +540,7 @@ export default {
 				// Fetch member if needed
 				const user = await User.findById(userId).select('firstName lastName email').lean();
 				if (user) {
-					mappedRequest.member = {
-						id: user._id.toString(),
-						firstName: user.firstName,
-						lastName: user.lastName,
-						email: user.email,
-					};
+					mappedRequest.member = gqlUserSubset(user);
 				} else {
 					throw new Error('Member not found');
 				}
@@ -816,49 +773,22 @@ export default {
 
 	SubscriptionRequest: {
 		member: async (parent: any) => {
-			// Handle string ID
 			if (typeof parent.member === 'string') {
 				const user = await User.findById(parent.member)
 					.select('firstName lastName email')
 					.lean();
-				return user
-					? {
-							id: user._id.toString(),
-							firstName: user.firstName,
-							lastName: user.lastName,
-							email: user.email,
-					  }
-					: null;
+				return gqlUserSubset(user);
 			}
-			// Handle populated member object (from mongoose populate)
 			if (parent.member && typeof parent.member === 'object') {
-				// Check if it's already a GraphQL-formatted object (has id field)
-				if (parent.member.id) {
-					return parent.member;
-				}
-				// If it's a mongoose document/object, map it
-				if (parent.member._id) {
-					return {
-						id: parent.member._id.toString(),
-						firstName: parent.member.firstName,
-						lastName: parent.member.lastName,
-						email: parent.member.email,
-					};
+				if (parent.member.id || parent.member._id) {
+					return gqlUserSubset(parent.member);
 				}
 			}
-			// Fallback: try to fetch by memberId if available
 			if (parent.memberId) {
 				const user = await User.findById(parent.memberId)
 					.select('firstName lastName email')
 					.lean();
-				return user
-					? {
-							id: user._id.toString(),
-							firstName: user.firstName,
-							lastName: user.lastName,
-							email: user.email,
-					  }
-					: null;
+				return gqlUserSubset(user);
 			}
 			return null;
 		},
@@ -890,33 +820,27 @@ export default {
 			if (!parent.approvedBy) return null;
 			if (typeof parent.approvedBy === 'string') {
 				const user = await User.findById(parent.approvedBy)
-					.select('firstName lastName')
+					.select('firstName lastName email')
 					.lean();
-				return user
-					? {
-							id: user._id.toString(),
-							firstName: user.firstName,
-							lastName: user.lastName,
-					  }
-					: null;
+				return gqlUserSubset(user);
 			}
-			return parent.approvedBy;
+			if (typeof parent.approvedBy === 'object') {
+				return gqlUserSubset(parent.approvedBy);
+			}
+			return null;
 		},
 		rejectedBy: async (parent: any) => {
 			if (!parent.rejectedBy) return null;
 			if (typeof parent.rejectedBy === 'string') {
 				const user = await User.findById(parent.rejectedBy)
-					.select('firstName lastName')
+					.select('firstName lastName email')
 					.lean();
-				return user
-					? {
-							id: user._id.toString(),
-							firstName: user.firstName,
-							lastName: user.lastName,
-					  }
-					: null;
+				return gqlUserSubset(user);
 			}
-			return parent.rejectedBy;
+			if (typeof parent.rejectedBy === 'object') {
+				return gqlUserSubset(parent.rejectedBy);
+			}
+			return null;
 		},
 	},
 };
