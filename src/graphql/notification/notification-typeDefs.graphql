@@ -1,6 +1,7 @@
 enum NotificationType {
 	INACTIVITY
 	MEMBERSHIP_EXPIRING
+	SESSION_SCHEDULED
 }
 
 type Notification {

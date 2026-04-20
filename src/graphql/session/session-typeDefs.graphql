@@ -54,6 +54,8 @@ enum SessionStatus {
 # Session input
 input CreateSessionInput {
 	clientsIds: [ID!] # Required for personal sessions; optional for group_class (use invitedClientIds)
+	# When the caller is an admin, set this to the coach who will own the session (required for admin).
+	coachId: ID
 	name: String!
 	workoutType: String
 	date: String!

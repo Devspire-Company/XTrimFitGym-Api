@@ -2,6 +2,8 @@ import Session from '../../database/models/session/session-schema.js';
 import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import User from '../../database/models/user/user-schema.js';
 import Goal from '../../database/models/goal/goal-schema.js';
+import MembershipTransaction from '../../database/models/membership/membershipTransaction-schema.js';
+import Notification from '../../database/models/notification/notification-schema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
@@ -69,6 +71,61 @@ function getEnrollmentForClient(session: any, clientIdStr: string) {
 
 function acceptedCount(session: any) {
 	return (session.clients_ids || []).length;
+}
+
+async function assertActiveMembershipForUserIds(userIds: string[]) {
+	if (userIds.length === 0) return;
+	const now = new Date();
+	const unique = [...new Set(userIds.map((x) => String(x)))];
+	for (const uid of unique) {
+		if (!mongoose.Types.ObjectId.isValid(uid)) {
+			throw new Error('One or more invalid user ids for membership check');
+		}
+		const t = await MembershipTransaction.findOne({
+			client_id: new mongoose.Types.ObjectId(uid),
+			status: 'Active',
+			expiresAt: { $gte: now },
+		}).lean();
+		if (!t) {
+			throw new Error(
+				'Each selected member must have an active, non-expired membership',
+			);
+		}
+	}
+}
+
+async function notifyMembersSessionScheduled(opts: {
+	recipientIds: string[];
+	sessionId: string;
+	sessionName: string;
+	coachLabel: string;
+	sessionDateIso: string;
+}) {
+	const { recipientIds, sessionId, sessionName, coachLabel, sessionDateIso } =
+		opts;
+	const when = new Date(sessionDateIso);
+	const whenLabel = Number.isFinite(when.getTime())
+		? when.toLocaleString()
+		: sessionDateIso;
+	const title = 'Session scheduled';
+	const message = `${coachLabel} scheduled "${sessionName}" (${whenLabel}).`;
+	for (const rid of recipientIds) {
+		if (!mongoose.Types.ObjectId.isValid(rid)) continue;
+		const dedupeKey = `session_scheduled:${sessionId}:${rid}`;
+		try {
+			await Notification.create({
+				recipientId: new mongoose.Types.ObjectId(rid),
+				recipientRole: 'member',
+				type: 'SESSION_SCHEDULED',
+				title,
+				message,
+				dedupeKey,
+				metadataJson: JSON.stringify({ sessionId }),
+			});
+		} catch (e: any) {
+			if (e?.code !== 11000) throw e;
+		}
+	}
 }
 
 /** Member should not see group classes they left or were removed from (declined/rejected, off roster). */
@@ -779,6 +836,24 @@ export default {
 			// Ensure userId is a string
 			const userIdString = String(userId);
 
+			let effectiveCoachId = userIdString;
+			if (userRole === 'admin') {
+				const requestedCoach = input.coachId ? String(input.coachId) : '';
+				if (!requestedCoach || !mongoose.Types.ObjectId.isValid(requestedCoach)) {
+					throw new Error('Admin must select a valid coach (coachId) for this session');
+				}
+				effectiveCoachId = requestedCoach;
+			} else {
+				if (input.coachId && String(input.coachId) !== userIdString) {
+					throw new Error('Unauthorized: Coaches cannot assign sessions to another coach');
+				}
+			}
+
+			const coachUser = await User.findById(effectiveCoachId).lean();
+			if (!coachUser || coachUser.role !== 'coach') {
+				throw new Error('Coach not found or user is not a coach');
+			}
+
 			// If creating from template, get template details
 			let templateSession = null;
 			if (input.templateId) {
@@ -825,6 +900,13 @@ export default {
 				await assertInviteUserIdsExist(invitedIds);
 			}
 
+			if (userRole === 'admin') {
+				const membershipCheckIds = !isGroupClass
+					? (input.clientsIds || []).map((x: string) => String(x))
+					: invitedIds;
+				await assertActiveMembershipForUserIds(membershipCheckIds);
+			}
+
 			const clientsIds =
 				input.isTemplate || isGroupClass
 					? []
@@ -842,7 +924,7 @@ export default {
 					: [];
 
 			const session = new Session({
-				coach_id: new mongoose.Types.ObjectId(userIdString),
+				coach_id: new mongoose.Types.ObjectId(effectiveCoachId),
 				clients_ids: clientsIds,
 				name: templateSession ? templateSession.name : input.name,
 				workoutType: templateSession
@@ -874,17 +956,11 @@ export default {
 			await session.save();
 
 			// Update coach's sessions_ids
-			await User.findByIdAndUpdate(userIdString, {
+			await User.findByIdAndUpdate(effectiveCoachId, {
 				$push: {
 					'coachDetails.sessions_ids': session._id,
 				},
 			});
-
-			// TODO: Send push notifications to clients
-			// await sendPushNotificationsToClients(input.clientsIds, {
-			//   title: 'New Session Scheduled',
-			//   body: `Coach ${context.userName} has scheduled a session: ${input.name}`,
-			// });
 
 			const populatedSession = await Session.findById(session._id)
 				.populate('coach_id', 'firstName lastName')
@@ -895,6 +971,29 @@ export default {
 				})
 				.populate('goalId', 'title goalType')
 				.lean();
+
+			const notifyIds: string[] = !isGroupClass
+				? (input.clientsIds || []).map((x: string) => String(x))
+				: invitedIds;
+			if (notifyIds.length > 0 && !input.isTemplate) {
+				const coachDoc = await User.findById(effectiveCoachId)
+					.select('firstName lastName')
+					.lean();
+				const coachLabel = coachDoc
+					? `${coachDoc.firstName || ''} ${coachDoc.lastName || ''}`.trim() ||
+						'Your coach'
+					: 'Your coach';
+				const sessionNameForNotify = templateSession
+					? templateSession.name
+					: input.name;
+				await notifyMembersSessionScheduled({
+					recipientIds: notifyIds,
+					sessionId: session._id.toString(),
+					sessionName: sessionNameForNotify,
+					coachLabel,
+					sessionDateIso: input.date,
+				});
+			}
 
 			return mapSessionToGraphQL(populatedSession);
 		},

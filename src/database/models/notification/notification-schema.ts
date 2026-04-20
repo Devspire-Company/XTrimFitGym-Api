@@ -1,6 +1,9 @@
 import mongoose, { Schema } from 'mongoose';
 
-export type NotificationTypeValue = 'INACTIVITY' | 'MEMBERSHIP_EXPIRING';
+export type NotificationTypeValue =
+	| 'INACTIVITY'
+	| 'MEMBERSHIP_EXPIRING'
+	| 'SESSION_SCHEDULED';
 
 export interface INotification {
 	_id?: mongoose.Types.ObjectId;
@@ -33,7 +36,7 @@ const notificationSchema = new Schema(
 		},
 		type: {
 			type: String,
-			enum: ['INACTIVITY', 'MEMBERSHIP_EXPIRING'],
+			enum: ['INACTIVITY', 'MEMBERSHIP_EXPIRING', 'SESSION_SCHEDULED'],
 			required: true,
 			index: true,
 		},
