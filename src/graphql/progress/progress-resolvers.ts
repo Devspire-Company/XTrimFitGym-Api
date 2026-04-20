@@ -7,6 +7,24 @@ import mongoose from 'mongoose';
 
 type Context = IAuthContext;
 
+/** Normalize stored or populated session log refs to string IDs for GraphQL (populate() replaces ids with documents). */
+function mapSessionLogRefsToIdStrings(raw: unknown): string[] {
+	if (raw == null) return [];
+	const arr = Array.isArray(raw) ? raw : [];
+	return arr
+		.map((id: any) => {
+			if (id == null) return '';
+			if (id instanceof mongoose.Types.ObjectId) return id.toString();
+			if (typeof id === 'object' && id._id != null) {
+				const inner = id._id;
+				return inner instanceof mongoose.Types.ObjectId ? inner.toString() : String(inner);
+			}
+			if (typeof id === 'object' && id.id != null) return String(id.id);
+			return String(id);
+		})
+		.filter(Boolean);
+}
+
 /** Ensures progress ratings are only created/updated when tied to real completed coach–client sessions. */
 async function assertSessionLogsSupportProgressRating(params: {
 	coachId: string;
@@ -61,16 +79,88 @@ const mapProgressRatingToGraphQL = (rating: any) => {
 		rating: rating.rating,
 		comment: rating.comment,
 		verdict: rating.verdict,
-		sessionLogIds: (rating.sessionLogIds || []).map((id: any) =>
-			id instanceof mongoose.Types.ObjectId ? id.toString() : String(id)
-		),
-		sessionLogs: rating.sessionLogIds || [],
+		sessionLogIds: mapSessionLogRefsToIdStrings(rating.sessionLogIds),
+		sessionLogs: [],
 		createdAt: rating.createdAt?.toISOString(),
 		updatedAt: rating.updatedAt?.toISOString(),
 	};
 };
 
+async function sessionLogsForProgressRatingParent(parent: { sessionLogIds?: string[] }) {
+	const ids = parent.sessionLogIds;
+	if (!ids?.length) return [];
+	const logs = await SessionLog.find({
+		_id: { $in: ids.map((id: string) => new mongoose.Types.ObjectId(id)) },
+	})
+		.populate({
+			path: 'session_id',
+			populate: [
+				{ path: 'coach_id', select: 'firstName lastName email' },
+				{ path: 'goalId', select: 'title goalType currentWeight targetWeight' },
+			],
+		})
+		.populate('client_id', 'firstName lastName email')
+		.populate('coach_id', 'firstName lastName email')
+		.sort({ completedAt: 1 })
+		.lean();
+
+	return logs.map((log: any) => ({
+		id: log._id.toString(),
+		sessionId:
+			log.session_id?._id?.toString() ||
+			log.session_id?.toString?.() ||
+			String(log.session_id || ''),
+		session: log.session_id
+			? {
+					id: log.session_id._id?.toString() || '',
+					name: log.session_id.name || '',
+					date: log.session_id.date?.toISOString?.() || null,
+					startTime: log.session_id.startTime || '',
+					endTime: log.session_id.endTime ?? null,
+					gymArea: log.session_id.gymArea || '',
+					goalId:
+						log.session_id.goalId?._id?.toString() ||
+						log.session_id.goalId?.toString?.() ||
+						null,
+					goal: log.session_id.goalId || null,
+				}
+			: null,
+		clientId:
+			log.client_id?._id?.toString() || log.client_id?.id || String(log.client_id || ''),
+		client: log.client_id?._id
+			? {
+					id: log.client_id._id.toString(),
+					firstName: log.client_id.firstName || '',
+					lastName: log.client_id.lastName || '',
+					email: log.client_id.email || '',
+				}
+			: null,
+		coachId:
+			log.coach_id?._id?.toString() || log.coach_id?.id || String(log.coach_id || ''),
+		coach: log.coach_id?._id
+			? {
+					id: log.coach_id._id.toString(),
+					firstName: log.coach_id.firstName || '',
+					lastName: log.coach_id.lastName || '',
+					email: log.coach_id.email || '',
+				}
+			: null,
+		weight: log.weight ?? null,
+		progressImages: log.progressImages || null,
+		clientConfirmed: !!log.clientConfirmed,
+		coachConfirmed: !!log.coachConfirmed,
+		notes: log.notes ?? null,
+		completedAt: log.completedAt?.toISOString?.() || null,
+		createdAt: log.createdAt?.toISOString?.() || null,
+		updatedAt: log.updatedAt?.toISOString?.() || null,
+	}));
+}
+
 export default {
+	ProgressRating: {
+		sessionLogs: async (parent: { sessionLogIds?: string[] }) =>
+			sessionLogsForProgressRatingParent(parent),
+	},
 	Query: {
 		getProgressRatings: async (
 			_: any,
@@ -92,7 +182,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -118,7 +207,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -144,7 +232,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -357,7 +444,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.lean();
 
 			return mapProgressRatingToGraphQL(populatedRating);
@@ -417,7 +503,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.lean();
 
 			return mapProgressRatingToGraphQL(updatedRating);
