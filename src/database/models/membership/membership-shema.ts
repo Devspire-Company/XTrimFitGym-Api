@@ -5,6 +5,7 @@ export type DurationTypeType = 'Monthly' | 'Yearly' | 'Quarterly' | 'Daily';
 export interface IMembership {
 	status: MembershipStatusType;
 	durationType: DurationTypeType;
+	statusEffectiveAt?: Date;
 }
 
 const membershipSchema = new Schema(
@@ -26,6 +27,10 @@ const membershipSchema = new Schema(
 			type: String,
 			enum: ['Active', 'Inactive', 'Coming soon'],
 			required: true,
+		},
+		statusEffectiveAt: {
+			type: Date,
+			default: Date.now,
 		},
 		durationType: {
 			type: String,

@@ -6,6 +6,7 @@ type Membership {
 	description: String
 	features: [String!]!
 	status: MembershipStatus!
+	statusEffectiveAt: String
 	durationType: DurationType!
 	monthDuration: Int!
 	createdAt: String
@@ -73,6 +74,7 @@ input CreateMembershipInput {
 	description: String
 	features: [String!]!
 	status: MembershipStatus!
+	statusEffectiveAt: String
 	durationType: DurationType!
 	monthDuration: Int!
 }
@@ -87,6 +89,7 @@ input UpdateMembershipInput {
 	description: String
 	features: [String!]
 	status: MembershipStatus
+	statusEffectiveAt: String
 	durationType: DurationType
 	monthDuration: Int
 }

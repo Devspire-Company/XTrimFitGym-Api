@@ -45,11 +45,41 @@ const mapMembershipToGraphQL = (membership: any) => {
 		description: membership.description || null,
 		features: membership.features || [],
 		status: membership.status?.toUpperCase() || 'INACTIVE',
+		statusEffectiveAt: membership.statusEffectiveAt?.toISOString?.() || null,
 		durationType: membership.durationType?.toUpperCase() || 'MONTHLY',
 		monthDuration: monthDuration,
 		createdAt: membership.createdAt?.toISOString(),
 		updatedAt: membership.updatedAt?.toISOString(),
 	};
+};
+
+const normalizeMembershipStatus = (status: string): 'Active' | 'Inactive' | 'Coming soon' => {
+	switch (status) {
+		case 'ACTIVE':
+			return 'Active';
+		case 'INACTIVE':
+			return 'Inactive';
+		case 'COMING_SOON':
+			return 'Coming soon';
+		default:
+			return (status.charAt(0) + status.slice(1).toLowerCase()) as
+				| 'Active'
+				| 'Inactive'
+				| 'Coming soon';
+	}
+};
+
+const isMembershipCurrentlyAvailableForPurchase = (
+	membership: { status?: string | null; statusEffectiveAt?: Date | string | null },
+	now = new Date()
+) => {
+	const status = membership.status || 'Inactive';
+	if (status === 'Active') return true;
+	if (status !== 'Inactive') return false;
+	if (!membership.statusEffectiveAt) return false;
+	const effectiveAt = new Date(membership.statusEffectiveAt);
+	if (Number.isNaN(effectiveAt.getTime())) return false;
+	return effectiveAt > now;
 };
 
 const mapTransactionToGraphQL = (transaction: any, membershipPlan?: any) => {
@@ -193,8 +223,10 @@ export default {
 				monthlyPrice: input.monthlyPrice,
 				description: input.description || null,
 				features: input.features || [],
-				status:
-					input.status.charAt(0) + input.status.slice(1).toLowerCase() || 'Active',
+				status: normalizeMembershipStatus(input.status || 'ACTIVE'),
+				statusEffectiveAt: input.statusEffectiveAt
+					? new Date(input.statusEffectiveAt)
+					: new Date(),
 				durationType:
 					input.durationType.charAt(0) +
 						input.durationType.slice(1).toLowerCase() || 'Monthly',
@@ -227,9 +259,15 @@ export default {
 			if (input.description !== undefined)
 				updateData.description = input.description;
 			if (input.features !== undefined) updateData.features = input.features;
-			if (input.status !== undefined)
-				updateData.status =
-					input.status.charAt(0) + input.status.slice(1).toLowerCase();
+			if (input.status !== undefined) {
+				updateData.status = normalizeMembershipStatus(input.status);
+				updateData.statusEffectiveAt = input.statusEffectiveAt
+					? new Date(input.statusEffectiveAt)
+					: new Date();
+			}
+			if (input.statusEffectiveAt !== undefined && input.status === undefined) {
+				updateData.statusEffectiveAt = new Date(input.statusEffectiveAt);
+			}
 			if (input.durationType !== undefined)
 				updateData.durationType =
 					input.durationType.charAt(0) + input.durationType.slice(1).toLowerCase();
@@ -302,8 +340,17 @@ export default {
 				throw new Error('Membership not found');
 			}
 
-			if (membership.status !== 'Active') {
-				throw new Error('This membership plan is not available');
+			if (!isMembershipCurrentlyAvailableForPurchase(membership)) {
+				const effectiveAt = membership.statusEffectiveAt
+					? new Date(membership.statusEffectiveAt)
+					: null;
+				const effectiveText =
+					effectiveAt && !Number.isNaN(effectiveAt.getTime())
+						? ` Effective date: ${effectiveAt.toISOString()}.`
+						: '';
+				throw new Error(
+					`This membership promo is inactive and cannot be availed by new users.${effectiveText}`
+				);
 			}
 
 			// Check if user has an existing active membership (switching plans)
