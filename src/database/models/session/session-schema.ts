@@ -1,6 +1,14 @@
 import mongoose, { Schema } from 'mongoose';
 
 export type SessionKindType = 'personal' | 'group_class';
+export type SessionWeekdayType =
+	| 'monday'
+	| 'tuesday'
+	| 'wednesday'
+	| 'thursday'
+	| 'friday'
+	| 'saturday'
+	| 'sunday';
 export type ClassEnrollmentStatusType =
 	| 'invited'
 	| 'pending'
@@ -31,6 +39,7 @@ export interface ISession {
 	goalId?: mongoose.Types.ObjectId; // Link to goal this session is helping achieve
 	isTemplate?: boolean; // Whether this session is a reusable template
 	sessionKind?: SessionKindType;
+	scheduleDays?: SessionWeekdayType[];
 	maxParticipants?: number;
 	enrollments?: IClassEnrollment[];
 	createdAt?: Date;
@@ -119,6 +128,27 @@ const sessionSchema = new Schema(
 			type: String,
 			enum: ['personal', 'group_class'],
 			default: 'personal',
+		},
+		scheduleDays: {
+			type: [String],
+			enum: [
+				'monday',
+				'tuesday',
+				'wednesday',
+				'thursday',
+				'friday',
+				'saturday',
+				'sunday',
+			],
+			default: [
+				'monday',
+				'tuesday',
+				'wednesday',
+				'thursday',
+				'friday',
+				'saturday',
+				'sunday',
+			],
 		},
 		maxParticipants: {
 			type: Number,
