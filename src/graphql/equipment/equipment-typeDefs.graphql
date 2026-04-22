@@ -14,6 +14,8 @@ type Equipment {
 	acquiredAt: String
 	sortOrder: Int!
 	status: EquipmentStatus!
+	quantity: Int!
+	maintenanceStartedAt: String
 	isArchived: Boolean!
 	archivedAt: String
 	archiveReason: String
@@ -38,6 +40,8 @@ input CreateEquipmentInput {
 	acquiredAt: String
 	sortOrder: Int
 	status: EquipmentStatus
+	quantity: Int
+	maintenanceStartedAt: String
 }
 
 input UpdateEquipmentInput {
@@ -48,6 +52,14 @@ input UpdateEquipmentInput {
 	acquiredAt: String
 	sortOrder: Int
 	status: EquipmentStatus
+	quantity: Int
+	maintenanceStartedAt: String
+}
+
+input AdjustEquipmentStockInput {
+	id: ID!
+	change: Int!
+	reason: String
 }
 
 extend type Query {
@@ -66,4 +78,5 @@ extend type Mutation {
 	deleteEquipment(id: ID!): Boolean!
 	archiveEquipment(id: ID!, reason: String!): Equipment!
 	unarchiveEquipment(id: ID!): Equipment!
+	adjustEquipmentStock(input: AdjustEquipmentStockInput!): Equipment!
 }

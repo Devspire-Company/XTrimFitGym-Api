@@ -10,6 +10,25 @@ const normalizeStatus = (raw: unknown): 'AVAILABLE' | 'DAMAGED' | 'UNDERMAINTENA
 	return 'AVAILABLE';
 };
 
+const normalizeEquipmentName = (raw: unknown): string => String(raw ?? '').trim().toLowerCase();
+
+const normalizeQuantity = (raw: unknown, fieldName = 'quantity'): number => {
+	if (raw === undefined || raw === null || raw === '') return 0;
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		throw new Error(`${fieldName} must be a non-negative number`);
+	}
+	return Math.floor(parsed);
+};
+
+const parseIsoDateOrNull = (raw: unknown): Date | null | undefined => {
+	if (raw === undefined) return undefined;
+	if (raw === null || raw === '') return null;
+	const parsed = new Date(String(raw));
+	if (!Number.isFinite(parsed.getTime())) return null;
+	return parsed;
+};
+
 const mapEquipmentToGraphQL = (doc: any) => ({
 	id: doc._id.toString(),
 	name: doc.name,
@@ -19,6 +38,8 @@ const mapEquipmentToGraphQL = (doc: any) => ({
 	acquiredAt: doc.acquiredAt?.toISOString?.() ?? null,
 	sortOrder: doc.sortOrder ?? 0,
 	status: normalizeStatus(doc.status),
+	quantity: typeof doc.quantity === 'number' && doc.quantity >= 0 ? doc.quantity : 0,
+	maintenanceStartedAt: doc.maintenanceStartedAt?.toISOString?.() ?? null,
 	isArchived: !!doc.isArchived,
 	archivedAt: doc.archivedAt?.toISOString?.() ?? null,
 	archiveReason: doc.archiveReason ?? null,
@@ -67,22 +88,45 @@ export default {
 			context: Context
 		) => {
 			requireAdmin(context);
+			const normalizedName = normalizeEquipmentName(input.name);
+			if (!normalizedName) throw new Error('Equipment name is required');
+			const existingByName = await Equipment.findOne({
+				nameNormalized: normalizedName,
+			})
+				.select('_id isArchived')
+				.lean();
+			if (existingByName) {
+				throw new Error(
+					existingByName.isArchived
+						? 'Cannot create equipment with this name because it is archived. Restore the archived equipment instead.'
+						: 'Equipment with this name already exists'
+				);
+			}
 			const sortOrder =
 				input.sortOrder ?? (await Equipment.countDocuments({})) ?? 0;
 			const changedBy = context.auth.user?.id;
+			const normalizedStatus = normalizeStatus(input.status ?? 'AVAILABLE');
+			const quantity = normalizeQuantity(input.quantity, 'quantity');
+			const parsedMaintenanceStartedAt = parseIsoDateOrNull(input.maintenanceStartedAt);
 			const equipment = new Equipment({
 				name: input.name?.trim(),
+				nameNormalized: normalizedName,
 				imageUrl: input.imageUrl?.trim(),
 				description: input.description?.trim() || undefined,
 				notes: input.notes?.trim() || undefined,
 				acquiredAt: input.acquiredAt ? new Date(input.acquiredAt) : undefined,
 				sortOrder,
-				status: normalizeStatus(input.status ?? 'AVAILABLE'),
+				status: normalizedStatus,
+				quantity,
+				maintenanceStartedAt:
+					normalizedStatus === 'UNDERMAINTENANCE'
+						? parsedMaintenanceStartedAt ?? new Date()
+						: null,
 				lifecycleLogs: [
 					{
 						action: 'CREATED',
 						notes: 'Equipment created',
-						status: normalizeStatus(input.status ?? 'AVAILABLE'),
+						status: normalizedStatus,
 						...(changedBy ? { changedBy: new mongoose.Types.ObjectId(changedBy) } : {}),
 					},
 				],
@@ -101,7 +145,25 @@ export default {
 			if (!doc) throw new Error('Equipment not found');
 			const changedBy = context.auth.user?.id;
 			const update: any = {};
-			if (input.name !== undefined) update.name = input.name.trim();
+			if (input.name !== undefined) {
+				const normalizedName = normalizeEquipmentName(input.name);
+				if (!normalizedName) throw new Error('Equipment name is required');
+				const existingByName = await Equipment.findOne({
+					nameNormalized: normalizedName,
+					_id: { $ne: doc._id },
+				})
+					.select('_id isArchived')
+					.lean();
+				if (existingByName) {
+					throw new Error(
+						existingByName.isArchived
+							? 'Cannot rename equipment to this archived name. Restore the archived equipment instead.'
+							: 'Equipment with this name already exists'
+					);
+				}
+				update.name = input.name.trim();
+				update.nameNormalized = normalizedName;
+			}
 			if (input.imageUrl !== undefined) update.imageUrl = input.imageUrl.trim();
 			if (input.description !== undefined)
 				update.description = input.description?.trim() ?? null;
@@ -110,10 +172,34 @@ export default {
 			if (input.acquiredAt !== undefined)
 				update.acquiredAt = input.acquiredAt ? new Date(input.acquiredAt) : null;
 			if (input.sortOrder !== undefined) update.sortOrder = input.sortOrder;
-			if (input.status !== undefined) update.status = normalizeStatus(input.status);
+			const nextStatus =
+				input.status !== undefined ? normalizeStatus(input.status) : normalizeStatus(doc.status);
+			const previousStatus = normalizeStatus(doc.status);
+			if (input.status !== undefined) {
+				update.status = nextStatus;
+			}
+			if (input.quantity !== undefined) {
+				update.quantity = normalizeQuantity(input.quantity, 'quantity');
+			}
+			const parsedMaintenanceStartedAt = parseIsoDateOrNull(input.maintenanceStartedAt);
+			if (parsedMaintenanceStartedAt !== undefined) {
+				update.maintenanceStartedAt = parsedMaintenanceStartedAt;
+			}
+			if (nextStatus === 'UNDERMAINTENANCE') {
+				if (update.maintenanceStartedAt === undefined && !doc.maintenanceStartedAt) {
+					update.maintenanceStartedAt = new Date();
+				}
+			} else {
+				update.maintenanceStartedAt = null;
+			}
+			const prevQuantity = typeof doc.quantity === 'number' && doc.quantity >= 0 ? doc.quantity : 0;
+			const nextQuantity =
+				typeof update.quantity === 'number' ? update.quantity : prevQuantity;
 			const lifecycleAction =
-				input.status !== undefined && normalizeStatus(input.status) !== normalizeStatus(doc.status)
+				input.status !== undefined && nextStatus !== previousStatus
 					? 'STATUS_CHANGED'
+					: input.quantity !== undefined && nextQuantity !== prevQuantity
+						? 'STOCK_ADJUSTED'
 					: 'UPDATED';
 			const updated = await Equipment.findByIdAndUpdate(
 				id,
@@ -125,8 +211,8 @@ export default {
 							notes: input.notes?.trim() || 'Equipment updated',
 							status:
 								input.status !== undefined
-									? normalizeStatus(input.status)
-									: normalizeStatus(doc.status),
+									? nextStatus
+									: previousStatus,
 							...(changedBy
 								? { changedBy: new mongoose.Types.ObjectId(changedBy) }
 								: {}),
@@ -219,6 +305,39 @@ export default {
 				{ new: true }
 			).lean();
 			if (!updated) throw new Error('Equipment not found');
+			return mapEquipmentToGraphQL(updated);
+		},
+		adjustEquipmentStock: async (_: any, { input }: { input: any }, context: Context) => {
+			requireAdmin(context);
+			const change = Number(input?.change);
+			if (!Number.isInteger(change) || change === 0) {
+				throw new Error('Stock change must be a non-zero integer');
+			}
+			const doc = await Equipment.findById(input.id).lean();
+			if (!doc) throw new Error('Equipment not found');
+			const currentQty = typeof doc.quantity === 'number' && doc.quantity >= 0 ? doc.quantity : 0;
+			const nextQty = currentQty + change;
+			if (nextQty < 0) {
+				throw new Error('Stock adjustment cannot make quantity below zero');
+			}
+			const changedBy = context.auth.user?.id;
+			const reason = String(input.reason ?? '').trim();
+			const updated = await Equipment.findByIdAndUpdate(
+				input.id,
+				{
+					$set: { quantity: nextQty },
+					$push: {
+						lifecycleLogs: {
+							action: 'STOCK_ADJUSTED',
+							notes: reason || `Stock adjusted by ${change > 0 ? '+' : ''}${change}`,
+							status: normalizeStatus(doc.status),
+							...(changedBy ? { changedBy: new mongoose.Types.ObjectId(changedBy) } : {}),
+						},
+					},
+				},
+				{ new: true }
+			).lean();
+			if (!updated) throw new Error('Failed to adjust stock');
 			return mapEquipmentToGraphQL(updated);
 		},
 	},

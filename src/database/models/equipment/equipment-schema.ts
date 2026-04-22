@@ -5,18 +5,27 @@ export type EquipmentStatusValue = 'AVAILABLE' | 'DAMAGED' | 'UNDERMAINTENANCE';
 export interface IEquipment {
 	_id?: mongoose.Types.ObjectId;
 	name: string;
+	nameNormalized?: string;
 	imageUrl: string;
 	description?: string;
 	notes?: string;
 	acquiredAt?: Date;
 	sortOrder?: number;
 	status: EquipmentStatusValue;
+	quantity: number;
+	maintenanceStartedAt?: Date;
 	isArchived?: boolean;
 	archivedAt?: Date;
 	archivedBy?: mongoose.Types.ObjectId;
 	archiveReason?: string;
 	lifecycleLogs?: Array<{
-		action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'ARCHIVED' | 'UNARCHIVED';
+		action:
+			| 'CREATED'
+			| 'UPDATED'
+			| 'STATUS_CHANGED'
+			| 'STOCK_ADJUSTED'
+			| 'ARCHIVED'
+			| 'UNARCHIVED';
 		notes?: string;
 		status?: EquipmentStatusValue;
 		changedAt: Date;
@@ -29,16 +38,19 @@ export interface IEquipment {
 const equipmentSchema = new Schema(
 	{
 		name: { type: String, required: true, trim: true },
+		nameNormalized: { type: String, required: true, trim: true, lowercase: true, index: true },
 		imageUrl: { type: String, required: true },
 		description: { type: String, trim: true },
 		notes: { type: String, trim: true },
 		acquiredAt: { type: Date },
 		sortOrder: { type: Number, default: 0 },
+		quantity: { type: Number, required: true, default: 0, min: 0 },
 		status: {
 			type: String,
 			enum: ['AVAILABLE', 'DAMAGED', 'UNDERMAINTENANCE'],
 			default: 'AVAILABLE',
 		},
+		maintenanceStartedAt: { type: Date },
 		isArchived: { type: Boolean, default: false, index: true },
 		archivedAt: Date,
 		archivedBy: {
@@ -50,7 +62,14 @@ const equipmentSchema = new Schema(
 			{
 				action: {
 					type: String,
-					enum: ['CREATED', 'UPDATED', 'STATUS_CHANGED', 'ARCHIVED', 'UNARCHIVED'],
+					enum: [
+						'CREATED',
+						'UPDATED',
+						'STATUS_CHANGED',
+						'STOCK_ADJUSTED',
+						'ARCHIVED',
+						'UNARCHIVED',
+					],
 					required: true,
 				},
 				notes: String,
