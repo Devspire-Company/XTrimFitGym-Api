@@ -18,6 +18,35 @@ const sessionPopulatePaths = [
 	{ path: 'goalId', select: GOAL_SELECT_FOR_SESSION },
 ] as const;
 
+const ALLOWED_SCHEDULE_DAYS = new Set([
+	'monday',
+	'tuesday',
+	'wednesday',
+	'thursday',
+	'friday',
+	'saturday',
+	'sunday',
+] as const);
+const DEFAULT_SCHEDULE_DAYS = [
+	'monday',
+	'tuesday',
+	'wednesday',
+	'thursday',
+	'friday',
+	'saturday',
+	'sunday',
+] as const;
+
+function normalizeScheduleDays(input: unknown): string[] {
+	if (!Array.isArray(input) || input.length === 0) {
+		return [...DEFAULT_SCHEDULE_DAYS];
+	}
+	const normalized = [...new Set(input.map((x) => String(x)))].filter((day) =>
+		ALLOWED_SCHEDULE_DAYS.has(day as (typeof DEFAULT_SCHEDULE_DAYS)[number]),
+	);
+	return normalized.length > 0 ? normalized : [...DEFAULT_SCHEDULE_DAYS];
+}
+
 async function fetchSessionDocument(sessionId: string) {
 	return Session.findById(sessionId)
 		.populate([...sessionPopulatePaths])
@@ -217,6 +246,7 @@ const mapSessionToGraphQL = (session: any) => {
 
 	const sessionKind =
 		session.sessionKind === 'group_class' ? 'group_class' : 'personal';
+	const scheduleDays = normalizeScheduleDays(session.scheduleDays);
 	const enrollRank: Record<string, number> = {
 		accepted: 5,
 		invited: 4,
@@ -257,6 +287,7 @@ const mapSessionToGraphQL = (session: any) => {
 		goal: goal, // Use the properly mapped goal object
 		isTemplate: session.isTemplate || false,
 		sessionKind,
+		scheduleDays,
 		maxParticipants:
 			sessionKind === 'group_class' && session.maxParticipants != null
 				? session.maxParticipants
@@ -880,6 +911,8 @@ export default {
 				throw new Error('maxParticipants must be at least 1');
 			}
 
+			const scheduleDays = normalizeScheduleDays(input.scheduleDays);
+
 			const invitedIds: string[] = (input.invitedClientIds || []).map(
 				(x: string) => String(x),
 			);
@@ -927,6 +960,7 @@ export default {
 				isTemplate: input.isTemplate === true, // Explicitly check for true
 				status: input.isTemplate ? 'scheduled' : 'scheduled',
 				sessionKind,
+				scheduleDays,
 				maxParticipants: isGroupClass
 					? (input.maxParticipants ?? 20)
 					: undefined,
@@ -1194,6 +1228,13 @@ export default {
 			if (input.gymArea !== undefined) updateData.gymArea = input.gymArea;
 			if (input.note !== undefined) updateData.note = input.note;
 			if (input.status !== undefined) updateData.status = input.status;
+			if (input.scheduleDays !== undefined) {
+				const nextScheduleDays = normalizeScheduleDays(input.scheduleDays);
+				if (nextScheduleDays.length === 0) {
+					throw new Error('scheduleDays must include at least one weekday');
+				}
+				updateData.scheduleDays = nextScheduleDays;
+			}
 			if (input.maxParticipants !== undefined) {
 				if (session.sessionKind !== 'group_class') {
 					throw new Error(

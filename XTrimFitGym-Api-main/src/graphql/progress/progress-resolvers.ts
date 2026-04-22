@@ -2,11 +2,68 @@ import ProgressRating from '../../database/models/progress/progressRating-schema
 import SessionLog from '../../database/models/session/sessionLog-schema.js';
 import Session from '../../database/models/session/session-schema.js';
 import Goal from '../../database/models/goal/goal-schema.js';
-import User from '../../database/models/user/user-schema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
 type Context = IAuthContext;
+
+/** Normalize stored or populated session log refs to string IDs for GraphQL (populate() replaces ids with documents). */
+function mapSessionLogRefsToIdStrings(raw: unknown): string[] {
+	if (raw == null) return [];
+	const arr = Array.isArray(raw) ? raw : [];
+	return arr
+		.map((id: any) => {
+			if (id == null) return '';
+			if (id instanceof mongoose.Types.ObjectId) return id.toString();
+			if (typeof id === 'object' && id._id != null) {
+				const inner = id._id;
+				return inner instanceof mongoose.Types.ObjectId ? inner.toString() : String(inner);
+			}
+			if (typeof id === 'object' && id.id != null) return String(id.id);
+			return String(id);
+		})
+		.filter(Boolean);
+}
+
+/** Ensures progress ratings are only created/updated when tied to real completed coach–client sessions. */
+async function assertSessionLogsSupportProgressRating(params: {
+	coachId: string;
+	clientId: string;
+	goalId: string;
+	sessionLogIds: string[];
+}) {
+	const { coachId, clientId, goalId, sessionLogIds } = params;
+	if (!Array.isArray(sessionLogIds) || sessionLogIds.length === 0) {
+		throw new Error(
+			'At least one completed session log is required. Rate progress only after you have completed a session with this member for this goal.'
+		);
+	}
+	const coachOid = new mongoose.Types.ObjectId(coachId);
+	const clientOid = new mongoose.Types.ObjectId(clientId);
+	const sessionLogs = await SessionLog.find({
+		_id: { $in: sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
+		client_id: clientOid,
+		coach_id: coachOid,
+	}).populate('session_id');
+
+	if (sessionLogs.length !== sessionLogIds.length) {
+		throw new Error(
+			'Some session logs were not found, do not belong to this client, or are not sessions you coached.'
+		);
+	}
+
+	for (const log of sessionLogs) {
+		if (!log.completedAt) {
+			throw new Error(
+				'Each linked session must be completed before it can be used for a progress rating.'
+			);
+		}
+		const session = log.session_id as any;
+		if (!session || session.goalId?.toString() !== goalId) {
+			throw new Error('All session logs must be for sessions linked to this goal.');
+		}
+	}
+}
 
 const mapProgressRatingToGraphQL = (rating: any) => {
 	return {
@@ -22,16 +79,88 @@ const mapProgressRatingToGraphQL = (rating: any) => {
 		rating: rating.rating,
 		comment: rating.comment,
 		verdict: rating.verdict,
-		sessionLogIds: (rating.sessionLogIds || []).map((id: any) =>
-			id instanceof mongoose.Types.ObjectId ? id.toString() : String(id)
-		),
-		sessionLogs: rating.sessionLogIds || [],
+		sessionLogIds: mapSessionLogRefsToIdStrings(rating.sessionLogIds),
+		sessionLogs: [],
 		createdAt: rating.createdAt?.toISOString(),
 		updatedAt: rating.updatedAt?.toISOString(),
 	};
 };
 
+async function sessionLogsForProgressRatingParent(parent: { sessionLogIds?: string[] }) {
+	const ids = parent.sessionLogIds;
+	if (!ids?.length) return [];
+	const logs = await SessionLog.find({
+		_id: { $in: ids.map((id: string) => new mongoose.Types.ObjectId(id)) },
+	})
+		.populate({
+			path: 'session_id',
+			populate: [
+				{ path: 'coach_id', select: 'firstName lastName email' },
+				{ path: 'goalId', select: 'title goalType currentWeight targetWeight' },
+			],
+		})
+		.populate('client_id', 'firstName lastName email')
+		.populate('coach_id', 'firstName lastName email')
+		.sort({ completedAt: 1 })
+		.lean();
+
+	return logs.map((log: any) => ({
+		id: log._id.toString(),
+		sessionId:
+			log.session_id?._id?.toString() ||
+			log.session_id?.toString?.() ||
+			String(log.session_id || ''),
+		session: log.session_id
+			? {
+					id: log.session_id._id?.toString() || '',
+					name: log.session_id.name || '',
+					date: log.session_id.date?.toISOString?.() || null,
+					startTime: log.session_id.startTime || '',
+					endTime: log.session_id.endTime ?? null,
+					gymArea: log.session_id.gymArea || '',
+					goalId:
+						log.session_id.goalId?._id?.toString() ||
+						log.session_id.goalId?.toString?.() ||
+						null,
+					goal: log.session_id.goalId || null,
+				}
+			: null,
+		clientId:
+			log.client_id?._id?.toString() || log.client_id?.id || String(log.client_id || ''),
+		client: log.client_id?._id
+			? {
+					id: log.client_id._id.toString(),
+					firstName: log.client_id.firstName || '',
+					lastName: log.client_id.lastName || '',
+					email: log.client_id.email || '',
+				}
+			: null,
+		coachId:
+			log.coach_id?._id?.toString() || log.coach_id?.id || String(log.coach_id || ''),
+		coach: log.coach_id?._id
+			? {
+					id: log.coach_id._id.toString(),
+					firstName: log.coach_id.firstName || '',
+					lastName: log.coach_id.lastName || '',
+					email: log.coach_id.email || '',
+				}
+			: null,
+		weight: log.weight ?? null,
+		progressImages: log.progressImages || null,
+		clientConfirmed: !!log.clientConfirmed,
+		coachConfirmed: !!log.coachConfirmed,
+		notes: log.notes ?? null,
+		completedAt: log.completedAt?.toISOString?.() || null,
+		createdAt: log.createdAt?.toISOString?.() || null,
+		updatedAt: log.updatedAt?.toISOString?.() || null,
+	}));
+}
+
 export default {
+	ProgressRating: {
+		sessionLogs: async (parent: { sessionLogIds?: string[] }) =>
+			sessionLogsForProgressRatingParent(parent),
+	},
 	Query: {
 		getProgressRatings: async (
 			_: any,
@@ -53,7 +182,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -79,7 +207,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -105,7 +232,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.sort({ createdAt: -1 })
 				.lean();
 
@@ -139,10 +265,11 @@ export default {
 			const end = new Date(endDate);
 			end.setHours(23, 59, 59, 999); // Include the entire end date
 
-			// Get all sessions for this goal
+			// Sessions for this goal with this client, coached by the current user only
 			const sessions = await Session.find({
 				goalId: new mongoose.Types.ObjectId(goalId),
 				clients_ids: new mongoose.Types.ObjectId(clientId),
+				coach_id: new mongoose.Types.ObjectId(userId),
 			});
 
 			const sessionIds = sessions.map((s: any) => s._id);
@@ -273,25 +400,29 @@ export default {
 				);
 			}
 
-			// Validate session logs exist and belong to the client and goal
-			if (input.sessionLogIds && input.sessionLogIds.length > 0) {
-				const sessionLogs = await SessionLog.find({
-					_id: { $in: input.sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
-					client_id: new mongoose.Types.ObjectId(input.clientId),
-				}).populate('session_id');
-
-				if (sessionLogs.length !== input.sessionLogIds.length) {
-					throw new Error('Some session logs not found or do not belong to this client');
-				}
-
-				// Verify all session logs are for the specified goal
-				for (const log of sessionLogs) {
-					const session = log.session_id as any;
-					if (session.goalId?.toString() !== input.goalId) {
-						throw new Error('All session logs must be for the specified goal');
-					}
-				}
+			const goalDoc = await Goal.findById(input.goalId).lean();
+			if (!goalDoc) {
+				throw new Error('Goal not found');
 			}
+			if (goalDoc.client_id.toString() !== input.clientId) {
+				throw new Error('Goal does not belong to this client');
+			}
+			if (
+				userRole === 'coach' &&
+				goalDoc.coach_id &&
+				goalDoc.coach_id.toString() !== userId
+			) {
+				throw new Error(
+					'Unauthorized: Only this goal’s assigned coach can rate progress for it.'
+				);
+			}
+
+			await assertSessionLogsSupportProgressRating({
+				coachId: userId,
+				clientId: input.clientId,
+				goalId: input.goalId,
+				sessionLogIds: input.sessionLogIds || [],
+			});
 
 			const rating = new ProgressRating({
 				coach_id: new mongoose.Types.ObjectId(userId),
@@ -302,9 +433,9 @@ export default {
 				rating: input.rating,
 				comment: input.comment,
 				verdict: input.verdict,
-				sessionLogIds: (input.sessionLogIds && input.sessionLogIds.length > 0)
-					? input.sessionLogIds.map((id: string) => new mongoose.Types.ObjectId(id))
-					: [],
+				sessionLogIds: input.sessionLogIds.map(
+					(id: string) => new mongoose.Types.ObjectId(id)
+				),
 			});
 
 			await rating.save();
@@ -313,7 +444,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.lean();
 
 			return mapProgressRatingToGraphQL(populatedRating);
@@ -356,6 +486,12 @@ export default {
 				updateData.verdict = input.verdict;
 			}
 			if (input.sessionLogIds !== undefined) {
+				await assertSessionLogsSupportProgressRating({
+					coachId: rating.coach_id.toString(),
+					clientId: rating.client_id.toString(),
+					goalId: rating.goal_id.toString(),
+					sessionLogIds: input.sessionLogIds,
+				});
 				updateData.sessionLogIds = input.sessionLogIds.map((id: string) =>
 					new mongoose.Types.ObjectId(id)
 				);
@@ -367,7 +503,6 @@ export default {
 				.populate('coach_id', 'firstName lastName email')
 				.populate('client_id', 'firstName lastName email')
 				.populate('goal_id', 'title goalType')
-				.populate('sessionLogIds')
 				.lean();
 
 			return mapProgressRatingToGraphQL(updatedRating);

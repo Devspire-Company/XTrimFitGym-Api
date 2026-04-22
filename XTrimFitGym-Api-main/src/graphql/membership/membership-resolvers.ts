@@ -392,6 +392,10 @@ export default {
 				status: 'Canceled',
 			});
 
+			await User.findByIdAndUpdate(transaction.client_id, {
+				$unset: { 'membershipDetails.membership_id': '' },
+			});
+
 			// Update analytics: Revenue is NOT deducted (transaction still counts), only counts are updated
 			await onSubscriptionCanceled(transactionId);
 
