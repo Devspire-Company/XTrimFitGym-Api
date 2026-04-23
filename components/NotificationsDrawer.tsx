@@ -9,7 +9,6 @@ import {
 	GET_UPCOMING_SESSIONS_QUERY,
 	GET_USER_QUERY,
 	GET_USERS_QUERY,
-	GET_MY_SUBSCRIPTION_REQUESTS_QUERY,
 } from '@/graphql/queries';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/userSlice';
@@ -42,7 +41,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 interface NotificationsDrawerProps {
 	visible: boolean;
 	onClose: () => void;
-	/** After member request-status items are marked seen in storage, refresh TabHeader badge. */
 	onMemberNotificationsViewed?: () => void;
 }
 
@@ -66,12 +64,10 @@ interface Notification {
 	coachRequest?: any;
 }
 
-// Swipeable notification item component
 const SwipeableNotificationItem = React.memo<{
 	notification: Notification;
 	onApprove?: (requestId: string) => void;
 	onReject?: (requestId: string) => void;
-	/** Swipe-to-delete: ask parent to show confirm (do not dismiss yet). */
 	onSwipeDeleteRequest: (id: string) => void;
 	selectionMode: boolean;
 	selected: boolean;
@@ -144,7 +140,6 @@ const SwipeableNotificationItem = React.memo<{
 	const iconColor = getNotificationColor(notification.type);
 	const iconName = getNotificationIcon(notification.type);
 
-	// Render left actions (appears when swiping right)
 	const renderLeftActions = (
 		_progress: Animated.AnimatedInterpolation<string | number>,
 		dragX: Animated.AnimatedInterpolation<string | number>
@@ -295,7 +290,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		}
 	}, [visible]);
 
-	// Animate drawer when visible changes
 	useEffect(() => {
 		if (visible) {
 			Animated.spring(translateX, {
@@ -314,41 +308,36 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		}
 	}, [visible, translateX]);
 
-	// Query for sessions (members) - Real-time polling
 	const { data: sessionsData } = useQuery(GET_UPCOMING_SESSIONS_QUERY, {
 		skip: !visible || user?.role !== 'member',
 		fetchPolicy: 'cache-and-network',
-		pollInterval: user?.role === 'member' && visible ? 2000 : 0, // Poll every 2 seconds for real-time updates
+		pollInterval: user?.role === 'member' && visible ? 2000 : 0,
 		notifyOnNetworkStatusChange: true,
 	});
 
-	// Query for pending coach requests (coaches) - Real-time polling
-	// Note: Polling should work even when drawer is not visible to update badge
 	const { data: coachRequestsData, refetch: refetchCoachRequests } = useQuery(
 		GET_PENDING_COACH_REQUESTS_QUERY,
 		{
-			skip: user?.role !== 'coach', // Only skip if not a coach, not based on visibility
-			fetchPolicy: 'network-only', // Always fetch from network for real-time updates
-			pollInterval: user?.role === 'coach' ? 2000 : 0, // Poll every 2 seconds for real-time updates (even when drawer closed)
-			errorPolicy: 'all', // Allow partial data even if some fields fail
+			skip: user?.role !== 'coach',
+			fetchPolicy: 'network-only',
+			pollInterval: user?.role === 'coach' ? 2000 : 0,
+			errorPolicy: 'all',
 			notifyOnNetworkStatusChange: true,
 		}
 	);
 
-	// Query for client requests to get accepted/rejected status (members) - Real-time polling
 	const { data: clientRequestsData, refetch: refetchClientRequests } = useQuery(
 		GET_CLIENT_REQUESTS_QUERY,
 		{
 			skip: !visible || !user?.id || user?.role !== 'member',
 			variables: { clientId: user?.id || '' },
 			fetchPolicy: 'cache-and-network',
-			pollInterval: user?.role === 'member' && visible ? 2000 : 0, // Poll every 2 seconds for real-time updates
-			errorPolicy: 'all', // Allow partial data even if some fields fail
+			pollInterval: user?.role === 'member' && visible ? 2000 : 0,
+			errorPolicy: 'all',
 			notifyOnNetworkStatusChange: true,
 		}
 	);
 
-	// Member opened notifications: mark coach-request status rows as seen when drawer has data (badge clears)
 	useEffect(() => {
 		if (!visible || user?.role !== 'member' || !user?.id) return;
 		const ids = recentMemberRequestStatusNotificationIds(clientRequestsData);
@@ -364,36 +353,22 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		onMemberNotificationsViewed,
 	]);
 
-	// Query coaches to detect removals (members) - Real-time polling
 	const { data: coachesData } = useQuery(GET_USERS_QUERY, {
 		skip: !visible || user?.role !== 'member',
 		variables: { role: 'coach' },
 		fetchPolicy: 'cache-and-network',
-		pollInterval: user?.role === 'member' && visible ? 2000 : 0, // Poll every 2 seconds to detect removals
+		pollInterval: user?.role === 'member' && visible ? 2000 : 0,
 		notifyOnNetworkStatusChange: true,
 	});
 
-	// Query current user in real-time to detect coach removals (members)
 	const { data: currentUserData } = useQuery(GET_USER_QUERY, {
 		skip: !visible || !user?.id || user?.role !== 'member',
 		variables: { id: user?.id || '' },
 		fetchPolicy: 'cache-and-network',
-		pollInterval: user?.role === 'member' && visible ? 2000 : 0, // Poll every 2 seconds for real-time updates
+		pollInterval: user?.role === 'member' && visible ? 2000 : 0,
 		notifyOnNetworkStatusChange: true,
 	});
 
-	// Subscription request status for members (approved / rejected)
-	const { data: subscriptionRequestsData } = useQuery(
-		GET_MY_SUBSCRIPTION_REQUESTS_QUERY,
-		{
-			skip: !visible || user?.role !== 'member',
-			fetchPolicy: 'cache-and-network',
-			pollInterval: user?.role === 'member' && visible ? 2000 : 0,
-			notifyOnNetworkStatusChange: true,
-		}
-	);
-
-	// Group class join requests (coach) & member enrollment status — poll even when drawer closed so badge + alerts stay fresh
 	const { data: coachSessionsDrawerData } = useQuery(GET_COACH_SESSIONS_QUERY, {
 		skip: !user?.id || user?.role !== 'coach',
 		variables: { coachId: user?.id || '' },
@@ -412,12 +387,10 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		notifyOnNetworkStatusChange: true,
 	});
 
-	// Lazy query to refetch current user after mutations
 	const [refetchCurrentUser] = useLazyQuery(GET_USER_QUERY, {
-		fetchPolicy: 'network-only', // Always fetch fresh data
+		fetchPolicy: 'network-only',
 	});
 
-	// Track previous coachesIds to detect removals
 	const previousCoachesIdsRef = useRef<string[]>([]);
 	const [removedCoaches, setRemovedCoaches] = useState<string[]>([]);
 	const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
@@ -434,7 +407,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		Notification[]
 	>([]);
 
-	// Use currentUserData if available, otherwise fall back to user from context
 	const userToCheck = (currentUserData as any)?.getUser || user;
 
 	useEffect(() => {
@@ -447,7 +419,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 				.map((id: any) => String(id));
 			const previous = previousCoachesIdsRef.current;
 
-			// Find coaches that were removed (only if we had previous data)
 			if (previous.length > 0) {
 				const removed = previous.filter(
 					(id) => !currentCoachesIds.includes(id)
@@ -455,11 +426,9 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 
 				if (removed.length > 0) {
 					setRemovedCoaches((prev) => {
-						// Avoid duplicates
 						const newRemoved = removed.filter((id) => !prev.includes(id));
 						return [...prev, ...newRemoved];
 					});
-					// Update Redux store with latest user data
 					const latestUser = (currentUserData as any)?.getUser;
 					if (latestUser) {
 						dispatch(updateUser(latestUser));
@@ -467,7 +436,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 				}
 			}
 
-			// Update previous coachesIds
 			previousCoachesIdsRef.current = currentCoachesIds;
 		}
 	}, [
@@ -480,11 +448,9 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 	const [updateCoachRequest] = useMutation(UPDATE_COACH_REQUEST_MUTATION, {
 		onCompleted: async () => {
 			refetchCoachRequests();
-			// Refetch client requests to show status updates
 			if (user?.role === 'member') {
 				refetchClientRequests();
 			}
-			// Refetch current user to update Redux store with latest data
 			if (user?.id) {
 				try {
 					const result = await refetchCurrentUser({
@@ -555,13 +521,11 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		prevMemberClassEnrollRef.current = next;
 	}, [memberSessionsDrawerData, user?.role, user?.id]);
 
-	// Memoize notifications array for better performance
 	const notifications = useMemo(() => {
 		const allNotifications: Notification[] = [];
 
 		allNotifications.push(...classJoinAcceptedAlerts);
 
-		// Session notifications for members
 		if (
 			sessionsData &&
 			Array.isArray((sessionsData as any).getUpcomingSessions) &&
@@ -589,16 +553,13 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 			allNotifications.push(...sessionNotifications);
 		}
 
-		// Coach request notifications for coaches (pending requests)
 		if (user?.role === 'coach') {
-			// Check if coachRequestsData exists and has the expected structure
 			const pendingRequests = (coachRequestsData as any)
 				?.getPendingCoachRequests;
 
 			if (pendingRequests && Array.isArray(pendingRequests)) {
 				const coachRequestNotifications: Notification[] = pendingRequests
 					.filter((request: any) => {
-						// Filter out requests with invalid client data
 						return request && request.id && request.client && request.client.id;
 					})
 					.map((request: any) => {
@@ -668,26 +629,22 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 			}
 		}
 
-		// Client request status notifications (accepted/rejected) for members
 		if (
 			clientRequestsData &&
 			Array.isArray((clientRequestsData as any).getClientRequests) &&
 			user?.role === 'member'
 		) {
 			const clientRequests = (clientRequestsData as any).getClientRequests;
-			// Filter for recently accepted or rejected requests (within last 24 hours)
-			// Also filter out requests with invalid coach data
 			const recentStatusUpdates = clientRequests.filter((request: any) => {
 				if (!request || !request.id) return false;
 				if (request.status !== 'approved' && request.status !== 'denied')
 					return false;
-				// Check if coach data is valid
 				if (!request.coach || !request.coach.id) return false;
 				const updatedAt = new Date(request.updatedAt);
 				const now = new Date();
 				const hoursSinceUpdate =
 					(now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60);
-				return hoursSinceUpdate < 24; // Show notifications for requests updated in last 24 hours
+				return hoursSinceUpdate < 24;
 			});
 
 			const statusNotifications: Notification[] = recentStatusUpdates.map(
@@ -714,50 +671,9 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 			allNotifications.push(...statusNotifications);
 		}
 
-		// Subscription request status notifications for members
-		if (
-			subscriptionRequestsData &&
-			Array.isArray(
-				(subscriptionRequestsData as any).getMySubscriptionRequests
-			) &&
-			user?.role === 'member'
-		) {
-			const requests = (subscriptionRequestsData as any).getMySubscriptionRequests;
-			const recentSubscriptionUpdates = requests.filter((req: any) => {
-				if (!req || !req.id) return false;
-				if (req.status !== 'APPROVED' && req.status !== 'REJECTED') return false;
-				const updatedAt = new Date(req.updatedAt || req.approvedAt || req.rejectedAt);
-				if (Number.isNaN(updatedAt.getTime())) return false;
-				const now = new Date();
-				const hoursSinceUpdate =
-					(now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60);
-				return hoursSinceUpdate < 24;
-			});
+		// Subscription request approved/rejected is surfaced on the admin web app only,
+		// not in the member mobile notification center.
 
-			const subscriptionNotifications: Notification[] =
-				recentSubscriptionUpdates.map((req: any) => {
-					const membershipName = req.membership?.name || 'Membership';
-					const isApproved = req.status === 'APPROVED';
-					return {
-						id: `subscription-${req.id}`,
-						type: 'membership' as const,
-						title: isApproved
-							? 'Subscription Approved'
-							: 'Subscription Rejected',
-						message: isApproved
-							? `Your subscription request for ${membershipName} has been approved.`
-							: `Your subscription request for ${membershipName} was rejected.`,
-						time: formatTimeAgo(
-							req.updatedAt || req.approvedAt || req.rejectedAt
-						),
-						read: false,
-					};
-				});
-
-			allNotifications.push(...subscriptionNotifications);
-		}
-
-		// Coach removal notifications for members
 		if (user?.role === 'member' && removedCoaches.length > 0 && coachesData) {
 			const coaches = (coachesData as any)?.getUsers || [];
 			const removalNotifications = removedCoaches
@@ -780,7 +696,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 			allNotifications.push(...removalNotifications);
 		}
 
-		// Filter out dismissed notifications
 		return allNotifications.filter(
 			(notification) => !dismissedNotifications.has(notification.id)
 		);
@@ -797,7 +712,6 @@ const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 		user?.id,
 		formatTimeAgo,
 		dismissedNotifications,
-		subscriptionRequestsData,
 	]);
 
 	const dismissIds = useCallback(

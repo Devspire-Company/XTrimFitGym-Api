@@ -90,6 +90,63 @@ export const CREATE_USER_MUTATION = gql`
 	}
 `;
 
+export const REQUEST_DEV_EMAIL_VERIFICATION_CODE_MUTATION = gql`
+	mutation RequestDevEmailVerificationCode($email: String!) {
+		requestDevEmailVerificationCode(email: $email)
+	}
+`;
+
+export const REQUEST_DEV_COACH_SIGN_IN_CODE_MUTATION = gql`
+	mutation RequestDevCoachSignInCode($email: String!) {
+		requestDevCoachSignInCode(email: $email)
+	}
+`;
+
+export const DEV_COACH_SIGN_IN_MUTATION = gql`
+	mutation DevCoachSignIn($email: String!, $code: String!) {
+		devCoachSignIn(email: $email, code: $code) {
+			user {
+				id
+				firstName
+				middleName
+				lastName
+				email
+				role
+				phoneNumber
+				dateOfBirth
+				gender
+				heardFrom
+				agreedToTermsAndConditions
+				agreedToPrivacyPolicy
+				agreedToLiabilityWaiver
+				guardianIdVerificationPhotoUrl
+				attendanceId
+				membershipDetails {
+					membershipId
+					physiqueGoalType
+					fitnessGoal
+					workOutTime
+					coachesIds
+					hasEnteredDetails
+				}
+				coachDetails {
+					clientsIds
+					sessionsIds
+					specialization
+					ratings
+					yearsOfExperience
+					moreDetails
+					teachingDate
+					teachingTime
+				}
+				createdAt
+				updatedAt
+			}
+			token
+		}
+	}
+`;
+
 // Session mutations
 export const CREATE_SESSION_MUTATION = gql`
 	mutation CreateSession($input: CreateSessionInput!) {
@@ -487,6 +544,16 @@ export const UPDATE_USER_MUTATION = gql`
 				workOutTime
 				coachesIds
 				hasEnteredDetails
+				facilityBiometricEnrollmentComplete
+			}
+			currentMembership {
+				id
+				status
+				expiresAt
+				membership {
+					id
+					name
+				}
 			}
 			coachDetails {
 				clientsIds

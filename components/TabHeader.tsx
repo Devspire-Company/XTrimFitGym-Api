@@ -32,23 +32,21 @@ const TabHeader: React.FC<TabHeaderProps> = ({ showCoachIcon = false }) => {
 	const previousRequestCountRef = useRef(0);
 	const [memberSeenIds, setMemberSeenIds] = useState<Set<string>>(new Set());
 
-	// Query for pending coach requests (only for coaches) - Real-time polling
 	const { data: coachRequestsData } = useQuery(GET_PENDING_COACH_REQUESTS_QUERY, {
 		skip: user?.role !== 'coach',
-		fetchPolicy: 'network-only', // Always fetch from network for real-time updates
-		pollInterval: user?.role === 'coach' ? 2000 : 0, // Poll every 2 seconds for real-time updates
-		errorPolicy: 'all', // Allow partial data even if some fields fail
-		notifyOnNetworkStatusChange: true, // Notify on network changes
+		fetchPolicy: 'network-only',
+		pollInterval: user?.role === 'coach' ? 2000 : 0,
+		errorPolicy: 'all',
+		notifyOnNetworkStatusChange: true,
 	});
 
-	// Query for client requests to get status updates (only for members) - Real-time polling
 	const { data: clientRequestsData } = useQuery(GET_CLIENT_REQUESTS_QUERY, {
 		skip: !user?.id || user?.role !== 'member',
 		variables: { clientId: user?.id || '' },
 		fetchPolicy: 'cache-and-network',
-		pollInterval: user?.role === 'member' ? 2000 : 0, // Poll every 2 seconds for real-time updates
-		errorPolicy: 'all', // Allow partial data even if some fields fail
-		notifyOnNetworkStatusChange: true, // Notify on network changes
+		pollInterval: user?.role === 'member' ? 2000 : 0,
+		errorPolicy: 'all',
+		notifyOnNetworkStatusChange: true,
 	});
 
 	const { data: coachSessionsForBadge } = useQuery(GET_COACH_SESSIONS_QUERY, {
@@ -79,7 +77,6 @@ const TabHeader: React.FC<TabHeaderProps> = ({ showCoachIcon = false }) => {
 		void reloadMemberSeenIds();
 	}, [reloadMemberSeenIds]);
 
-	// Get pending requests and filter out invalid data
 	const pendingRequests = (coachRequestsData as any)?.getPendingCoachRequests;
 	const validPendingRequests = Array.isArray(pendingRequests)
 		? pendingRequests.filter(
@@ -113,7 +110,6 @@ const TabHeader: React.FC<TabHeaderProps> = ({ showCoachIcon = false }) => {
 		return n;
 	}, [memberSessionsForBadge, user?.role, user?.id]);
 
-	// Badge: same 24h approved/denied coach requests as the drawer, minus ones already opened (seen)
 	const newStatusUpdatesCount = useMemo(() => {
 		if (user?.role !== 'member' || !clientRequestsData) return 0;
 		const ids = recentMemberRequestStatusNotificationIds(clientRequestsData);
@@ -125,7 +121,6 @@ const TabHeader: React.FC<TabHeaderProps> = ({ showCoachIcon = false }) => {
 			? pendingRequestCount + pendingClassJoinRequestsForCoach
 			: newStatusUpdatesCount + pendingClassJoinAsMember;
 
-	// Trigger shake animation when new notifications arrive
 	useEffect(() => {
 		if (totalNotificationCount > previousRequestCountRef.current) {
 			// Shake animation sequence

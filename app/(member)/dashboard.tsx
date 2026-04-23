@@ -1,6 +1,6 @@
 import { PremiumLoadingContent } from '@/components/AuthProcessingScreen';
+import ConfirmModal from '@/components/ConfirmModal';
 import FixedView from '@/components/FixedView';
-import GradientButton from '@/components/GradientButton';
 import { PostOnboardingWelcomeModal } from '@/components/PostOnboardingWelcomeModal';
 import TabHeader from '@/components/TabHeader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,6 +37,8 @@ import {
 } from 'react-native';
 
 type OnboardingWelcomeKind = 'active' | 'counter' | 'limited';
+const MINOR_ONBOARDING_NOTICE_MESSAGE =
+	"We've detected that you are under 18 years old, please proceed to the gym's counter with your parent to fill out the waiver form";
 
 const MemberDashboard = () => {
 	const { user } = useAuth();
@@ -57,6 +59,8 @@ const MemberDashboard = () => {
 	const [postOnboardingWelcomeKind, setPostOnboardingWelcomeKind] = useState<
 		OnboardingWelcomeKind | undefined
 	>(() => welcomeKind);
+	const [minorOnboardingNoticeVisible, setMinorOnboardingNoticeVisible] =
+		useState(false);
 
 	useEffect(() => {
 		if (welcomeKind) {
@@ -83,16 +87,33 @@ const MemberDashboard = () => {
 		};
 	}, [welcomeKind]);
 
+	useEffect(() => {
+		let cancelled = false;
+		void (async () => {
+			try {
+				const value = await storage.getItem('onboarding_minor_notice');
+				if (cancelled || value !== 'true') return;
+				setMinorOnboardingNoticeVisible(true);
+				await storage.removeItem('onboarding_minor_notice');
+			} catch {
+				/* noop */
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	const dismissPostOnboardingWelcome = () => {
 		setPostOnboardingWelcomeVisible(false);
-		router.replace('/(member)/dashboard');
+		router.navigate('/(member)/dashboard');
 	};
 
 	useFocusEffect(
 		useCallback(() => {
 			if (!hasMembership) {
 				openMembershipRequired();
-				router.replace('/(member)/workouts');
+				router.navigate('/(member)/workouts');
 			}
 		}, [hasMembership, openMembershipRequired, router])
 	);
@@ -128,7 +149,6 @@ const MemberDashboard = () => {
 			fetchPolicy: 'cache-and-network',
 		});
 
-	// Refetch data when screen is mounted
 	useEffect(() => {
 		refetchSessions();
 		if (user?.id) {
@@ -163,7 +183,6 @@ const MemberDashboard = () => {
 	const activeGoals = goalsData?.getGoals || [];
 	const currentMembership = membershipData?.getCurrentMembership;
 
-	// Calculate completed sessions this month
 	const completedThisMonth = useMemo(() => {
 		const allSessionsList = allSessionsData?.getClientSessions || [];
 		const now = new Date();
@@ -236,7 +255,7 @@ const MemberDashboard = () => {
 					daysUntilExpiry > 0 &&
 					daysUntilExpiry <= 7 &&
 					!dismissedExpiryCard && (
-						<View className='bg-amber-500/20 border border-amber-500/40 rounded-xl p-4 mb-6'>
+						<View className='bg-red-500/20 border border-amber-500/40 rounded-xl p-4 mb-6'>
 							<View className='flex-row justify-between items-start'>
 								<TouchableOpacity
 									onPress={() => router.push('/(member)/subscription')}
@@ -617,9 +636,20 @@ const MemberDashboard = () => {
 			{postOnboardingWelcomeKind ? (
 				<PostOnboardingWelcomeModal
 					visible={postOnboardingWelcomeVisible}
+					kind={postOnboardingWelcomeKind}
 					onDismiss={dismissPostOnboardingWelcome}
 				/>
 			) : null}
+			<ConfirmModal
+				visible={minorOnboardingNoticeVisible && !postOnboardingWelcomeVisible}
+				title='Important reminder'
+				message={MINOR_ONBOARDING_NOTICE_MESSAGE}
+				variant='danger'
+				confirmLabel='OK'
+				onConfirm={() => setMinorOnboardingNoticeVisible(false)}
+				onCancel={() => setMinorOnboardingNoticeVisible(false)}
+				hideCancel
+			/>
 		</FixedView>
 	);
 };

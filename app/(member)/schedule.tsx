@@ -20,6 +20,7 @@ import {
 import {
 	GET_ATTENDANCE_RECORDS_QUERY,
 	GET_CLIENT_SESSIONS_QUERY,
+	GET_COACH_RATING_BY_SESSION_LOG_QUERY,
 	GET_JOINABLE_GROUP_CLASSES_QUERY,
 } from '@/graphql/queries';
 import { uploadImageToCloudinary } from '@/utils/cloudinary-upload';
@@ -49,7 +50,6 @@ import {
 	View,
 } from 'react-native';
 
-/** Must match server `MIN_COACH_RATING_COMMENT_LEN` in coachRating-resolvers. */
 const MIN_COACH_RATING_COMMENT_LENGTH = 25;
 
 type ImageAngle = 'front' | 'rightSide' | 'leftSide' | 'back';
@@ -101,7 +101,7 @@ const MemberSchedule = () => {
 		useCallback(() => {
 			if (!hasMembership) {
 				openMembershipRequired();
-				router.replace('/(member)/workouts');
+				router.navigate('/(member)/workouts');
 			}
 		}, [hasMembership, openMembershipRequired, router])
 	);
@@ -145,7 +145,6 @@ const MemberSchedule = () => {
 		isPendingOnly: boolean;
 	} | null>(null);
 	const [leavingSessionId, setLeavingSessionId] = useState<string | null>(null);
-	/** `${sessionId}:accept` | `:decline` while responding to a coach invite */
 	const [classInviteActionKey, setClassInviteActionKey] = useState<string | null>(null);
 
 	const apiKey =
@@ -195,7 +194,7 @@ const MemberSchedule = () => {
 							endDate: attendanceRange.endDate,
 						}
 					: undefined,
-				pagination: { limit: 500, offset: 0 },
+				pagination: { limit: 2500, offset: 0 },
 			},
 			skip: !user?.id || !attendanceId,
 			fetchPolicy: 'cache-and-network',
@@ -209,6 +208,25 @@ const MemberSchedule = () => {
 			skip: !user?.id || user?.role !== 'member',
 		}
 	);
+
+	const { data: coachRatingForCompletedLogData, loading: coachRatingForCompletedLogLoading } =
+		useQuery(GET_COACH_RATING_BY_SESSION_LOG_QUERY, {
+			variables: { sessionLogId: completedSessionLogId ?? '' },
+			skip: !showRatingModal || !completedSessionLogId,
+			fetchPolicy: 'network-only',
+		});
+
+	const existingCoachRatingForModal =
+		coachRatingForCompletedLogData?.getCoachRatingBySessionLog ?? null;
+
+	const closeRatingModal = useCallback(() => {
+		setShowRatingModal(false);
+		setCompletedSessionLogId(null);
+		setCompletedCoachId(null);
+		setCoachRating(0);
+		setCoachComment('');
+		setCoachCommentError('');
+	}, []);
 
 	useEffect(() => {
 		if (user?.id) {
@@ -285,10 +303,8 @@ const MemberSchedule = () => {
 					leftSide: null,
 					back: null,
 				});
-				// Refetch sessions to update the UI (completed sessions are filtered by backend)
 				await refetch();
-				
-				// Store session log ID and coach ID for rating modal
+
 				if (data?.completeSession) {
 					setCompletedSessionLogId(data.completeSession.id);
 					setCompletedCoachId(data.completeSession.coachId);
@@ -315,21 +331,26 @@ const MemberSchedule = () => {
 		CREATE_COACH_RATING_MUTATION,
 		{
 			onCompleted: () => {
-				setShowRatingModal(false);
-				setCompletedSessionLogId(null);
-				setCompletedCoachId(null);
-				setCoachRating(0);
-				setCoachComment('');
-				setCoachCommentError('');
+				closeRatingModal();
 				setAlertModal({
 					visible: true,
 					title: 'Success',
-					message: 'Thank you for rating your coach!',
+					message: 'Thank you for your feedback. You can view this rating anytime in Progress or Session logs.',
 					variant: 'success',
 				});
 			},
 			onError: (error) => {
-				setAlertModal({ visible: true, title: 'Error', message: error.message, variant: 'danger' });
+				const msg = error.message || '';
+				if (msg.toLowerCase().includes('already submitted')) {
+					setAlertModal({
+						visible: true,
+						title: 'Already rated',
+						message: msg,
+						variant: 'warning',
+					});
+					return;
+				}
+				setAlertModal({ visible: true, title: 'Error', message: msg, variant: 'danger' });
 			},
 		}
 	);
@@ -346,13 +367,10 @@ const MemberSchedule = () => {
 
 	const isWeightRelatedGoal = (goal: any) => {
 		if (!goal || !goal.goalType) return false;
-		
-		// Check if goal type is weight-related based on the goal schema
-		// Weight-related goals: 'Weight loss' and 'Muscle building'
+
 		const goalType = String(goal.goalType).trim();
 		const goalTypeLower = goalType.toLowerCase();
-		
-		// Check multiple formats to handle any case variations
+
 		return (
 			goalType === 'Weight loss' || 
 			goalType === 'Muscle building' ||
@@ -371,12 +389,10 @@ const MemberSchedule = () => {
 		const now = new Date();
 		const sessionDate = new Date(session.date);
 		const sessionDateTime = new Date(sessionDate);
-		
-		// Parse start time (format: "HH:MM" or "HH:MM:SS")
+
 		const [hours, minutes] = session.startTime.split(':').map(Number);
 		sessionDateTime.setHours(hours, minutes || 0, 0, 0);
-		
-		// Session is active if the date and time have passed or are current
+
 		return sessionDateTime <= now;
 	};
 
@@ -429,7 +445,6 @@ const MemberSchedule = () => {
 	};
 
 	const handleSubmitCompletion = async () => {
-		// Validate weight if goal is weight-related - this is REQUIRED
 		const isWeightRequired = selectedSession?.goal && isWeightRelatedGoal(selectedSession.goal);
 		
 		if (isWeightRequired) {
@@ -484,9 +499,7 @@ const MemberSchedule = () => {
 			},
 		};
 
-		// Weight is REQUIRED for weight-related goals - ensure it's always included
 		if (isWeightRequired) {
-			// Weight validation already done above, so we can safely parse it
 			input.weight = parseFloat(weight.trim());
 		}
 
@@ -596,25 +609,22 @@ const MemberSchedule = () => {
 				) : (
 					<>
 						<View className='mb-4'>
-							<Text className='text-xl font-semibold text-text-primary mb-2'>
+							<Text className='text-xl font-semibold text-text-primary mb-3'>
 								Calendar
 							</Text>
-							<Text className='text-text-secondary text-sm mb-3'>
-								Gold dot: scheduled session. Green check: gym door check-in. Tap a day
-								for check-in times and that day&apos;s sessions.
-							</Text>
-							<View className='flex-row gap-2 mb-3'>
+							<View
+								className='mb-3 flex-row rounded-2xl border border-[#F9C513]/25 bg-bg-darker p-1'
+								style={{ borderWidth: 1 }}
+							>
 								<TouchableOpacity
 									onPress={() => setScheduleShowAll(false)}
-									className={`flex-1 py-2.5 rounded-xl border items-center justify-center ${
-										!scheduleShowAll
-											? 'bg-[#F9C513] border-[#F9C513]'
-											: 'bg-bg-primary border-[#F9C513]/35'
+									activeOpacity={0.85}
+									className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
+										!scheduleShowAll ? 'bg-[#F9C513]' : ''
 									}`}
-									style={{ borderWidth: 0.5 }}
 								>
 									<Text
-										className={`text-sm font-semibold ${
+										className={`text-sm font-bold ${
 											!scheduleShowAll ? 'text-[#111827]' : 'text-text-secondary'
 										}`}
 									>
@@ -623,15 +633,13 @@ const MemberSchedule = () => {
 								</TouchableOpacity>
 								<TouchableOpacity
 									onPress={() => setScheduleShowAll(true)}
-									className={`flex-1 py-2.5 rounded-xl border items-center justify-center ${
-										scheduleShowAll
-											? 'bg-[#F9C513] border-[#F9C513]'
-											: 'bg-bg-primary border-[#F9C513]/35'
+									activeOpacity={0.85}
+									className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
+										scheduleShowAll ? 'bg-[#F9C513]' : ''
 									}`}
-									style={{ borderWidth: 0.5 }}
 								>
 									<Text
-										className={`text-sm font-semibold ${
+										className={`text-sm font-bold ${
 											scheduleShowAll ? 'text-[#111827]' : 'text-text-secondary'
 										}`}
 									>
@@ -640,8 +648,8 @@ const MemberSchedule = () => {
 								</TouchableOpacity>
 							</View>
 							<View
-								className='bg-bg-primary rounded-xl border border-[#F9C513]/40 overflow-hidden mb-2'
-								style={{ borderWidth: 0.5 }}
+								className='mb-2 overflow-hidden rounded-2xl border border-[#F9C513]/35 bg-bg-primary'
+								style={{ borderWidth: 1 }}
 							>
 								<CoachScheduleCalendar
 									selectedDay={selectedScheduleDay}
@@ -656,11 +664,16 @@ const MemberSchedule = () => {
 							</View>
 						</View>
 
-						<Text className='text-lg font-semibold text-text-primary mb-3'>
-							{scheduleShowAll
-								? 'All scheduled sessions'
-								: `Sessions — ${formatCalendarDayLabel(selectedScheduleDay)}`}
-						</Text>
+						<View className='mb-3'>
+							<Text className='text-[10px] font-bold uppercase tracking-wider text-text-secondary'>
+								{scheduleShowAll ? 'List view' : 'Selected day'}
+							</Text>
+							<Text className='text-xl font-bold text-text-primary'>
+								{scheduleShowAll
+									? 'All scheduled sessions'
+									: formatCalendarDayLabel(selectedScheduleDay)}
+							</Text>
+						</View>
 
 						{!scheduleShowAll ? (
 							<ScheduleDayAttendancePanel
@@ -674,30 +687,34 @@ const MemberSchedule = () => {
 						{displayedMemberSessions.length === 0 ? (
 							sessions.length === 0 && joinableClasses.length === 0 ? (
 								<View
-									className='bg-bg-primary rounded-xl p-6 items-center border border-[#F9C513]'
-									style={{ borderWidth: 0.5 }}
+									className='items-center rounded-2xl border border-[#F9C513]/30 bg-bg-primary px-6 py-10'
+									style={{ borderWidth: 1 }}
 								>
-									<Ionicons name='calendar-outline' size={48} color='#8E8E93' />
-									<Text className='text-text-secondary mt-4 text-center text-base'>
+									<View className='mb-4 h-16 w-16 items-center justify-center rounded-2xl bg-bg-darker'>
+										<Ionicons name='calendar-outline' size={36} color='#9CA3AF' />
+									</View>
+									<Text className='text-center text-lg font-semibold text-text-primary'>
 										No scheduled sessions
 									</Text>
-									<Text className='text-text-secondary mt-2 text-center text-sm'>
-										Your coach will schedule sessions or post classes you can join
+									<Text className='mt-2 max-w-xs text-center text-sm leading-5 text-text-secondary'>
+										Your coach will schedule sessions or post classes you can join.
 									</Text>
 								</View>
 							) : (
 								<View
-									className='bg-bg-primary rounded-xl p-6 items-center border border-[#F9C513]'
-									style={{ borderWidth: 0.5 }}
+									className='items-center rounded-2xl border border-[#F9C513]/30 bg-bg-primary px-6 py-10'
+									style={{ borderWidth: 1 }}
 								>
-									<Ionicons name='calendar-outline' size={48} color='#8E8E93' />
-									<Text className='text-text-secondary mt-2 text-center text-base'>
+									<View className='mb-4 h-16 w-16 items-center justify-center rounded-2xl bg-bg-darker'>
+										<Ionicons name='calendar-outline' size={36} color='#9CA3AF' />
+									</View>
+									<Text className='text-center text-lg font-semibold text-text-primary'>
 										{scheduleShowAll
 											? 'No scheduled sessions yet'
 											: 'No sessions on this date'}
 									</Text>
 									{!scheduleShowAll && sessions.length > 0 ? (
-										<Text className='text-text-secondary text-sm mt-2 text-center'>
+										<Text className='mt-2 max-w-xs text-center text-sm leading-5 text-text-secondary'>
 											Try another day or switch to &quot;All sessions&quot;.
 										</Text>
 									) : null}
@@ -992,39 +1009,71 @@ const MemberSchedule = () => {
 											const g = selectedSession.goal;
 											const startStr = formatKgDisplay(g.currentWeight);
 											const targetStr = formatKgDisplay(g.targetWeight);
+											const curParsed = parseFloat(weight.trim().replace(/,/g, '.'));
+											const curStr =
+												weight.trim() && !Number.isNaN(curParsed)
+													? formatKgDisplay(curParsed)
+													: null;
 											return (
 												<View className='mb-4 rounded-xl border border-[#F9C513]/50 bg-bg-darker p-4'>
-													<Text className='text-[#F9C513] text-xs font-semibold uppercase tracking-wide mb-1'>
-														Compare to your start
+													<Text className='text-[#F9C513] text-xs font-semibold uppercase tracking-wide mb-3'>
+														Weight comparison
 													</Text>
 													{startStr != null ? (
-														<Text className='text-text-primary text-base leading-6'>
-															Starting weight when you created this goal:{' '}
-															<Text className='font-bold text-[#F9C513]'>{startStr} kg</Text>
-															{targetStr != null ? (
-																<Text className='text-text-secondary text-sm'>
-																	{' '}
-																	· Target: {targetStr} kg
+														<View className='flex-row gap-3 mb-2'>
+															<View className='flex-1 rounded-lg border border-[#F9C513]/30 bg-bg-primary/80 p-3'>
+																<Text className='text-text-secondary text-xs mb-1'>
+																	Starting (when you set the goal)
 																</Text>
-															) : null}
-														</Text>
+																<Text className='text-[#F9C513] text-xl font-bold'>
+																	{startStr}{' '}
+																	<Text className='text-base font-semibold'>kg</Text>
+																</Text>
+															</View>
+															<View className='flex-1 rounded-lg border border-[#34C759]/40 bg-bg-primary/80 p-3'>
+																<Text className='text-text-secondary text-xs mb-1'>
+																	Now (this session)
+																</Text>
+																<Text className='text-[#34C759] text-xl font-bold'>
+																	{curStr != null ? (
+																		<>
+																			{curStr}{' '}
+																			<Text className='text-base font-semibold'>kg</Text>
+																		</>
+																	) : (
+																		<Text className='text-text-secondary text-sm font-normal'>
+																			Enter below
+																		</Text>
+																	)}
+																</Text>
+															</View>
+														</View>
 													) : (
-														<Text className='text-text-secondary text-sm leading-5'>
+														<Text className='text-text-secondary text-sm leading-5 mb-2'>
 															No starting weight is stored on this goal yet. Enter your
-															current weight below — you can update the goal on Progress if
-															needed.
+															current weight below — you can set starting weight on Progress.
 														</Text>
 													)}
-													{startStr != null && weight.trim() ? (
+													{targetStr != null ? (
+														<Text className='text-text-secondary text-sm mb-2'>
+															Goal target:{' '}
+															<Text className='text-text-primary font-semibold'>
+																{targetStr} kg
+															</Text>
+														</Text>
+													) : null}
+													{startStr != null && curStr != null && g.currentWeight != null ? (
 														(() => {
-															const cur = parseFloat(weight.trim());
-															if (Number.isNaN(cur)) return null;
-															const delta = Math.round((cur - Number(g.currentWeight)) * 10) / 10;
+															const delta =
+																Math.round((curParsed - Number(g.currentWeight)) * 10) / 10;
 															const sign = delta > 0 ? '+' : '';
 															return (
-																<Text className='text-text-secondary text-sm mt-2'>
-																	vs start: {sign}
-																	{delta} kg
+																<Text className='text-text-secondary text-sm'>
+																	Change from start:{' '}
+																	<Text className='text-text-primary font-semibold'>
+																		{sign}
+																		{delta} kg
+																	</Text>
 																</Text>
 															);
 														})()
@@ -1123,18 +1172,15 @@ const MemberSchedule = () => {
 							</View>
 
 							{(() => {
-								// Check if weight is required and provided
 								const isWeightRequired = selectedSession?.goal && isWeightRelatedGoal(selectedSession.goal);
 								const isWeightValid = !isWeightRequired || (weight.trim() && parseFloat(weight.trim()) > 0);
-								
-								// Check if all images are captured
-								const allImagesCaptured = 
+
+								const allImagesCaptured =
 									progressImages.front &&
 									progressImages.rightSide &&
 									progressImages.leftSide &&
 									progressImages.back;
-								
-								// Form is valid only if weight (if required) and all images are provided
+
 								const isFormValid = isWeightValid && allImagesCaptured;
 								
 								return (
@@ -1162,19 +1208,12 @@ const MemberSchedule = () => {
 				angleLabel={angleLabels[currentAngle]}
 			/>
 
-			{/* Coach Rating Modal */}
+			{/* Coach Rating Modal — one rating per session; existing rating is read-only */}
 			<Modal
 				visible={showRatingModal}
 				animationType='slide'
 				transparent={false}
-				onRequestClose={() => {
-					setShowRatingModal(false);
-					setCompletedSessionLogId(null);
-					setCompletedCoachId(null);
-					setCoachRating(0);
-					setCoachComment('');
-					setCoachCommentError('');
-				}}
+				onRequestClose={closeRatingModal}
 			>
 				<View className='flex-1 bg-bg-darker justify-center px-5'>
 					<View
@@ -1182,179 +1221,222 @@ const MemberSchedule = () => {
 						style={{ borderWidth: 0.5 }}
 					>
 						<View className='flex-row justify-between items-center mb-4'>
-							<Text className='text-2xl font-bold text-text-primary'>
-								Rate Your Coach
+							<Text className='text-2xl font-bold text-text-primary flex-1 pr-2'>
+								{existingCoachRatingForModal
+									? 'Your coach rating'
+									: 'Rate your coach'}
 							</Text>
-							<TouchableOpacity
-								onPress={() => {
-									setShowRatingModal(false);
-									setCompletedSessionLogId(null);
-									setCompletedCoachId(null);
-									setCoachRating(0);
-									setCoachComment('');
-									setCoachCommentError('');
-								}}
-							>
+							<TouchableOpacity onPress={closeRatingModal} accessibilityLabel='Close'>
 								<Ionicons name='close' size={28} color='#8E8E93' />
 							</TouchableOpacity>
 						</View>
 
-						<Text className='text-text-secondary text-base mb-6'>
-							Rate your coach and add a short written review of this session (both are
-							required).
-						</Text>
-
-						<View className='mb-6'>
-							<Text className='text-text-primary font-semibold mb-3'>
-								Rating <Text className='text-red-500'>*</Text>
-							</Text>
-							<View className='flex-row justify-center gap-2'>
-								{[1, 2, 3, 4, 5].map((star) => (
-									<TouchableOpacity
-										key={star}
-										onPress={() => setCoachRating(star)}
-										className='p-2'
-									>
+						{coachRatingForCompletedLogLoading ? (
+							<View className='py-10 items-center justify-center'>
+								<ActivityIndicator size='large' color='#F9C513' />
+								<Text className='text-text-secondary text-sm mt-4'>Loading…</Text>
+							</View>
+						) : existingCoachRatingForModal ? (
+							<ScrollView showsVerticalScrollIndicator={false}>
+								<Text className='text-text-secondary text-base mb-6'>
+									You already rated this session. You can review it below.
+								</Text>
+								{existingCoachRatingForModal.coach ? (
+									<Text className='text-text-primary font-semibold mb-4'>
+										Coach {existingCoachRatingForModal.coach.firstName}{' '}
+										{existingCoachRatingForModal.coach.lastName}
+									</Text>
+								) : null}
+								<Text className='text-text-secondary text-sm mb-2'>Your stars</Text>
+								<View className='flex-row items-center mb-6'>
+									{[1, 2, 3, 4, 5].map((star) => (
 										<Ionicons
-											name={star <= coachRating ? 'star' : 'star-outline'}
-											size={40}
+											key={star}
+											name={
+												star <= (existingCoachRatingForModal.rating || 0)
+													? 'star'
+													: 'star-outline'
+											}
+											size={36}
 											color='#F9C513'
 										/>
+									))}
+									<Text className='text-text-primary font-semibold ml-3 text-lg'>
+										{existingCoachRatingForModal.rating}/5
+									</Text>
+								</View>
+								<Text className='text-text-secondary text-sm mb-2'>
+									Why you rated this way (your feedback)
+								</Text>
+								<View className='bg-bg-darker rounded-lg p-4 border border-[#F9C513]/40 mb-6'>
+									<Text className='text-text-primary text-base leading-6'>
+										{existingCoachRatingForModal.comment || '—'}
+									</Text>
+								</View>
+								{existingCoachRatingForModal.createdAt ? (
+									<Text className='text-text-secondary text-xs mb-6'>
+										Submitted{' '}
+										{new Date(existingCoachRatingForModal.createdAt).toLocaleString('en-US', {
+											month: 'short',
+											day: 'numeric',
+											year: 'numeric',
+											hour: 'numeric',
+											minute: '2-digit',
+										})}
+									</Text>
+								) : null}
+								<GradientButton onPress={closeRatingModal}>Done</GradientButton>
+							</ScrollView>
+						) : (
+							<ScrollView showsVerticalScrollIndicator={false}>
+								<Text className='text-text-secondary text-base mb-6'>
+									Tap stars, then tell us why. Both are required.
+								</Text>
+
+								<View className='mb-6'>
+									<Text className='text-text-primary font-semibold mb-3'>
+										Stars <Text className='text-red-500'>*</Text>
+									</Text>
+									<View className='flex-row justify-center gap-2'>
+										{[1, 2, 3, 4, 5].map((star) => (
+											<TouchableOpacity
+												key={star}
+												onPress={() => setCoachRating(star)}
+												className='p-2'
+												accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}
+											>
+												<Ionicons
+													name={star <= coachRating ? 'star' : 'star-outline'}
+													size={40}
+													color='#F9C513'
+												/>
+											</TouchableOpacity>
+										))}
+									</View>
+									{coachRating > 0 ? (
+										<Text className='text-text-secondary text-center mt-2'>
+											{coachRating} out of 5
+										</Text>
+									) : null}
+									<Text className='text-text-secondary text-center text-xs mt-1'>
+										1 = Lowest, 5 = Highest satisfaction
+									</Text>
+								</View>
+
+								<View className='mb-6'>
+									<Text className='text-text-primary font-semibold mb-2'>
+										Why this rating? (written feedback){' '}
+										<Text className='text-red-500'>*</Text>
+									</Text>
+									<Text className='text-text-secondary text-sm mb-2'>
+										Brief reason for your score (min {MIN_COACH_RATING_COMMENT_LENGTH}{' '}
+										characters).
+									</Text>
+									<TextInput
+										className={`bg-bg-darker rounded-lg p-4 text-text-primary text-base border ${
+											coachCommentError ? 'border-red-500' : 'border-[#F9C513]'
+										}`}
+										style={{ borderWidth: 0.5, minHeight: 120, textAlignVertical: 'top' }}
+										placeholder='Tell us why'
+										placeholderTextColor='#8E8E93'
+										value={coachComment}
+										onChangeText={(t) => {
+											setCoachComment(t);
+											setCoachCommentError('');
+										}}
+										multiline
+										numberOfLines={5}
+									/>
+									<View className='flex-row justify-between items-start mt-1'>
+										{coachCommentError ? (
+											<Text className='text-red-500 text-sm flex-1 mr-2'>{coachCommentError}</Text>
+										) : (
+											<View className='flex-1 mr-2' />
+										)}
+										<Text
+											className={`text-xs ${
+												coachComment.trim().length >= MIN_COACH_RATING_COMMENT_LENGTH
+													? 'text-[#34C759]'
+													: 'text-text-secondary'
+											}`}
+										>
+											{coachComment.trim().length}/{MIN_COACH_RATING_COMMENT_LENGTH}
+										</Text>
+									</View>
+								</View>
+
+								<View>
+									<TouchableOpacity
+										className='bg-[#F9C513] rounded-lg p-4 items-center'
+										onPress={() => {
+											if (coachRating === 0) {
+												setAlertModal({
+													visible: true,
+													title: 'Stars required',
+													message: 'Please tap 1–5 stars before submitting.',
+													variant: 'warning',
+												});
+												return;
+											}
+
+											const trimmed = coachComment.trim();
+											if (trimmed.length < MIN_COACH_RATING_COMMENT_LENGTH) {
+												setCoachCommentError(
+													`Please write at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters explaining your rating.`
+												);
+												setAlertModal({
+													visible: true,
+													title: 'Feedback required',
+													message: `Tell your coach why you chose this score (at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters).`,
+													variant: 'warning',
+												});
+												return;
+											}
+
+											if (!completedSessionLogId || !completedCoachId) {
+												setAlertModal({
+													visible: true,
+													title: 'Error',
+													message: 'Missing session information',
+													variant: 'danger',
+												});
+												return;
+											}
+
+											createCoachRating({
+												variables: {
+													input: {
+														coachId: completedCoachId,
+														sessionLogId: completedSessionLogId,
+														rating: coachRating,
+														comment: trimmed,
+													},
+												},
+											});
+										}}
+										disabled={
+											ratingLoading ||
+											coachRating === 0 ||
+											coachComment.trim().length < MIN_COACH_RATING_COMMENT_LENGTH
+										}
+										style={{
+											opacity:
+												ratingLoading ||
+												coachRating === 0 ||
+												coachComment.trim().length < MIN_COACH_RATING_COMMENT_LENGTH
+													? 0.5
+													: 1,
+										}}
+									>
+										{ratingLoading ? (
+											<ActivityIndicator color='#000' />
+										) : (
+											<Text className='text-black font-semibold'>Submit feedback</Text>
+										)}
 									</TouchableOpacity>
-								))}
-							</View>
-							{coachRating > 0 && (
-								<Text className='text-text-secondary text-center mt-2'>
-									{coachRating} out of 5 stars
-								</Text>
-							)}
-						</View>
-
-						<View className='mb-6'>
-							<Text className='text-text-primary font-semibold mb-2'>
-								Written feedback <Text className='text-red-500'>*</Text>
-							</Text>
-							<Text className='text-text-secondary text-sm mb-2'>
-								Describe your experience (coaching, communication, session quality).
-								At least {MIN_COACH_RATING_COMMENT_LENGTH} characters.
-							</Text>
-							<TextInput
-								className={`bg-bg-darker rounded-lg p-4 text-text-primary text-base border ${
-									coachCommentError ? 'border-red-500' : 'border-[#F9C513]'
-								}`}
-								style={{ borderWidth: 0.5, minHeight: 100, textAlignVertical: 'top' }}
-								placeholder='Example: Coach explained each exercise clearly and adjusted the plan when my shoulder felt tight...'
-								placeholderTextColor='#8E8E93'
-								value={coachComment}
-								onChangeText={(t) => {
-									setCoachComment(t);
-									setCoachCommentError('');
-								}}
-								multiline
-								numberOfLines={4}
-							/>
-							<View className='flex-row justify-between items-start mt-1'>
-								{coachCommentError ? (
-									<Text className='text-red-500 text-sm flex-1 mr-2'>{coachCommentError}</Text>
-								) : (
-									<View className='flex-1 mr-2' />
-								)}
-								<Text
-									className={`text-xs ${
-										coachComment.trim().length >= MIN_COACH_RATING_COMMENT_LENGTH
-											? 'text-[#34C759]'
-											: 'text-text-secondary'
-									}`}
-								>
-									{coachComment.trim().length}/{MIN_COACH_RATING_COMMENT_LENGTH}
-								</Text>
-							</View>
-						</View>
-
-						<View className='flex-row gap-3'>
-							<TouchableOpacity
-								className='flex-1 bg-bg-darker rounded-lg p-4 items-center border border-[#F9C513]'
-								style={{ borderWidth: 0.5 }}
-								onPress={() => {
-									setShowRatingModal(false);
-									setCompletedSessionLogId(null);
-									setCompletedCoachId(null);
-									setCoachRating(0);
-									setCoachComment('');
-									setCoachCommentError('');
-								}}
-							>
-								<Text className='text-text-primary font-semibold'>Skip</Text>
-							</TouchableOpacity>
-							<TouchableOpacity
-								className='flex-1 bg-[#F9C513] rounded-lg p-4 items-center'
-								onPress={() => {
-									if (coachRating === 0) {
-										setAlertModal({
-											visible: true,
-											title: 'Rating Required',
-											message: 'Please select a rating (1-5 stars)',
-											variant: 'warning',
-										});
-										return;
-									}
-
-									const trimmed = coachComment.trim();
-									if (trimmed.length < MIN_COACH_RATING_COMMENT_LENGTH) {
-										setCoachCommentError(
-											`Please write at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters about your session.`
-										);
-										setAlertModal({
-											visible: true,
-											title: 'Comment required',
-											message: `Add a short descriptive comment (at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters) before submitting.`,
-											variant: 'warning',
-										});
-										return;
-									}
-
-									if (!completedSessionLogId || !completedCoachId) {
-										setAlertModal({
-											visible: true,
-											title: 'Error',
-											message: 'Missing session information',
-											variant: 'danger',
-										});
-										return;
-									}
-
-									createCoachRating({
-										variables: {
-											input: {
-												coachId: completedCoachId,
-												sessionLogId: completedSessionLogId,
-												rating: coachRating,
-												comment: trimmed,
-											},
-										},
-									});
-								}}
-								disabled={
-									ratingLoading ||
-									coachRating === 0 ||
-									coachComment.trim().length < MIN_COACH_RATING_COMMENT_LENGTH
-								}
-								style={{
-									opacity:
-										ratingLoading ||
-										coachRating === 0 ||
-										coachComment.trim().length < MIN_COACH_RATING_COMMENT_LENGTH
-											? 0.5
-											: 1,
-								}}
-							>
-								{ratingLoading ? (
-									<ActivityIndicator color='#000' />
-								) : (
-									<Text className='text-black font-semibold'>Submit Rating</Text>
-								)}
-							</TouchableOpacity>
-						</View>
+								</View>
+							</ScrollView>
+						)}
 					</View>
 				</View>
 			</Modal>

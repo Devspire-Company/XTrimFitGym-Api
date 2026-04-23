@@ -29,7 +29,6 @@ const CoachCompletedSessions = () => {
 	const [refreshing, setRefreshing] = useState(false);
 	const [selectedSessionLog, setSelectedSessionLog] = useState<any>(null);
 	const [showProgressImagesModal, setShowProgressImagesModal] = useState(false);
-	// Track expanded state for folder structure
 	const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 	const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set());
 	const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -85,7 +84,6 @@ const CoachCompletedSessions = () => {
 
 	const sessionLogs = data?.getCoachSessionLogs || [];
 
-	// Group session logs by client → goal → date
 	const groupedLogs = useMemo(() => {
 		const groups: Record<
 			string,
@@ -135,7 +133,6 @@ const CoachCompletedSessions = () => {
 			return nameA.localeCompare(nameB);
 		});
 
-		// Sort goals within each client
 		sortedClients.forEach((clientKey) => {
 			const goalKeys = Object.keys(groups[clientKey]);
 			goalKeys.sort((a, b) => {
@@ -145,7 +142,6 @@ const CoachCompletedSessions = () => {
 			});
 		});
 
-		// Sort dates within each goal (most recent first)
 		sortedClients.forEach((clientKey) => {
 			Object.keys(groups[clientKey]).forEach((goalKey) => {
 				const dateKeys = Object.keys(groups[clientKey][goalKey]);
@@ -155,7 +151,6 @@ const CoachCompletedSessions = () => {
 			});
 		});
 
-		// Sort logs within each date by completedAt (most recent first)
 		sortedClients.forEach((clientKey) => {
 			Object.keys(groups[clientKey]).forEach((goalKey) => {
 				Object.keys(groups[clientKey][goalKey]).forEach((dateKey) => {

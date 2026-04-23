@@ -1,7 +1,7 @@
 import DatePicker from '@/components/DatePicker';
 import FixedView from '@/components/FixedView';
 import GradientButton from '@/components/GradientButton';
-import Input from '@/components/Input';
+import PhilippinePhoneInput from '@/components/PhilippinePhoneInput';
 import Select from '@/components/Select';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import {
@@ -10,6 +10,10 @@ import {
 	isMinorAt,
 	MIN_APP_AGE,
 } from '@/utils/age-waiver';
+import {
+	isValidPhilippineMobileNational,
+	nationalDigitsFromStoredPhone,
+} from '@/utils/philippine-phone';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -32,7 +36,9 @@ const First = () => {
 	const router = useRouter();
 	const { data, updateData } = useOnboarding();
 
-	const [phoneNumber, setPhoneNumber] = useState(data.phoneNumber || '');
+	const [phoneNumber, setPhoneNumber] = useState(() =>
+		nationalDigitsFromStoredPhone(data.phoneNumber || '')
+	);
 	const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(
 		data.dateOfBirth
 	);
@@ -43,11 +49,11 @@ const First = () => {
 	const validateForm = () => {
 		const newErrors: Record<string, string> = {};
 
-		const digitsOnly = phoneNumber.replace(/\D/g, '');
-		if (!digitsOnly) {
+		if (!phoneNumber.trim()) {
 			newErrors.phoneNumber = 'Phone number is required';
-		} else if (!/^\d{11}$/.test(digitsOnly)) {
-			newErrors.phoneNumber = 'Enter an 11-digit mobile number';
+		} else if (!isValidPhilippineMobileNational(phoneNumber)) {
+			newErrors.phoneNumber =
+				'Enter 10 digits after +63 (Philippine mobile, e.g. 9XX XXX XXXX — no leading 0)';
 		}
 
 		if (!dateOfBirth) {
@@ -98,17 +104,13 @@ const First = () => {
 				</Text>
 
 				<View className='gap-4'>
-					<Input
+					<PhilippinePhoneInput
 						label='Phone Number'
-						placeholder='Enter your phone number'
 						value={phoneNumber}
-						onChangeText={(text) => {
-							const digits = text.replace(/\D/g, '').slice(0, 11);
+						onChangeText={(digits) => {
 							setPhoneNumber(digits);
 							setErrors({ ...errors, phoneNumber: '' });
 						}}
-						keyboardType='phone-pad'
-						maxLength={11}
 						error={errors.phoneNumber}
 					/>
 
@@ -125,10 +127,15 @@ const First = () => {
 					/>
 
 					{dateOfBirth && !errors.dateOfBirth && isMinorAt(dateOfBirth) ? (
-						<Text className='text-text-secondary text-sm -mt-2'>
-							Members under 18 need a parent or guardian to sign the liability waiver in the
-							final onboarding step.
-						</Text>
+						<View className='-mt-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3'>
+							<Text className='text-red-400 text-xs font-semibold mb-1 uppercase tracking-wide'>
+								Reminder
+							</Text>
+							<Text className='text-red-300 text-sm leading-5'>
+								Members under 18 should ask the clerk for the printed waiver with parent or
+								guardian signature.
+							</Text>
+						</View>
 					) : null}
 
 					<Select

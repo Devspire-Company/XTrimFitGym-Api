@@ -12,7 +12,6 @@ const CoachSubscription = () => {
 		fetchPolicy: 'cache-and-network',
 	});
 
-	// Refetch data when screen is mounted
 	useEffect(() => {
 		refetchMembership();
 	}, [refetchMembership]);

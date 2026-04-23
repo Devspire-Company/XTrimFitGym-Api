@@ -2,12 +2,11 @@ import ConfirmModal from '@/components/ConfirmModal';
 import FixedView from '@/components/FixedView';
 import GradientButton from '@/components/GradientButton';
 import Input from '@/components/Input';
+import { RoleType } from '@/graphql/generated/types';
 import {
-	CreateUserMutation,
-	CreateUserMutationVariables,
-	RoleType,
-} from '@/graphql/generated/types';
-import { CREATE_USER_MUTATION } from '@/graphql/mutations';
+	CREATE_USER_MUTATION,
+	REQUEST_DEV_EMAIL_VERIFICATION_CODE_MUTATION,
+} from '@/graphql/mutations';
 import { getClerkOAuthRedirectUrl } from '@/lib/clerk-oauth-redirect';
 import { randomClerkPassword } from '@/lib/clerk-random-password';
 import { getPostRegistrationHref, replaceToAppRoot } from '@/lib/post-auth-navigation';
@@ -29,10 +28,18 @@ import {
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+	KeyboardAvoidingView,
+	Platform,
+	ScrollView,
+	Text,
+	TouchableOpacity,
+	View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Step = 'form' | 'verify';
+type VerificationMode = 'clerk' | 'dev_backend';
 
 const SignUp = () => {
 	const router = useRouter();
@@ -45,6 +52,7 @@ const SignUp = () => {
 	const [googleLoading, setGoogleLoading] = useState(false);
 	const [verifying, setVerifying] = useState(false);
 	const [step, setStep] = useState<Step>('form');
+	const [verificationMode, setVerificationMode] = useState<VerificationMode>('clerk');
 	const [code, setCode] = useState('');
 	const [firstName, setFirstName] = useState('');
 	const [middleName, setMiddleName] = useState('');
@@ -60,10 +68,10 @@ const SignUp = () => {
 	const emailFormExpanded = showEmailSignUp;
 	const scrollContentBottomPad = Math.max(insets.bottom + 12, 24);
 
-	const [createUser, { loading: creatingUser }] = useMutation<
-		CreateUserMutation,
-		CreateUserMutationVariables
-	>(CREATE_USER_MUTATION);
+	const [createUser, { loading: creatingUser }] = useMutation(CREATE_USER_MUTATION);
+	const [requestDevEmailVerificationCode, { loading: requestingDevCode }] = useMutation(
+		REQUEST_DEV_EMAIL_VERIFICATION_CODE_MUTATION,
+	);
 
 	useEffect(() => {
 		void setAuthFlowIntent('signup');
@@ -88,19 +96,22 @@ const SignUp = () => {
 		return Object.keys(newErrors).length === 0;
 	};
 
-	const finishAndCreateMongoUser = async () => {
+	const finishAndCreateMongoUser = async (devVerificationCode?: string) => {
 		const t = await getToken();
 		if (t) await storage.setItem('auth_token', t);
 
+		const createInput = {
+			firstName: firstName.trim(),
+			middleName: middleName.trim() || undefined,
+			lastName: lastName.trim(),
+			email: email.trim(),
+			role: 'member' as RoleType,
+			...(devVerificationCode ? { devVerificationCode } : {}),
+		};
+
 		const result = await createUser({
 			variables: {
-				input: {
-					firstName: firstName.trim(),
-					middleName: middleName.trim() || undefined,
-					lastName: lastName.trim(),
-					email: email.trim(),
-					role: 'member' as RoleType,
-				},
+				input: createInput,
 			},
 		});
 
@@ -142,12 +153,12 @@ const SignUp = () => {
 					res = await signUp.update({ password: await randomClerkPassword() });
 				}
 			} catch {
-				// Password may only be accepted after email verification on some instances.
 			}
 
 			if (await tryActivateSignUp(res.status, res.createdSessionId)) return;
 
 			await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+			setVerificationMode('clerk');
 			setStep('verify');
 		} catch (err: unknown) {
 			let message = 'Something went wrong. Please try again.';
@@ -156,6 +167,40 @@ const SignUp = () => {
 				if (first?.message) message = first.message;
 			} else if (err instanceof Error) {
 				message = err.message;
+			}
+
+			const lowerMessage = message.toLowerCase();
+			const exceededDevEmailLimit = lowerMessage.includes('development monthly email limit exceeded');
+			if (exceededDevEmailLimit) {
+				try {
+					await requestDevEmailVerificationCode({
+						variables: {
+							email: email.trim(),
+						},
+					});
+					setVerificationMode('dev_backend');
+					setCode('');
+					setStep('verify');
+					setAlertModal({
+						visible: true,
+						title: 'Developer fallback verification',
+						message: 'Enter the 6-digit code from backend logs to continue signup.',
+						variant: 'neutral',
+					});
+					return;
+				} catch (fallbackErr: unknown) {
+					let fallbackMessage = 'Failed to generate fallback verification code.';
+					if (fallbackErr instanceof Error && fallbackErr.message) {
+						fallbackMessage = fallbackErr.message;
+					}
+					setAlertModal({
+						visible: true,
+						title: 'Fallback verification failed',
+						message: fallbackMessage,
+						variant: 'danger',
+					});
+					return;
+				}
 			}
 			setAlertModal({
 				visible: true,
@@ -213,6 +258,11 @@ const SignUp = () => {
 
 		setVerifying(true);
 		try {
+			if (verificationMode === 'dev_backend') {
+				await finishAndCreateMongoUser(normalizedCode);
+				return;
+			}
+
 			let res: Awaited<ReturnType<typeof signUp.attemptEmailAddressVerification>>;
 			try {
 				res = await signUp.attemptEmailAddressVerification({ code: trimmed });
@@ -316,26 +366,30 @@ const SignUp = () => {
 	};
 
 	const loading = !isLoaded || creatingUser;
-	const blockInputs = loading || googleLoading || verifying;
+	const blockInputs = loading || googleLoading || verifying || requestingDevCode;
 
 	return (
 		<FixedView className='flex-1 bg-bg-darker'>
-			<ScrollView
-				automaticallyAdjustKeyboardInsets
-				contentContainerClassName={
-					emailFormExpanded
-						? 'flex-grow px-5 pt-4 pb-2'
-						: 'flex-grow justify-center px-5 py-8'
-				}
-				contentContainerStyle={{ paddingBottom: scrollContentBottomPad }}
-				contentInsetAdjustmentBehavior='automatic'
-				keyboardShouldPersistTaps='handled'
-				keyboardDismissMode={
-					Platform.OS === 'ios' ? 'interactive' : 'on-drag'
-				}
-				showsVerticalScrollIndicator={false}
-				scrollEnabled={!blockInputs}
+			<KeyboardAvoidingView
+				style={{ flex: 1 }}
+				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+				keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
 			>
+				<ScrollView
+					automaticallyAdjustKeyboardInsets
+					contentContainerClassName={
+						emailFormExpanded
+							? 'flex-grow px-5 pt-4 pb-2'
+							: 'flex-grow justify-center px-5 py-8'
+					}
+					contentContainerStyle={{ paddingBottom: scrollContentBottomPad + 24 }}
+					contentInsetAdjustmentBehavior='automatic'
+					keyboardShouldPersistTaps='handled'
+					keyboardDismissMode={
+						Platform.OS === 'ios' ? 'interactive' : 'on-drag'
+					}
+					showsVerticalScrollIndicator={false}
+				>
 					<View className='items-center mb-6'>
 						<Image
 							source={require('@/assets/logos/XTFG_icon_1024.png')}
@@ -454,7 +508,9 @@ const SignUp = () => {
 								Check your email
 							</Text>
 							<Text className='text-sm text-text-secondary mb-8 text-center px-1'>
-								Enter the code from your email to verify and continue.
+								{verificationMode === 'dev_backend'
+									? 'Enter the code from backend logs to verify and continue.'
+									: 'Enter the code from your email to verify and continue.'}
 							</Text>
 							<View className='gap-4'>
 								<Input
@@ -488,7 +544,8 @@ const SignUp = () => {
 							<Text className='text-[#F9C513] font-semibold'>Log in</Text>
 						</TouchableOpacity>
 					</View>
-			</ScrollView>
+				</ScrollView>
+			</KeyboardAvoidingView>
 			<ConfirmModal
 				visible={alertModal.visible}
 				title={alertModal.title}

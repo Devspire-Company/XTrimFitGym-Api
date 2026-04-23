@@ -40,6 +40,15 @@ type MembershipRow = NonNullable<
 type UpdateUserMutation = any;
 type UpdateUserMutationVariables = any;
 
+const toIsoIfValid = (date?: Date): string | undefined => {
+	if (!date || Number.isNaN(date.getTime())) return undefined;
+	try {
+		return date.toISOString();
+	} catch {
+		return undefined;
+	}
+};
+
 const Third = () => {
 	const router = useRouter();
 	const { data: onboardingData, updateData, clearData } = useOnboarding();
@@ -103,7 +112,25 @@ const Third = () => {
 		UpdateUserMutationVariables
 	>(UPDATE_USER_MUTATION, {
 		onCompleted: (res) => {
-			const updated = convertGraphQLUser(res?.updateUser);
+			if (!res?.updateUser) {
+				pendingIntentRef.current = null;
+				showAlert(
+					'Error',
+					'We could not load your updated profile. Please try again.'
+				);
+				return;
+			}
+			let updated;
+			try {
+				updated = convertGraphQLUser(res.updateUser);
+			} catch {
+				pendingIntentRef.current = null;
+				showAlert(
+					'Error',
+					'Received an invalid profile response from the server. Please try again.'
+				);
+				return;
+			}
 			dispatch(setUser(updated));
 			const intent = pendingIntentRef.current;
 			const welcome =
@@ -122,7 +149,7 @@ const Third = () => {
 			}
 			clearData();
 			pendingIntentRef.current = null;
-			router.replace('/(member)/dashboard');
+			router.navigate('/(member)/dashboard');
 		},
 		onError: (error) => {
 			pendingIntentRef.current = null;
@@ -142,15 +169,13 @@ const Third = () => {
 	const subscriptionRequests =
 		requestsData?.getMySubscriptionRequests ?? [];
 
-	const hasCompletedTermsWaiver =
-		!!onboardingData.termsWaiverCompletedPreMembership ||
-		!!(user?.agreedToTermsAndConditions && user?.agreedToLiabilityWaiver);
+	const hasCompletedTerms = !!onboardingData.termsWaiverCompletedPreMembership;
 
 	useEffect(() => {
-		if (!hasCompletedTermsWaiver) {
+		if (!hasCompletedTerms) {
 			router.replace('/(auth)/(onboarding)/fourth');
 		}
-	}, [hasCompletedTermsWaiver, router]);
+	}, [hasCompletedTerms, router]);
 
 	const showAlert = (title: string, message: string, onConfirm?: () => void) => {
 		alertConfirmRef.current = onConfirm ?? null;
@@ -173,10 +198,10 @@ const Third = () => {
 			showAlert('Error', 'User not found. Please sign in again.');
 			return;
 		}
-		if (!onboardingData.termsWaiverCompletedPreMembership) {
+		if (!hasCompletedTerms) {
 			showAlert(
-				'Complete terms & waiver first',
-				'Please complete Terms & Liability Waiver before choosing membership options.',
+				'Complete terms first',
+				'Please complete Terms & Conditions before choosing membership options.',
 				() => router.push('/(auth)/(onboarding)/fourth')
 			);
 			return;
@@ -188,7 +213,7 @@ const Third = () => {
 				id: user.id,
 				input: {
 					phoneNumber: onboardingData.phoneNumber,
-					dateOfBirth: onboardingData.dateOfBirth?.toISOString(),
+					dateOfBirth: toIsoIfValid(onboardingData.dateOfBirth),
 					gender: onboardingData.gender,
 					agreedToTermsAndConditions: onboardingData.agreedToTermsAndConditions,
 					membershipDetails: {
@@ -311,18 +336,18 @@ const Third = () => {
 				Membership
 			</Text>
 			<Text className='text-base text-text-secondary mb-10'>
-				{hasCompletedTermsWaiver
+				{hasCompletedTerms
 					? 'Choose how you want to continue. You can always subscribe later from the app.'
-					: 'Before choosing a membership option, complete Terms & Liability Waiver first.'}
+					: 'Before choosing a membership option, complete Terms & Conditions first.'}
 			</Text>
 
 			<View className='gap-4 mt-6'>
-				{!hasCompletedTermsWaiver ? (
+				{!hasCompletedTerms ? (
 					<GradientButton
 						onPress={() => router.push('/(auth)/(onboarding)/fourth')}
 						disabled={finalizing}
 					>
-						Continue to Terms & Waiver
+						Continue to Terms
 					</GradientButton>
 				) : (
 					<>
@@ -342,9 +367,9 @@ const Third = () => {
 				)}
 
 				<Text className='text-text-secondary text-sm text-center leading-5 px-1'>
-					{hasCompletedTermsWaiver
+					{hasCompletedTerms
 						? 'Free workouts stay available. Other features stay locked until you subscribe.'
-						: 'All users must accept Terms & Liability Waiver before selecting a membership option.'}
+						: 'All users must accept Terms & Conditions before selecting a membership option.'}
 				</Text>
 
 				<View className='mt-6'>
@@ -459,10 +484,10 @@ const Third = () => {
 			</ScrollView>
 		);
 
-	if (!hasCompletedTermsWaiver) {
+	if (!hasCompletedTerms) {
 		return (
 			<FixedView className='flex-1 bg-bg-darker'>
-				<PremiumLoadingContent message='Opening terms & waiver…' />
+				<PremiumLoadingContent message='Opening terms…' />
 			</FixedView>
 		);
 	}
@@ -474,7 +499,7 @@ const Third = () => {
 				className='flex-1'
 				keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
 			>
-				{view === 'intro' || !hasCompletedTermsWaiver ? introContent : plansContent}
+				{view === 'intro' || !hasCompletedTerms ? introContent : plansContent}
 			</KeyboardAvoidingView>
 
 			{/* Confirm send request — same flow as Subscription tab */}

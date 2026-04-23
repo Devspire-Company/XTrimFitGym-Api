@@ -2,11 +2,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
-/**
- * OAuth / SSO return route for `expo-auth-session` + Clerk `useSSO`.
- * Without this screen, the post-login deep link can hit an unmatched route and
- * destabilize Android release builds when returning from the system browser.
- */
 export default function SsoCallbackScreen() {
 	useEffect(() => {
 		WebBrowser.maybeCompleteAuthSession();

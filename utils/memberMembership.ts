@@ -1,13 +1,22 @@
 import type { User } from '@/graphql/generated/types';
 
-/** Active gym membership is represented by an assigned membership id on the user. */
+/**
+ * True when the member has an active gym subscription (paid access), matching dashboard logic.
+ * Do not use `membershipDetails.membershipId` alone — the API may leave it set after admin
+ * unsubscribe while the transaction is canceled; `currentMembership` reflects active tx only.
+ */
 export function memberHasActiveGymMembership(user: User | null | undefined): boolean {
-	return !!user?.membershipDetails?.membershipId;
+	const tx = user?.currentMembership;
+	if (tx != null) {
+		return tx.status === 'ACTIVE';
+	}
+	return false;
 }
 
 /**
  * Server sets `facilityBiometricEnrollmentComplete` to false when a subscription becomes active.
- * Legacy accounts omit the field (treated as complete). Only explicit `false` blocks the app.
+ * Legacy accounts omit the field (treated as complete). Only explicit `false` triggers the reminder.
+ * The API `me` (and login) syncs this to true when door attendance already exists for the member.
  */
 export function memberNeedsFacilityBiometric(user: User | null | undefined): boolean {
 	if (!memberHasActiveGymMembership(user)) return false;

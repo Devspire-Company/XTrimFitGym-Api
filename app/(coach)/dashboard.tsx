@@ -58,14 +58,13 @@ const CoachDashboard = () => {
 	const { data: requestsData, refetch: refetchRequests } = useQuery(
 		GET_PENDING_COACH_REQUESTS_QUERY,
 		{
-			fetchPolicy: 'network-only', // Always fetch from network for real-time updates
-			pollInterval: 2000, // Poll every 2 seconds for real-time updates
-			errorPolicy: 'all', // Allow partial data even if some fields fail
+			fetchPolicy: 'network-only',
+			pollInterval: 2000,
+			errorPolicy: 'all',
 			notifyOnNetworkStatusChange: true,
 		},
 	);
 
-	// Refetch data when screen is mounted
 	useEffect(() => {
 		if (user?.id) {
 			refetchSessions();
@@ -91,13 +90,11 @@ const CoachDashboard = () => {
 		}
 	};
 
-	// Memoize sessions to prevent creating new array on every render
 	const sessions = useMemo(
 		() => (sessionsData as any)?.getCoachSessions || [],
 		[sessionsData],
 	);
 
-	// Filter to only show coach's own clients
 	const allClients = (clientsData as any)?.getUsers || [];
 	const clients = allClients.filter((client: any) =>
 		user?.coachDetails?.clientsIds?.includes(client.id),
@@ -107,20 +104,15 @@ const CoachDashboard = () => {
 	const myGoals = goals.filter((goal: any) => goal.coachId === user?.id);
 	const upcomingSessions = useMemo(() => {
 		const now = new Date();
-		// Set to start of today for accurate date comparison
 		now.setHours(0, 0, 0, 0);
 
 		return sessions.filter((s: any) => {
-			// Exclude templates
 			if (s.isTemplate) return false;
 
-			// Exclude cancelled sessions
 			if (s.status === 'cancelled') return false;
 
-			// Only include scheduled sessions
 			if (s.status !== 'scheduled') return false;
 
-			// Only include future sessions (including today)
 			const sessionDate = new Date(s.date);
 			sessionDate.setHours(0, 0, 0, 0);
 			return sessionDate >= now;
@@ -129,14 +121,12 @@ const CoachDashboard = () => {
 
 	const pendingRequests = useMemo(() => {
 		const allRequests = (requestsData as any)?.getPendingCoachRequests || [];
-		// Filter out requests with invalid client data
 		return allRequests.filter(
 			(request: any) =>
 				request && request.id && request.client && request.client.id,
 		);
 	}, [requestsData]);
 
-	// Calculate sessions this month
 	const sessionsThisMonth = useMemo(() => {
 		const now = new Date();
 		const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -146,7 +136,6 @@ const CoachDashboard = () => {
 		}).length;
 	}, [sessions]);
 
-	// Calculate completed sessions this month
 	const completedThisMonth = useMemo(() => {
 		const now = new Date();
 		const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -160,7 +149,6 @@ const CoachDashboard = () => {
 		}).length;
 	}, [sessions]);
 
-	// Client capacity
 	const clientCapacity = useMemo(() => {
 		const currentClients = clients.length;
 		const limit = user?.coachDetails?.clientLimit || 0;
@@ -171,7 +159,6 @@ const CoachDashboard = () => {
 		};
 	}, [clients.length, user?.coachDetails?.clientLimit]);
 
-	// Calculate sessions data for last 7 days
 	const sessionsLast7Days = useMemo(() => {
 		const days = [];
 		const today = new Date();
@@ -199,7 +186,6 @@ const CoachDashboard = () => {
 		return days;
 	}, [sessions]);
 
-	// Calculate sessions data for last 4 weeks
 	const sessionsLast4Weeks = useMemo(() => {
 		const weeks = [];
 		const today = new Date();
@@ -227,7 +213,6 @@ const CoachDashboard = () => {
 		return weeks;
 	}, [sessions]);
 
-	// Render sessions chart (last 7 days)
 	const renderSessionsChart = () => {
 		if (sessionsLast7Days.length === 0) {
 			return (
@@ -321,7 +306,6 @@ const CoachDashboard = () => {
 		);
 	};
 
-	// Render completion rate chart (last 4 weeks)
 	const renderCompletionRateChart = () => {
 		if (sessionsLast4Weeks.length === 0) {
 			return (

@@ -1,4 +1,5 @@
 import ConfirmModal from '@/components/ConfirmModal';
+import DatePicker from '@/components/DatePicker';
 import FixedView from '@/components/FixedView';
 import GradientButton from '@/components/GradientButton';
 import Input from '@/components/Input';
@@ -7,25 +8,20 @@ import TabHeader from '@/components/TabHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMemberMembershipModal } from '@/contexts/MemberMembershipModalContext';
 import { memberHasActiveGymMembership } from '@/utils/memberMembership';
-import {
-	GetGoalsQuery,
-	GetGoalsQueryVariables,
-	GetWeightProgressChartQuery,
-	GetWeightProgressChartQueryVariables,
-} from '@/graphql/generated/types';
+import { GetGoalsQuery, GetGoalsQueryVariables } from '@/graphql/generated/types';
 import {
 	CREATE_GOAL_MUTATION,
+	CREATE_COACH_RATING_MUTATION,
 	DELETE_GOAL_MUTATION,
 } from '@/graphql/mutations';
 import { normalizePhysiqueGoalTypeForApi } from '@/constants/onboarding-options';
+import { progressRatingIncludesSessionLog } from '@/utils/progress-rating-match';
 import {
 	GET_GOALS_QUERY,
-	GET_WEIGHT_PROGRESS_CHART_QUERY,
 	GET_PROGRESS_RATINGS_QUERY,
 	GET_CLIENT_SESSIONS_QUERY,
 	GET_SESSION_LOGS_QUERY,
 	GET_COACH_RATING_BY_SESSION_LOG_QUERY,
-	GET_MY_COACH_RATINGS_FOR_GOAL_QUERY,
 } from '@/graphql/queries';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,12 +36,14 @@ import {
 	RefreshControl,
 	ScrollView,
 	Text,
+	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
 const menuWidth = 180;
+const MIN_COACH_RATING_COMMENT_LENGTH = 25;
 
 function formatKgDisplay(value: number | null | undefined): string | null {
 	if (value == null) return null;
@@ -60,6 +58,20 @@ function progressVerdictKey(verdict: string | undefined | null): string {
 		.toUpperCase()
 		.replace(/-/g, '_');
 }
+
+const PROGRESS_VERDICT_LABELS: Record<string, string> = {
+	PROGRESSIVE: 'Progressive',
+	CLOSE_TO_ACHIEVEMENT: 'Close to Achievement',
+	ACHIEVED: 'Achieved',
+	REGRESSING: 'Regressing',
+};
+
+const PROGRESS_VERDICT_COLORS: Record<string, string> = {
+	PROGRESSIVE: '#10B981',
+	CLOSE_TO_ACHIEVEMENT: '#F59E0B',
+	ACHIEVED: '#3B82F6',
+	REGRESSING: '#EF4444',
+};
 
 interface WorkoutExercise {
 	id: string;
@@ -83,7 +95,6 @@ const goalTypeOptions = [
 	{ label: 'Rehabilitation', value: 'REHABILITATION' },
 ];
 
-/** Add calendar months without jumping past month-end (e.g. Jan 31 + 1 → Feb 28/29). */
 function addCalendarMonths(from: Date, monthsToAdd: number): Date {
 	const base = new Date(
 		from.getFullYear(),
@@ -98,7 +109,6 @@ function addCalendarMonths(from: Date, monthsToAdd: number): Date {
 	return base;
 }
 
-/** Baseline months from goal type — longest selected wins. */
 function monthsBaselineForGoalTypes(types: string[]): number {
 	const monthsForType = (type: string) => {
 		switch (type) {
@@ -137,10 +147,6 @@ function parseBodyKind(physiqueRaw: string | undefined | null): BodyKind {
 	return 'general';
 }
 
-/**
- * Extra time from genetics vs “average” for weight-focused goals.
- * Endomorphs often need longer cuts; ectomorphs longer lean bulks; mesomorphs slightly shorter.
- */
 function bodyTypeMonthsMultiplier(body: BodyKind, types: string[]): number {
 	const wl = types.includes('WEIGHT_LOSS');
 	const mb = types.includes('MUSCLE_BUILDING');
@@ -156,9 +162,6 @@ function bodyTypeMonthsMultiplier(body: BodyKind, types: string[]): number {
 	return 1;
 }
 
-/**
- * Months implied by kg change at sustainable paces (~1.25 kg/mo loss, ~0.55 kg/mo lean gain).
- */
 function monthsFromWeightDelta(types: string[], currentStr: string, targetStr: string): number | null {
 	const c = parseFloat(currentStr.replace(/,/g, '.'));
 	const t = parseFloat(targetStr.replace(/,/g, '.'));
@@ -181,10 +184,6 @@ function monthsFromWeightDelta(types: string[], currentStr: string, targetStr: s
 	return Math.min(Math.max(need, 2), 36);
 }
 
-/**
- * Target timeline: max(goal-type baseline, weight-based estimate) × body-type multiplier,
- * then clamped to a sensible range (caller still clamps to 5y cap).
- */
 function computeGoalTargetMonths(params: {
 	goalTypes: string[];
 	physiqueGoalType: string | undefined | null;
@@ -217,7 +216,7 @@ const MemberProgress = () => {
 		useCallback(() => {
 			if (!hasMembership) {
 				openMembershipRequired();
-				router.replace('/(member)/workouts');
+				router.navigate('/(member)/workouts');
 			}
 		}, [hasMembership, openMembershipRequired, router])
 	);
@@ -241,11 +240,15 @@ const MemberProgress = () => {
 	const [targetWeight, setTargetWeight] = useState('');
 	const [currentWeight, setCurrentWeight] = useState('');
 	const [targetDate, setTargetDate] = useState<Date | undefined>();
+	const [targetDateIsCustom, setTargetDateIsCustom] = useState(false);
+	const prevGoalTypesKeyRef = useRef('');
 	const [errors, setErrors] = useState<Record<string, string>>({});
 	const [selectedSession, setSelectedSession] = useState<any>(null);
-	/** When opening a completed workout from Recent Sessions, includes weight / goal context */
 	const [selectedSessionLog, setSelectedSessionLog] = useState<any>(null);
 	const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+	const [pendingCoachRating, setPendingCoachRating] = useState(0);
+	const [pendingCoachComment, setPendingCoachComment] = useState('');
+	const [pendingCoachCommentError, setPendingCoachCommentError] = useState('');
 	const [goalMenuOpen, setGoalMenuOpen] = useState<any>(null);
 	const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 	const [goalToDelete, setGoalToDelete] = useState<any>(null);
@@ -265,7 +268,6 @@ const MemberProgress = () => {
 		[apiKey]
 	);
 
-	// Parse workoutType JSON string to get exercises
 	const parseWorkoutExercises = useCallback((workoutType: string | null | undefined): WorkoutExercise[] => {
 		if (!workoutType) return [];
 		try {
@@ -297,7 +299,6 @@ const MemberProgress = () => {
 		skip: !user?.id,
 	});
 
-	// Refetch data when screen is mounted
 	useEffect(() => {
 		if (user?.id) {
 			refetchGoals();
@@ -320,15 +321,6 @@ const MemberProgress = () => {
 		}
 	};
 
-	const { data: progressData } = useQuery<
-		GetWeightProgressChartQuery,
-		GetWeightProgressChartQueryVariables
-	>(GET_WEIGHT_PROGRESS_CHART_QUERY, {
-		variables: { clientId: user?.id || '', goalId: selectedGoal?.id },
-		skip: !selectedGoal || !showWeightChart || !user?.id,
-	});
-
-	// Query progress ratings for the selected goal
 	const { data: ratingsData } = useQuery<any>(
 		GET_PROGRESS_RATINGS_QUERY,
 		{
@@ -344,7 +336,7 @@ const MemberProgress = () => {
 	const sessionLogIdForCoachRating =
 		showWorkoutModal && selectedSessionLog?.id ? selectedSessionLog.id : '';
 
-	const { data: sessionLogCoachRatingData } = useQuery<any>(
+	const { data: sessionLogCoachRatingData, refetch: refetchSessionLogCoachRating } = useQuery<any>(
 		GET_COACH_RATING_BY_SESSION_LOG_QUERY,
 		{
 			variables: { sessionLogId: sessionLogIdForCoachRating },
@@ -365,13 +357,6 @@ const MemberProgress = () => {
 		fetchPolicy: 'cache-and-network',
 	});
 
-	const { data: myCoachRatingsForGoal } = useQuery<any>(GET_MY_COACH_RATINGS_FOR_GOAL_QUERY, {
-		variables: { goalId: selectedGoal?.id || '' },
-		skip: !selectedGoal?.id || !showWeightChart || !user?.id,
-		fetchPolicy: 'cache-and-network',
-	});
-
-	// Query upcoming sessions to show workouts
 	const { data: sessionsData, refetch: refetchSessions } = useQuery(
 		GET_CLIENT_SESSIONS_QUERY,
 		{
@@ -381,7 +366,6 @@ const MemberProgress = () => {
 		}
 	);
 
-	// Query recent session logs to show completed workouts
 	const { data: sessionLogsData, refetch: refetchSessionLogs } = useQuery(
 		GET_SESSION_LOGS_QUERY,
 		{
@@ -391,7 +375,6 @@ const MemberProgress = () => {
 		}
 	);
 
-	// Get sessions with workouts
 	const sessionsWithWorkouts = useMemo(() => {
 		const upcoming = (sessionsData?.getClientSessions || []).filter((s: any) => {
 			const exercises = parseWorkoutExercises(s.workoutType);
@@ -409,19 +392,41 @@ const MemberProgress = () => {
 	const recapRatingsForLog = useMemo(() => {
 		if (!selectedSessionLog?.id) return [];
 		const list = recapProgressRatingsData?.getProgressRatings || [];
-		return list.filter((r: any) => (r.sessionLogIds || []).includes(selectedSessionLog.id));
+		return list.filter((r: any) => progressRatingIncludesSessionLog(r, selectedSessionLog.id));
 	}, [recapProgressRatingsData, selectedSessionLog?.id]);
 
 	const memberCoachRatingForLog = useMemo(() => {
 		const r = sessionLogCoachRatingData?.getCoachRatingBySessionLog;
-		if (!r || !selectedSessionLog?.id) return null;
-		return r.sessionLogId === selectedSessionLog.id ? r : null;
-	}, [sessionLogCoachRatingData, selectedSessionLog?.id]);
+		if (!r) return null;
+		return r;
+	}, [sessionLogCoachRatingData]);
 
-	const mySessionRatingsList = useMemo(
-		() => myCoachRatingsForGoal?.getMyCoachRatingsForGoal || [],
-		[myCoachRatingsForGoal]
-	);
+	useEffect(() => {
+		setPendingCoachRating(0);
+		setPendingCoachComment('');
+		setPendingCoachCommentError('');
+	}, [selectedSessionLog?.id]);
+
+	const sortedGoalProgressRatings = useMemo(() => {
+		const list = ratingsData?.getProgressRatings || [];
+		return [...list].sort(
+			(a: any, b: any) =>
+				new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+		);
+	}, [ratingsData?.getProgressRatings]);
+
+	const latestSessionLogForSelectedGoal = useMemo(() => {
+		const goalId = selectedGoal?.id;
+		const logs = sessionLogsData?.getSessionLogs;
+		if (!goalId || !Array.isArray(logs)) return null;
+		const linked = logs.filter((log: any) => log.session?.goal?.id === goalId);
+		if (linked.length === 0) return null;
+		return [...linked].sort((a: any, b: any) => {
+			const ta = new Date(a.completedAt || a.session?.date || 0).getTime();
+			const tb = new Date(b.completedAt || b.session?.date || 0).getTime();
+			return tb - ta;
+		})[0];
+	}, [selectedGoal?.id, sessionLogsData?.getSessionLogs]);
 
 	const [createGoal, { loading: creating }] = useMutation(
 		CREATE_GOAL_MUTATION,
@@ -448,6 +453,38 @@ const MemberProgress = () => {
 		},
 	});
 
+	const [createCoachRating, { loading: creatingCoachRating }] = useMutation(
+		CREATE_COACH_RATING_MUTATION,
+		{
+			onCompleted: async () => {
+				setPendingCoachRating(0);
+				setPendingCoachComment('');
+				setPendingCoachCommentError('');
+				await Promise.all([refetchSessionLogCoachRating(), refetchSessionLogs()]);
+				setAlertModal({
+					visible: true,
+					title: 'Success',
+					message: 'Thanks for your feedback.',
+					variant: 'success',
+				});
+			},
+			onError: async (error) => {
+				const msg = error.message || 'Failed to submit feedback.';
+				if (msg.toLowerCase().includes('already submitted')) {
+					await refetchSessionLogCoachRating();
+					setAlertModal({
+						visible: true,
+						title: 'Already rated',
+						message: 'You already rated this session. You can review it only.',
+						variant: 'neutral',
+					});
+					return;
+				}
+				setAlertModal({ visible: true, title: 'Error', message: msg, variant: 'danger' });
+			},
+		}
+	);
+
 	const resetForm = () => {
 		setTitle('');
 		setSelectedGoalTypes([]);
@@ -455,6 +492,8 @@ const MemberProgress = () => {
 		setTargetWeight('');
 		setCurrentWeight('');
 		setTargetDate(undefined);
+		setTargetDateIsCustom(false);
+		prevGoalTypesKeyRef.current = '';
 		setErrors({});
 	};
 
@@ -472,7 +511,6 @@ const MemberProgress = () => {
 				: 'Target date is required';
 		}
 
-		// Weight fields are required only for weight-related goal types
 		if (isWeightRelated) {
 			if (!currentWeight.trim()) {
 				newErrors.currentWeight =
@@ -512,7 +550,6 @@ const MemberProgress = () => {
 			targetDate: targetDate?.toISOString(),
 		};
 
-		// Only include weight fields for weight-related goals
 		const isWeightRelated = selectedGoalTypes.some(
 			(type) => type === 'WEIGHT_LOSS' || type === 'MUSCLE_BUILDING',
 		);
@@ -524,8 +561,80 @@ const MemberProgress = () => {
 		createGoal({ variables: { input } });
 	};
 
+	const submitCoachRatingForSelectedLog = useCallback(() => {
+		if (!selectedSessionLog?.id) {
+			setAlertModal({
+				visible: true,
+				title: 'Error',
+				message: 'Missing session information.',
+				variant: 'danger',
+			});
+			return;
+		}
+
+		const selectedCoachIdCandidates = [
+			selectedSessionLog.coachId,
+			selectedSessionLog.coach?.id,
+			selectedSessionLog.coach?._id,
+			selectedSessionLog.session?.coachId,
+			selectedSessionLog.session?.coach?.id,
+			selectedSessionLog.session?.coach?._id,
+		]
+			.map((v) => (v == null ? '' : String(v).trim()))
+			.filter((v) => v.length > 0);
+		const selectedCoachId = selectedCoachIdCandidates[0] || '';
+		if (!selectedCoachId) {
+			setAlertModal({
+				visible: true,
+				title: 'Error',
+				message: 'Coach not found for this session.',
+				variant: 'danger',
+			});
+			return;
+		}
+
+		if (pendingCoachRating === 0) {
+			setAlertModal({
+				visible: true,
+				title: 'Stars required',
+				message: 'Please tap 1-5 stars before submitting.',
+				variant: 'neutral',
+			});
+			return;
+		}
+
+		const trimmed = pendingCoachComment.trim();
+		if (trimmed.length < MIN_COACH_RATING_COMMENT_LENGTH) {
+			setPendingCoachCommentError(
+				`Please write at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters.`
+			);
+			setAlertModal({
+				visible: true,
+				title: 'Feedback required',
+				message: `Tell us why (at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters).`,
+				variant: 'neutral',
+			});
+			return;
+		}
+
+		createCoachRating({
+			variables: {
+				input: {
+					coachId: selectedCoachId,
+					sessionLogId: selectedSessionLog.id,
+					rating: pendingCoachRating,
+					comment: trimmed,
+				},
+			},
+		});
+	}, [
+		createCoachRating,
+		pendingCoachComment,
+		pendingCoachRating,
+		selectedSessionLog,
+	]);
+
 	const goals = goalsData?.getGoals || [];
-	const progressPoints = progressData?.getWeightProgressChart || [];
 
 	const goalTargetDateMaximum = useMemo(() => {
 		const d = new Date();
@@ -552,7 +661,58 @@ const MemberProgress = () => {
 		isWeightRelatedGoalPick &&
 		!bothWeightsValidForEstimate;
 
-	// Auto target date: non–weight goals immediately; weight goals only after both weights valid
+	const goalTypesKey = useMemo(
+		() => [...selectedGoalTypes].sort().join(','),
+		[selectedGoalTypes],
+	);
+
+	useEffect(() => {
+		const prev = prevGoalTypesKeyRef.current;
+		if (prev !== goalTypesKey) {
+			if (prev !== '') {
+				setTargetDateIsCustom(false);
+			}
+			prevGoalTypesKeyRef.current = goalTypesKey;
+		}
+	}, [goalTypesKey]);
+
+	const minGoalTargetDate = useMemo(() => {
+		const t = new Date();
+		return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+	}, []);
+
+	const computeSuggestedTargetDate = useCallback((): Date | undefined => {
+		if (selectedGoalTypes.length === 0) return undefined;
+		const isWr = selectedGoalTypes.some(
+			(t) => t === 'WEIGHT_LOSS' || t === 'MUSCLE_BUILDING',
+		);
+		if (isWr) {
+			const c = parseFloat(currentWeight.trim().replace(/,/g, '.'));
+			const tw = parseFloat(targetWeight.trim().replace(/,/g, '.'));
+			if (!Number.isFinite(c) || !Number.isFinite(tw) || c <= 0 || tw <= 0) return undefined;
+		}
+		const today = new Date();
+		const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+		const maxMonths = computeGoalTargetMonths({
+			goalTypes: selectedGoalTypes,
+			physiqueGoalType: user?.membershipDetails?.physiqueGoalType,
+			currentWeight,
+			targetWeight,
+		});
+		if (!maxMonths) return undefined;
+		let recommended = addCalendarMonths(start, maxMonths);
+		if (recommended.getTime() > goalTargetDateMaximum.getTime()) {
+			recommended = new Date(goalTargetDateMaximum);
+		}
+		return recommended;
+	}, [
+		selectedGoalTypes,
+		currentWeight,
+		targetWeight,
+		user?.membershipDetails?.physiqueGoalType,
+		goalTargetDateMaximum,
+	]);
+
 	useEffect(() => {
 		if (selectedGoalTypes.length === 0) {
 			setTargetDate(undefined);
@@ -565,25 +725,14 @@ const MemberProgress = () => {
 			return;
 		}
 
-		const today = new Date();
-		const start = new Date(
-			today.getFullYear(),
-			today.getMonth(),
-			today.getDate(),
-		);
-
-		const maxMonths = computeGoalTargetMonths({
-			goalTypes: selectedGoalTypes,
-			physiqueGoalType: user?.membershipDetails?.physiqueGoalType,
-			currentWeight,
-			targetWeight,
-		});
-		if (!maxMonths) return;
-
-		let recommended = addCalendarMonths(start, maxMonths);
-		if (recommended.getTime() > goalTargetDateMaximum.getTime()) {
-			recommended = new Date(goalTargetDateMaximum);
+		if (targetDateIsCustom) {
+			setErrors((prev) => ({ ...prev, targetDate: '' }));
+			return;
 		}
+
+		const recommended = computeSuggestedTargetDate();
+		if (!recommended) return;
+
 		setTargetDate(recommended);
 		setErrors((prev) => ({ ...prev, targetDate: '' }));
 	}, [
@@ -594,68 +743,9 @@ const MemberProgress = () => {
 		goalTargetDateMaximum,
 		isWeightRelatedGoalPick,
 		bothWeightsValidForEstimate,
+		targetDateIsCustom,
+		computeSuggestedTargetDate,
 	]);
-
-	// Simple weight chart visualization
-	const renderWeightChart = () => {
-		if (progressPoints.length === 0) {
-			return (
-				<View className='items-center justify-center py-10'>
-					<Text className='text-text-secondary'>
-						No weight data available yet
-					</Text>
-				</View>
-			);
-		}
-
-		const weights = progressPoints.map((p: any) => p.weight);
-		const minWeight = Math.min(...weights);
-		const maxWeight = Math.max(...weights);
-		const range = maxWeight - minWeight || 1;
-		const chartHeight = 200;
-		const chartWidth = screenWidth - 60;
-
-		return (
-			<View className='mt-4'>
-				<Text className='text-text-primary font-semibold mb-4'>
-					Weight Progress
-				</Text>
-				<View
-					className='border-l-2 border-b-2 border-text-secondary'
-					style={{ height: chartHeight, width: chartWidth }}
-				>
-					{progressPoints.map((point: any, index: number) => {
-						const normalizedWeight = (point.weight - minWeight) / range;
-						const y = chartHeight - normalizedWeight * chartHeight;
-						const x = (index / (progressPoints.length - 1 || 1)) * chartWidth;
-
-						return (
-							<View
-								key={index}
-								className='absolute bg-[#F9C513] rounded-full'
-								style={{
-									left: x - 4,
-									top: y - 4,
-									width: 8,
-									height: 8,
-								}}
-							/>
-						);
-					})}
-				</View>
-				<View className='flex-row justify-between mt-2'>
-					<Text className='text-text-secondary text-xs'>
-						{new Date(progressPoints[0]?.date).toLocaleDateString()}
-					</Text>
-					<Text className='text-text-secondary text-xs'>
-						{new Date(
-							progressPoints[progressPoints.length - 1]?.date
-						).toLocaleDateString()}
-					</Text>
-				</View>
-			</View>
-		);
-	};
 
 	return (
 		<FixedView className='flex-1 bg-bg-darker'>
@@ -1003,9 +1093,7 @@ const MemberProgress = () => {
 									</Text>
 								) : (
 									<Text className='text-text-secondary text-[11px] mt-1'>
-										Weight loss / muscle building: after you enter both weights,
-										your target date is calculated. Other goal types get a date as
-										soon as you pick them (uses profile body type).
+										Suggested date from your picks and profile; tap the date field to change it.
 									</Text>
 								)}
 							</View>
@@ -1060,51 +1148,68 @@ const MemberProgress = () => {
 								</>
 							)}
 
-							<View className='mb-4'>
-								<Text className='text-text-secondary text-sm font-medium mb-2'>
-									Target date *
-								</Text>
-								<View
-									className={`rounded-lg p-4 border bg-input ${
-										errors.targetDate ? 'border-red-500' : 'border-input'
-									}`}
-								>
-									<Text
-										className={`text-base ${
-											showTargetDateEstimating || !targetDate
-												? 'text-placeholder'
-												: 'text-text-primary'
-										}`}
-									>
-										{selectedGoalTypes.length === 0
-											? 'Select at least one goal type'
-											: showTargetDateEstimating
-												? 'Estimating...'
-												: targetDate
-													? targetDate.toLocaleDateString('en-US', {
-															weekday: 'long',
-															year: 'numeric',
-															month: 'long',
-															day: 'numeric',
-														})
-													: '—'}
+							{selectedGoalTypes.length === 0 ? (
+								<View className='mb-4'>
+									<Text className='text-text-secondary text-sm font-medium mb-2'>
+										Target date *
+									</Text>
+									<View className='rounded-lg p-4 border border-input bg-input'>
+										<Text className='text-base text-placeholder'>
+											Select at least one goal type first
+										</Text>
+									</View>
+								</View>
+							) : showTargetDateEstimating ? (
+								<View className='mb-4'>
+									<Text className='text-text-secondary text-sm font-medium mb-2'>
+										Target date *
+									</Text>
+									<View className='rounded-lg p-4 border border-input bg-input'>
+										<Text className='text-base text-placeholder'>Estimating…</Text>
+									</View>
+									<Text className='text-text-secondary text-[11px] mt-1'>
+										Enter both weights (kg) to see a suggested date—then you can adjust it.
 									</Text>
 								</View>
-								{errors.targetDate ? (
-									<Text className='text-red-500 text-sm mt-1'>{errors.targetDate}</Text>
-								) : showTargetDateEstimating ? (
+							) : (
+								<View className='mb-4'>
+									<DatePicker
+										label='Target date *'
+										sheetTitle='When do you want to achieve this?'
+										value={targetDate}
+										onChange={(date) => {
+											setTargetDate(date);
+											setTargetDateIsCustom(true);
+											setErrors((prev) => ({ ...prev, targetDate: '' }));
+										}}
+										placeholder='Tap to choose your target date'
+										error={errors.targetDate}
+										minimumDate={minGoalTargetDate}
+										maximumDate={goalTargetDateMaximum}
+									/>
+									{targetDateIsCustom ? (
+										<TouchableOpacity
+											onPress={() => {
+												const suggested = computeSuggestedTargetDate();
+												if (suggested) {
+													setTargetDate(suggested);
+													setTargetDateIsCustom(false);
+												}
+											}}
+											className='mt-2 self-start'
+											activeOpacity={0.7}
+										>
+											<Text className='text-[#F9C513] text-sm font-semibold'>
+												Use app suggested date
+											</Text>
+										</TouchableOpacity>
+									) : null}
 									<Text className='text-text-secondary text-[11px] mt-1'>
-										Enter valid current and target weight (kg) to calculate your
-										target date.
+										Tap to change (today–5 yrs). Editing goal types updates the suggestion unless
+										you picked a custom date.
 									</Text>
-								) : (
-									<Text className='text-text-secondary text-[11px] mt-1'>
-										Based on goal type, your body type (profile), and weight
-										difference when applicable. Update profile or weights to refine
-										it.
-									</Text>
-								)}
-							</View>
+								</View>
+							)}
 
 							<GradientButton
 								onPress={handleSubmit}
@@ -1324,110 +1429,271 @@ const MemberProgress = () => {
 								<Ionicons name='close' size={28} color='#8E8E93' />
 							</TouchableOpacity>
 						</View>
-						<ScrollView>
-							{renderWeightChart()}
-
-							{(selectedGoal?.coachId || mySessionRatingsList.length > 0) && (
-								<View className='mt-6'>
-									<Text className='text-xl font-bold text-text-primary mb-4'>
-										Your session feedback to coach
-									</Text>
-									{mySessionRatingsList.length > 0 ? (
-										mySessionRatingsList.map((mr: any) => (
-											<View
-												key={mr.id}
-												className='bg-bg-darker rounded-xl p-4 mb-3 border border-[#F9C513]'
-												style={{ borderWidth: 0.5 }}
-											>
-												<Text className='text-text-primary font-semibold text-base mb-1'>
-													{mr.sessionLog?.session?.name || 'Session'}
-												</Text>
-												{mr.sessionLog?.session?.date ? (
-													<Text className='text-text-secondary text-xs mb-2'>
-														{new Date(mr.sessionLog.session.date).toLocaleDateString(
-															'en-US',
-															{ month: 'short', day: 'numeric', year: 'numeric' }
-														)}
-													</Text>
-												) : null}
-												{mr.coach ? (
-													<Text className='text-text-secondary text-sm mb-2'>
-														Coach {mr.coach.firstName} {mr.coach.lastName}
-													</Text>
-												) : null}
-												{mr.sessionLog?.weight != null ? (
-													<Text className='text-text-secondary text-sm mb-2'>
-														Weight logged:{' '}
-														<Text className='text-text-primary font-semibold'>
-															{mr.sessionLog.weight} kg
-														</Text>
-													</Text>
-												) : null}
-												<View className='flex-row items-center mb-2'>
-													<Text className='text-text-secondary text-sm mr-2'>
-														Your rating:
-													</Text>
-													<View className='flex-row items-center'>
-														{Array.from({ length: 5 }).map((_, index) => (
-															<Ionicons
-																key={index}
-																name={index < (mr.rating || 0) ? 'star' : 'star-outline'}
-																size={16}
-																color='#F9C513'
-															/>
-														))}
-														<Text className='text-text-primary font-semibold ml-2'>
-															{mr.rating}/5
-														</Text>
-													</View>
-												</View>
-												{mr.comment ? (
-													<View className='mt-1'>
-														<Text className='text-text-secondary text-xs mb-1'>
-															Your comment
-														</Text>
-														<Text className='text-text-primary text-sm'>{mr.comment}</Text>
-													</View>
-												) : null}
-											</View>
-										))
-									) : (
+						<ScrollView showsVerticalScrollIndicator={false}>
+							{selectedGoal && (
+								<>
+									{/* Progress Data — same structure as Session Logs details */}
+									<View className='mb-6'>
+										<Text className='text-lg font-semibold text-text-primary mb-3'>
+											Progress Data
+										</Text>
 										<View
-											className='items-center justify-center py-6 bg-bg-darker rounded-xl border border-[#F9C513]'
+											className='bg-bg-darker rounded-xl p-4 border border-[#F9C513]'
 											style={{ borderWidth: 0.5 }}
 										>
-											<Text className='text-text-secondary text-center text-sm px-2'>
-												No coach ratings submitted yet for sessions linked to this goal.
-											</Text>
+											{latestSessionLogForSelectedGoal?.weight != null && (
+												<View className='mb-3'>
+													<Text className='text-text-secondary text-xs mb-1'>Weight</Text>
+													<Text className='text-text-primary font-semibold text-lg'>
+														{latestSessionLogForSelectedGoal.weight} kg
+													</Text>
+												</View>
+											)}
+											{latestSessionLogForSelectedGoal?.completedAt ? (
+												<View className='mb-3'>
+													<Text className='text-text-secondary text-xs mb-1'>
+														Completed At
+													</Text>
+													<Text className='text-text-primary font-semibold'>
+														{new Date(
+															latestSessionLogForSelectedGoal.completedAt
+														).toLocaleString('en-US', {
+															month: 'short',
+															day: 'numeric',
+															year: 'numeric',
+															hour: 'numeric',
+															minute: '2-digit',
+														})}
+													</Text>
+												</View>
+											) : null}
+											{latestSessionLogForSelectedGoal?.notes ? (
+												<View
+													className={
+														formatKgDisplay(selectedGoal.currentWeight) ||
+														formatKgDisplay(selectedGoal.targetWeight)
+															? 'mb-3'
+															: ''
+													}
+												>
+													<Text className='text-text-secondary text-xs mb-1'>Notes</Text>
+													<Text className='text-text-primary'>
+														{latestSessionLogForSelectedGoal.notes}
+													</Text>
+												</View>
+											) : null}
+											{formatKgDisplay(selectedGoal.currentWeight) ||
+											formatKgDisplay(selectedGoal.targetWeight) ? (
+												<View
+													className={
+														latestSessionLogForSelectedGoal?.weight != null ||
+														latestSessionLogForSelectedGoal?.completedAt ||
+														latestSessionLogForSelectedGoal?.notes
+															? 'mt-3 pt-3 border-t border-[#F9C513]/30'
+															: ''
+													}
+												>
+													<Text className='text-text-secondary text-xs mb-2'>
+														Goal reference
+													</Text>
+													{formatKgDisplay(selectedGoal.currentWeight) ? (
+														<Text className='text-text-primary text-sm mb-1'>
+															Starting weight (goal):{' '}
+															<Text className='font-bold text-[#F9C513]'>
+																{formatKgDisplay(selectedGoal.currentWeight)} kg
+															</Text>
+														</Text>
+													) : null}
+													{formatKgDisplay(selectedGoal.targetWeight) ? (
+														<Text className='text-text-primary text-sm mb-1'>
+															Target:{' '}
+															<Text className='font-semibold'>
+																{formatKgDisplay(selectedGoal.targetWeight)} kg
+															</Text>
+														</Text>
+													) : null}
+													{latestSessionLogForSelectedGoal?.weight != null &&
+													selectedGoal.currentWeight != null ? (
+														<Text className='text-text-secondary text-sm mt-2'>
+															vs goal start:{' '}
+															{(() => {
+																const delta =
+																	Math.round(
+																		(Number(latestSessionLogForSelectedGoal.weight) -
+																			Number(selectedGoal.currentWeight)) *
+																			10
+																	) / 10;
+																const sign = delta > 0 ? '+' : '';
+																return (
+																	<Text className='text-[#F9C513] font-semibold'>
+																		{sign}
+																		{delta} kg
+																	</Text>
+																);
+															})()}
+														</Text>
+													) : null}
+												</View>
+											) : !latestSessionLogForSelectedGoal ? (
+												<Text className='text-text-secondary text-sm'>
+													No session completed for this goal yet. Progress entries will
+													appear here after you finish a linked session.
+												</Text>
+											) : null}
 										</View>
-									)}
-								</View>
-							)}
-							
-							{/* Progress Ratings Section */}
-							{selectedGoal?.coachId && (
-								<View className='mt-6'>
-									<Text className='text-xl font-bold text-text-primary mb-4'>
-										Coach rate progress
+									</View>
+
+								<View className='mb-6'>
+									<Text className='text-xl font-bold text-text-primary mb-3'>
+										Session & goal details
 									</Text>
-									{ratingsData?.getProgressRatings &&
-									ratingsData.getProgressRatings.length > 0 ? (
-										ratingsData.getProgressRatings.map((rating: any) => {
+									<View
+										className='bg-bg-darker rounded-xl p-4 border border-[#F9C513]/50'
+										style={{ borderWidth: 0.5 }}
+									>
+										{latestSessionLogForSelectedGoal?.session ? (
+											<View className='mb-4'>
+												<Text className='text-text-secondary text-xs mb-1'>
+													Latest session for this goal
+												</Text>
+												<Text className='text-text-primary font-semibold text-lg'>
+													{latestSessionLogForSelectedGoal.session.name}
+												</Text>
+												{latestSessionLogForSelectedGoal.session.date ? (
+													<Text className='text-text-secondary text-sm mt-1'>
+														{new Date(
+															latestSessionLogForSelectedGoal.session.date
+														).toLocaleDateString('en-US', {
+															month: 'long',
+															day: 'numeric',
+															year: 'numeric',
+														})}
+													</Text>
+												) : null}
+												{latestSessionLogForSelectedGoal.session.startTime &&
+												latestSessionLogForSelectedGoal.session.endTime ? (
+													<Text className='text-text-secondary text-sm mt-1'>
+														{latestSessionLogForSelectedGoal.session.startTime} –{' '}
+														{latestSessionLogForSelectedGoal.session.endTime}
+													</Text>
+												) : null}
+												{latestSessionLogForSelectedGoal.session.gymArea ? (
+													<Text className='text-text-secondary text-sm mt-1'>
+														Area: {latestSessionLogForSelectedGoal.session.gymArea}
+													</Text>
+												) : null}
+												{latestSessionLogForSelectedGoal.session.coach ? (
+													<Text className='text-text-secondary text-sm mt-1'>
+														Session coach:{' '}
+														{latestSessionLogForSelectedGoal.session.coach.firstName}{' '}
+														{latestSessionLogForSelectedGoal.session.coach.lastName}
+													</Text>
+												) : null}
+												{latestSessionLogForSelectedGoal.completedAt ? (
+													<Text className='text-text-secondary text-xs mt-2'>
+														Completed:{' '}
+														{new Date(
+															latestSessionLogForSelectedGoal.completedAt
+														).toLocaleString('en-US', {
+															month: 'short',
+															day: 'numeric',
+															year: 'numeric',
+															hour: 'numeric',
+															minute: '2-digit',
+														})}
+													</Text>
+												) : null}
+												{latestSessionLogForSelectedGoal.weight != null ? (
+													<Text className='text-text-secondary text-sm mt-2'>
+														Weight logged:{' '}
+														<Text className='text-text-primary font-semibold'>
+															{latestSessionLogForSelectedGoal.weight} kg
+														</Text>
+													</Text>
+												) : null}
+											</View>
+										) : (
+											<Text className='text-text-secondary text-sm mb-4'>
+												No sessions logged for this goal yet. Session schedule and weight will
+												show here after you complete a session tied to this goal.
+											</Text>
+										)}
+										<View
+											className={
+												latestSessionLogForSelectedGoal?.session
+													? 'pt-4 border-t border-[#F9C513]/25'
+													: ''
+											}
+										>
+											<Text className='text-text-secondary text-xs mb-2'>Goal summary</Text>
+											<Text className='text-text-primary text-sm mb-1'>
+												Type:{' '}
+												<Text className='font-semibold'>
+													{goalTypeOptions.find((o) => o.value === selectedGoal.goalType)
+														?.label || selectedGoal.goalType}
+												</Text>
+											</Text>
+											{selectedGoal.description ? (
+												<Text className='text-text-primary text-sm mb-2 mt-1'>
+													{selectedGoal.description}
+												</Text>
+											) : null}
+											{formatKgDisplay(selectedGoal.currentWeight) ? (
+												<Text className='text-text-secondary text-sm'>
+													Starting weight:{' '}
+													<Text className='text-text-primary font-semibold'>
+														{formatKgDisplay(selectedGoal.currentWeight)} kg
+													</Text>
+												</Text>
+											) : null}
+											{formatKgDisplay(selectedGoal.targetWeight) ? (
+												<Text className='text-text-secondary text-sm mt-1'>
+													Target weight:{' '}
+													<Text className='text-text-primary font-semibold'>
+														{formatKgDisplay(selectedGoal.targetWeight)} kg
+													</Text>
+												</Text>
+											) : null}
+											{selectedGoal.targetDate ? (
+												<Text className='text-text-secondary text-sm mt-1'>
+													Target date:{' '}
+													<Text className='text-text-primary font-semibold'>
+														{new Date(selectedGoal.targetDate).toLocaleDateString('en-US', {
+															month: 'short',
+															day: 'numeric',
+															year: 'numeric',
+														})}
+													</Text>
+												</Text>
+											) : null}
+											{selectedGoal.coach ? (
+												<Text className='text-text-secondary text-sm mt-2'>
+													Your coach:{' '}
+													<Text className='text-text-primary font-semibold'>
+														{selectedGoal.coach.firstName} {selectedGoal.coach.lastName}
+													</Text>
+												</Text>
+											) : null}
+										</View>
+									</View>
+								</View>
+								</>
+							)}
+
+							{selectedGoal?.coachId && (
+								<View className='mb-6'>
+									<Text className='text-xl font-bold text-text-primary mb-2'>
+										{"Coach's rating & comments"}
+									</Text>
+									<Text className='text-text-secondary text-sm mb-4'>
+										Your coach&apos;s feedback on your progress for this goal (review period,
+										stars, and comment).
+									</Text>
+									{sortedGoalProgressRatings.length > 0 ? (
+										sortedGoalProgressRatings.map((rating: any) => {
 											const startDate = new Date(rating.startDate);
 											const endDate = new Date(rating.endDate);
-											const verdictLabels: Record<string, string> = {
-												PROGRESSIVE: 'Progressive',
-												CLOSE_TO_ACHIEVEMENT: 'Close to Achievement',
-												ACHIEVED: 'Achieved',
-												REGRESSING: 'Regressing',
-											};
-											const verdictColors: Record<string, string> = {
-												PROGRESSIVE: '#10B981', // green
-												CLOSE_TO_ACHIEVEMENT: '#F59E0B', // amber
-												ACHIEVED: '#3B82F6', // blue
-												REGRESSING: '#EF4444', // red
-											};
-
+											const vk = progressVerdictKey(rating.verdict);
 											return (
 												<View
 													key={rating.id}
@@ -1451,13 +1717,11 @@ const MemberProgress = () => {
 															className='px-3 py-1 rounded-full'
 															style={{
 																backgroundColor:
-																	verdictColors[progressVerdictKey(rating.verdict)] ||
-																	'#8E8E93',
+																	PROGRESS_VERDICT_COLORS[vk] || '#8E8E93',
 															}}
 														>
 															<Text className='text-white text-xs font-semibold'>
-																{verdictLabels[progressVerdictKey(rating.verdict)] ||
-																	rating.verdict}
+																{PROGRESS_VERDICT_LABELS[vk] || rating.verdict}
 															</Text>
 														</View>
 													</View>
@@ -1467,7 +1731,7 @@ const MemberProgress = () => {
 															Rating:
 														</Text>
 														<View className='flex-row items-center'>
-															{Array.from({ length: 10 }).map((_, index) => (
+															{Array.from({ length: 5 }).map((_, index) => (
 																<Ionicons
 																	key={index}
 																	name={
@@ -1475,26 +1739,26 @@ const MemberProgress = () => {
 																			? 'star'
 																			: 'star-outline'
 																	}
-																	size={16}
+																	size={18}
 																	color='#F9C513'
 																/>
 															))}
 															<Text className='text-text-primary font-semibold ml-2'>
-																{rating.rating}/10
+																{rating.rating}/5
 															</Text>
 														</View>
 													</View>
 
-													{rating.comment && (
+													{rating.comment ? (
 														<View className='mt-2'>
 															<Text className='text-text-secondary text-xs mb-1'>
-																Comment:
+																Comment from coach:
 															</Text>
 															<Text className='text-text-primary text-sm'>
 																{rating.comment}
 															</Text>
 														</View>
-													)}
+													) : null}
 
 													<Text className='text-text-secondary text-xs mt-2'>
 														Created:{' '}
@@ -1504,7 +1768,10 @@ const MemberProgress = () => {
 											);
 										})
 									) : (
-										<View className='items-center justify-center py-8 bg-bg-darker rounded-xl border border-[#F9C513]' style={{ borderWidth: 0.5 }}>
+										<View
+											className='items-center justify-center py-8 bg-bg-darker rounded-xl border border-[#F9C513]'
+											style={{ borderWidth: 0.5 }}
+										>
 											<Ionicons name='star-outline' size={48} color='#8E8E93' />
 											<Text className='text-text-secondary mt-4 text-center text-base'>
 												No ratings yet
@@ -1693,7 +1960,7 @@ const MemberProgress = () => {
 												{memberCoachRatingForLog.comment ? (
 													<View className='mt-2'>
 														<Text className='text-text-secondary text-xs mb-1'>
-															Your comment
+															Why you rated this way
 														</Text>
 														<Text className='text-text-primary text-sm'>
 															{memberCoachRatingForLog.comment}
@@ -1702,10 +1969,94 @@ const MemberProgress = () => {
 												) : null}
 											</View>
 										) : (
-											<Text className='text-text-secondary text-sm'>
-												No coach rating submitted for this session yet. If you just finished it,
-												submit your feedback from Schedule after completing the session.
-											</Text>
+											<View>
+												<Text className='text-text-secondary text-sm mb-3'>
+													No rating yet. Add one now (one submission only).
+												</Text>
+												<Text className='text-text-primary font-semibold mb-2'>
+													Stars <Text className='text-red-500'>*</Text>
+												</Text>
+												<View className='flex-row justify-center gap-2 mb-2'>
+													{[1, 2, 3, 4, 5].map((star) => (
+														<TouchableOpacity
+															key={star}
+															onPress={() => setPendingCoachRating(star)}
+															className='p-1'
+															accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}
+														>
+															<Ionicons
+																name={star <= pendingCoachRating ? 'star' : 'star-outline'}
+																size={28}
+																color='#F9C513'
+															/>
+														</TouchableOpacity>
+													))}
+												</View>
+												<Text className='text-text-secondary text-center text-xs mb-3'>
+													1 = Lowest, 5 = Highest satisfaction
+												</Text>
+												<Text className='text-text-primary font-semibold mb-2'>
+													Why this rating? <Text className='text-red-500'>*</Text>
+												</Text>
+												<TextInput
+													className={`bg-bg-primary rounded-lg p-3 text-text-primary text-sm border ${
+														pendingCoachCommentError ? 'border-red-500' : 'border-[#F9C513]/50'
+													}`}
+													style={{ borderWidth: 0.5, minHeight: 90, textAlignVertical: 'top' }}
+													placeholder='Tell us why'
+													placeholderTextColor='#8E8E93'
+													value={pendingCoachComment}
+													onChangeText={(t) => {
+														setPendingCoachComment(t);
+														setPendingCoachCommentError('');
+													}}
+													multiline
+													numberOfLines={4}
+												/>
+												<View className='flex-row justify-between items-start mt-1 mb-3'>
+													{pendingCoachCommentError ? (
+														<Text className='text-red-500 text-xs flex-1 mr-2'>
+															{pendingCoachCommentError}
+														</Text>
+													) : (
+														<View className='flex-1 mr-2' />
+													)}
+													<Text
+														className={`text-xs ${
+															pendingCoachComment.trim().length >=
+															MIN_COACH_RATING_COMMENT_LENGTH
+																? 'text-[#34C759]'
+																: 'text-text-secondary'
+														}`}
+													>
+														{pendingCoachComment.trim().length}/
+														{MIN_COACH_RATING_COMMENT_LENGTH}
+													</Text>
+												</View>
+												<TouchableOpacity
+													className='bg-[#F9C513] rounded-lg p-3 items-center'
+													onPress={submitCoachRatingForSelectedLog}
+													disabled={
+														creatingCoachRating ||
+														pendingCoachRating === 0 ||
+														pendingCoachComment.trim().length <
+															MIN_COACH_RATING_COMMENT_LENGTH
+													}
+													style={{
+														opacity:
+															creatingCoachRating ||
+															pendingCoachRating === 0 ||
+															pendingCoachComment.trim().length <
+																MIN_COACH_RATING_COMMENT_LENGTH
+																? 0.5
+																: 1,
+													}}
+												>
+													<Text className='text-black font-semibold'>
+														{creatingCoachRating ? 'Submitting...' : 'Submit feedback'}
+													</Text>
+												</TouchableOpacity>
+											</View>
 										)}
 									</View>
 
@@ -1716,18 +2067,6 @@ const MemberProgress = () => {
 										recapRatingsForLog.map((rating: any) => {
 											const startDate = new Date(rating.startDate);
 											const endDate = new Date(rating.endDate);
-											const vLabels: Record<string, string> = {
-												PROGRESSIVE: 'Progressive',
-												CLOSE_TO_ACHIEVEMENT: 'Close to Achievement',
-												ACHIEVED: 'Achieved',
-												REGRESSING: 'Regressing',
-											};
-											const vColors: Record<string, string> = {
-												PROGRESSIVE: '#10B981',
-												CLOSE_TO_ACHIEVEMENT: '#F59E0B',
-												ACHIEVED: '#3B82F6',
-												REGRESSING: '#EF4444',
-											};
 											const vk = progressVerdictKey(rating.verdict);
 											return (
 												<View
@@ -1736,7 +2075,7 @@ const MemberProgress = () => {
 													style={{ borderWidth: 0.5 }}
 												>
 													<View className='flex-row justify-between items-start mb-2'>
-														<View className='flex-1'>
+														<View className='flex-1 pr-2'>
 															<Text className='text-text-primary font-semibold text-base mb-1'>
 																{startDate.toLocaleDateString()} —{' '}
 																{endDate.toLocaleDateString()}
@@ -1747,19 +2086,28 @@ const MemberProgress = () => {
 																</Text>
 															) : null}
 														</View>
-														<View
-															className='px-3 py-1 rounded-full'
-															style={{ backgroundColor: vColors[vk] || '#8E8E93' }}
-														>
-															<Text className='text-white text-xs font-semibold'>
-																{vLabels[vk] || rating.verdict}
+														<View className='items-end'>
+															<Text className='text-text-secondary text-xs mb-1'>
+																Final verdict
 															</Text>
+															<View
+																className='px-3 py-1 rounded-full'
+																style={{
+																	backgroundColor: PROGRESS_VERDICT_COLORS[vk] || '#8E8E93',
+																}}
+															>
+																<Text className='text-white text-xs font-semibold'>
+																	{PROGRESS_VERDICT_LABELS[vk] || rating.verdict}
+																</Text>
+															</View>
 														</View>
 													</View>
 													<View className='flex-row items-center mb-2'>
-														<Text className='text-text-secondary text-sm mr-2'>Rating:</Text>
+														<Text className='text-text-secondary text-sm mr-2'>
+															Coach rating:
+														</Text>
 														<View className='flex-row items-center'>
-															{Array.from({ length: 10 }).map((_, index) => (
+															{Array.from({ length: 5 }).map((_, index) => (
 																<Ionicons
 																	key={index}
 																	name={
@@ -1770,14 +2118,14 @@ const MemberProgress = () => {
 																/>
 															))}
 															<Text className='text-text-primary font-semibold ml-2'>
-																{rating.rating}/10
+																{rating.rating}/5
 															</Text>
 														</View>
 													</View>
 													{rating.comment ? (
 														<View className='mt-2'>
 															<Text className='text-text-secondary text-xs mb-1'>
-																Coach comment
+																Coach feedback
 															</Text>
 															<Text className='text-text-primary text-sm'>
 																{rating.comment}

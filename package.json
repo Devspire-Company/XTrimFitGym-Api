@@ -17,7 +17,8 @@
     "generate": "graphql-codegen --config codegen.ts",
     "generate:watch": "graphql-codegen --config codegen.ts --watch",
     "generate:schema": "graphql-codegen --config codegen-schema-files.ts",
-    "manual:member": "node scripts/member-manual-gen/generate-member-manual.mjs"
+    "manual:member": "node scripts/member-manual-gen/generate-member-manual.mjs",
+    "docs:flow-docx": "node docs/scripts/generate-developer-flow-docx.mjs"
   },
   "dependencies": {
     "@apollo/client": "^4.0.9",
@@ -78,11 +79,11 @@
     "@graphql-codegen/typescript-operations": "^5.0.5",
     "@graphql-codegen/typescript-react-apollo": "^4.3.3",
     "@types/react": "~19.1.0",
+    "docx": "^9.5.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "expo-module-scripts": "^5.0.7",
     "patch-package": "^8.0.1",
-    "start": "file:./scripts/npx-start-shim",
     "typescript": "~5.9.2"
   },
   "expo": {

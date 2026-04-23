@@ -49,13 +49,12 @@ const CoachClients = () => {
 	>(GET_USERS_QUERY, {
 		variables: { role: 'member' },
 		fetchPolicy: 'cache-and-network',
-		pollInterval: 10000, // Poll every 10 seconds (less aggressive to prevent glitching)
-		notifyOnNetworkStatusChange: false, // Disable to reduce re-renders
+		pollInterval: 10000,
+		notifyOnNetworkStatusChange: false,
 	});
 
-	// Lazy query to refetch current user to ensure we have latest data
 	const [refetchCurrentUser] = useLazyQuery(GET_USER_QUERY, {
-		fetchPolicy: 'network-only', // Always fetch fresh data
+		fetchPolicy: 'network-only',
 	});
 
 	// Handle pull-to-refresh
@@ -68,30 +67,25 @@ const CoachClients = () => {
 		}
 	};
 
-	// Filter clients to only show coach's current clients
 	const allClients = useMemo(() => {
 		if (!clientsData?.getUsers) {
 			return [];
 		}
-		// Get coach's client IDs from coachDetails
 		const coachClientIds = user?.coachDetails?.clientsIds || [];
 		if (!coachClientIds || coachClientIds.length === 0) {
 			return [];
 		}
-		
-		// Normalize coach client IDs to strings for comparison (handle null values)
+
 		const normalizedCoachClientIds = coachClientIds
 			.filter((id: any) => id != null)
 			.map((id: any) => String(id));
-		
+
 		if (normalizedCoachClientIds.length === 0) {
 			return [];
 		}
-		
-		// Filter to only show clients that are in the coach's clientsIds array
+
 		return clientsData.getUsers.filter((client: any) => {
 			if (!client || !client.id) return false;
-			// Normalize client ID to string and check if it's in the coach's clientsIds array
 			const normalizedClientId = String(client.id);
 			return normalizedCoachClientIds.includes(normalizedClientId);
 		});
@@ -111,7 +105,6 @@ const CoachClients = () => {
 
 	const [removeClientMutation] = useMutation(REMOVE_CLIENT_MUTATION, {
 		onCompleted: async () => {
-			// Refetch clients and user data
 			try {
 				await Promise.all([
 					refetchClients(),

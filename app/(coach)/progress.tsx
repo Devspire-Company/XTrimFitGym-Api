@@ -12,6 +12,7 @@ import {
 import { CREATE_PROGRESS_RATING_MUTATION } from '@/graphql/mutations';
 import {
 	GET_ALL_CLIENT_GOALS_QUERY,
+	GET_PROGRESS_RATINGS_QUERY,
 	GET_SESSION_LOGS_FOR_RATING_QUERY,
 	GET_USERS_QUERY,
 } from '@/graphql/queries';
@@ -34,6 +35,14 @@ import {
 
 const { width } = Dimensions.get('window');
 
+function formatKgDisplay(value: number | null | undefined): string | null {
+	if (value == null) return null;
+	const n = Number(value);
+	if (Number.isNaN(n)) return null;
+	const rounded = Math.round(n * 10) / 10;
+	return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 const verdictOptions = [
 	{ label: 'Progressive', value: 'progressive' },
 	{ label: 'Close to Achievement', value: 'close_to_achievement' },
@@ -50,12 +59,13 @@ const CoachProgress = () => {
 	const [showRatingModal, setShowRatingModal] = useState(false);
 	const [startDate, setStartDate] = useState<Date | undefined>();
 	const [endDate, setEndDate] = useState<Date | undefined>();
-	const [rating, setRating] = useState('');
+	const [rating, setRating] = useState(0);
 	const [comment, setComment] = useState('');
 	const [verdict, setVerdict] = useState('');
 	const [selectedSessionLogs, setSelectedSessionLogs] = useState<string[]>([]);
 	const [showImageModal, setShowImageModal] = useState(false);
 	const [selectedImages, setSelectedImages] = useState<any>(null);
+	const [lockedExistingRating, setLockedExistingRating] = useState<any>(null);
 	const [showRatingSuccess, setShowRatingSuccess] = useState(false);
 	const [alertModal, setAlertModal] = useState<{
 		visible: boolean;
@@ -81,7 +91,7 @@ const CoachProgress = () => {
 		}
 	);
 
-	const { data: sessionLogsData } = useQuery(
+	const { data: sessionLogsData, loading: loadingSessionLogsForRating } = useQuery(
 		GET_SESSION_LOGS_FOR_RATING_QUERY,
 		{
 			variables: {
@@ -100,6 +110,22 @@ const CoachProgress = () => {
 		}
 	);
 
+	const {
+		data: progressRatingsData,
+		refetch: refetchProgressRatings,
+		loading: loadingProgressRatings,
+	} = useQuery(
+		GET_PROGRESS_RATINGS_QUERY,
+		{
+			variables: {
+				clientId: selectedClient?.id || '',
+				goalId: selectedGoal?.id || '',
+			},
+			skip: !selectedClient?.id || !selectedGoal?.id || !showRatingModal,
+			fetchPolicy: 'network-only',
+		}
+	);
+
 	const [createRating, { loading: creatingRating }] = useMutation(
 		CREATE_PROGRESS_RATING_MUTATION,
 		{
@@ -107,7 +133,20 @@ const CoachProgress = () => {
 				setShowRatingSuccess(true);
 				closeRatingModal();
 			},
-			onError: (error) => {
+			onError: async (error) => {
+				const msg = error.message || '';
+				if (msg.toLowerCase().includes('overlapping date range')) {
+					setLockedExistingRating({ id: `locked-${selectedGoal?.id || 'rating'}` });
+					await refetchProgressRatings();
+					setAlertModal({
+						visible: true,
+						title: 'Existing rating found',
+						message:
+							'A rating already exists in this date range. It is now view-only.',
+						variant: 'warning',
+					});
+					return;
+				}
 				setAlertModal({ visible: true, title: 'Error', message: error.message, variant: 'danger' });
 			},
 		}
@@ -118,7 +157,6 @@ const CoachProgress = () => {
 		refetchGoals();
 	}, [refetchClients, refetchGoals]);
 
-	// Default date range to last 30 days when opening the rating modal
 	useEffect(() => {
 		if (showRatingModal) {
 			const today = new Date();
@@ -148,7 +186,6 @@ const CoachProgress = () => {
 		);
 	}, [clientsData, user]);
 
-	// Get goals for selected client where coach is assigned
 	const clientGoals = useMemo(() => {
 		if (!selectedClient || !(goalsData as any)?.getAllClientGoals) {
 			return [];
@@ -160,15 +197,35 @@ const CoachProgress = () => {
 	}, [selectedClient, goalsData, user]);
 
 	const sessionLogs = (sessionLogsData as any)?.getSessionLogsForRating || [];
+	const allProgressRatings = (progressRatingsData as any)?.getProgressRatings || [];
+
+	const existingOverlappingRating = useMemo(() => {
+		if (!startDate || !endDate) return null;
+		const startMs = startDate.getTime();
+		const endMs = endDate.getTime();
+		const overlaps = allProgressRatings
+			.filter((r: any) => {
+				const rs = new Date(r.startDate).getTime();
+				const re = new Date(r.endDate).getTime();
+				if (!Number.isFinite(rs) || !Number.isFinite(re)) return false;
+				return startMs <= re && endMs >= rs;
+			})
+			.sort((a: any, b: any) => {
+				const ams = new Date(a.updatedAt || a.createdAt || 0).getTime();
+				const bms = new Date(b.updatedAt || b.createdAt || 0).getTime();
+				return bms - ams;
+			});
+		return overlaps[0] || null;
+	}, [allProgressRatings, endDate, startDate]);
 
 	const resetRatingForm = () => {
 		setStartDate(undefined);
 		setEndDate(undefined);
-		setRating('');
+		setRating(0);
 		setComment('');
 		setVerdict('');
 		setSelectedSessionLogs([]);
-		// Don't clear selectedGoal here - it's needed for the rating form
+		setLockedExistingRating(null);
 	};
 
 	const closeRatingModal = () => {
@@ -180,7 +237,6 @@ const CoachProgress = () => {
 	const handleStartRating = (goal: any) => {
 		// Reset form fields first
 		resetRatingForm();
-		// Then set the goal and open the modal
 		setSelectedGoal(goal);
 		setShowClientGoals(false);
 		setShowRatingModal(true);
@@ -211,8 +267,8 @@ const CoachProgress = () => {
 			return;
 		}
 
-		if (!rating || parseInt(rating) < 1 || parseInt(rating) > 10) {
-			showAlert('Error', 'Please enter a valid rating between 1 and 10');
+		if (rating < 1 || rating > 5) {
+			showAlert('Error', 'Please choose a valid rating between 1 and 5');
 			return;
 		}
 
@@ -226,7 +282,38 @@ const CoachProgress = () => {
 			return;
 		}
 
-		// Session logs are optional - can be empty array
+		if (isExistingRatingViewOnly) {
+			showAlert(
+				'Already rated',
+				'A progress rating already exists for this range. It is view-only.',
+				'warning'
+			);
+			return;
+		}
+
+		if (loadingSessionLogsForRating) {
+			showAlert('Please wait', 'Loading completed sessions for this range…');
+			return;
+		}
+
+		if (sessionLogs.length === 0) {
+			showAlert(
+				'No completed sessions',
+				'There are no completed sessions with this member for this goal in this date range. Finish at least one session together, then rate progress.',
+				'warning'
+			);
+			return;
+		}
+
+		if (selectedSessionLogs.length === 0) {
+			showAlert(
+				'Session required',
+				'Select at least one completed session log. Ratings must be tied to real sessions you completed with this member.',
+				'warning'
+			);
+			return;
+		}
+
 		createRating({
 			variables: {
 				input: {
@@ -234,15 +321,35 @@ const CoachProgress = () => {
 					goalId: selectedGoal.id,
 					startDate: startDate.toISOString(),
 					endDate: endDate.toISOString(),
-					rating: parseInt(rating),
+					rating,
 					comment: comment.trim(),
 					verdict: verdict,
-					sessionLogIds:
-						selectedSessionLogs.length > 0 ? selectedSessionLogs : [],
+					sessionLogIds: selectedSessionLogs,
 				},
 			},
 		});
 	};
+
+	useEffect(() => {
+		if (!showRatingModal || !existingOverlappingRating) return;
+		const existingRatingValue = Number(existingOverlappingRating.rating) || 0;
+		setRating(Math.min(5, Math.max(0, existingRatingValue)));
+		setComment(existingOverlappingRating.comment || '');
+		setVerdict(existingOverlappingRating.verdict || '');
+		setSelectedSessionLogs(existingOverlappingRating.sessionLogIds || []);
+	}, [showRatingModal, existingOverlappingRating?.id]);
+
+	const effectiveExistingRating = existingOverlappingRating || lockedExistingRating;
+	const isExistingRatingViewOnly = Boolean(effectiveExistingRating?.id);
+
+	/** Rating / comment / verdict only apply when there are sessions (or we're showing a saved rating). */
+	const showRatingVerdictSections =
+		sessionLogs.length > 0 || isExistingRatingViewOnly;
+
+	const verdictLabel = useMemo(() => {
+		const hit = verdictOptions.find((v) => v.value === verdict);
+		return hit?.label || verdict || '—';
+	}, [verdict]);
 
 	const toggleSessionLogSelection = (logId: string) => {
 		setSelectedSessionLogs((prev) => {
@@ -449,6 +556,54 @@ const CoachProgress = () => {
 								</TouchableOpacity>
 							</View>
 
+							{selectedGoal ? (
+								<View
+									className='mb-6 rounded-lg border border-[#F9C513]/40 bg-bg-darker p-4'
+									style={{ borderWidth: 0.5 }}
+								>
+									<Text className='text-text-primary font-semibold mb-1'>Goal reference</Text>
+									<Text className='text-text-secondary text-xs mb-3'>
+										What your client sees on their session recap for this goal — use it to
+										contextualize your rating.
+									</Text>
+									{selectedGoal.title ? (
+										<Text className='text-text-secondary text-sm mb-2'>
+											Goal:{' '}
+											<Text className='text-text-primary font-medium'>{selectedGoal.title}</Text>
+											{selectedGoal.goalType ? (
+												<Text className='text-text-secondary'>
+													{' '}
+													· {selectedGoal.goalType}
+												</Text>
+											) : null}
+										</Text>
+									) : null}
+									{formatKgDisplay(selectedGoal.currentWeight) ? (
+										<Text className='text-text-primary text-sm mb-1'>
+											Starting weight (goal):{' '}
+											<Text className='font-bold text-[#F9C513]'>
+												{formatKgDisplay(selectedGoal.currentWeight)} kg
+											</Text>
+										</Text>
+									) : null}
+									{formatKgDisplay(selectedGoal.targetWeight) ? (
+										<Text className='text-text-primary text-sm mb-1'>
+											Target:{' '}
+											<Text className='font-semibold text-text-primary'>
+												{formatKgDisplay(selectedGoal.targetWeight)} kg
+											</Text>
+										</Text>
+									) : null}
+									{!formatKgDisplay(selectedGoal.currentWeight) &&
+									!formatKgDisplay(selectedGoal.targetWeight) ? (
+										<Text className='text-text-secondary text-sm'>
+											No weight baseline is set on this goal yet. Non-weight goals may only show
+											the title above.
+										</Text>
+									) : null}
+								</View>
+							) : null}
+
 							{/* Date Range Summary (fixed, not editable) */}
 							<View className='mb-6'>
 								<Text className='text-text-primary font-semibold mb-1'>
@@ -499,18 +654,52 @@ const CoachProgress = () => {
 								</View>
 							</View>
 
+							{isExistingRatingViewOnly ? (
+								<View
+									className='mb-6 rounded-lg border border-[#F9C513]/40 bg-bg-darker p-3'
+									style={{ borderWidth: 0.5 }}
+								>
+									<Text className='text-[#F9C513] text-xs'>
+										This date range already has a saved progress rating. You can view it
+										here, but you cannot edit or submit again.
+									</Text>
+								</View>
+							) : null}
+
+							{!isExistingRatingViewOnly && loadingSessionLogsForRating ? (
+								<View className='mb-6'>
+									<Text className='text-text-secondary text-sm'>
+										Loading completed sessions in this date range…
+									</Text>
+								</View>
+							) : null}
+
+							{!isExistingRatingViewOnly &&
+							!loadingSessionLogsForRating &&
+							sessionLogs.length === 0 ? (
+								<View
+									className='mb-6 rounded-lg border border-[#F9C513]/40 bg-bg-darker p-3'
+									style={{ borderWidth: 0.5 }}
+								>
+									<Text className='text-text-secondary text-sm'>
+										No completed sessions appear in this range for this goal. You can only
+										submit a rating after at least one session with this member is completed.
+									</Text>
+								</View>
+							) : null}
+
 							{/* Session Logs with Images */}
 							{sessionLogs.length > 0 && (
 								<View className='mb-6'>
 									<Text className='text-text-primary font-semibold mb-3'>
-										Session Logs ({sessionLogs.length}){' '}
-										<Text className='text-text-secondary text-xs font-normal'>
-											(Optional)
-										</Text>
+										Session logs ({sessionLogs.length}){' '}
+										{!isExistingRatingViewOnly ? (
+											<Text className='text-red-500 text-xs font-normal'>*</Text>
+										) : null}
 									</Text>
 									<Text className='text-text-secondary text-sm mb-3'>
-										Optionally select session logs to include in this rating.
-										Review the progress images to make your assessment.
+										Select one or more completed sessions this rating is based on. Review
+										progress images if available.
 									</Text>
 									<FlatList
 										data={sessionLogs}
@@ -519,80 +708,91 @@ const CoachProgress = () => {
 										renderItem={({ item }) => {
 											const isSelected = selectedSessionLogs.includes(item.id);
 											return (
-												<TouchableOpacity
-													onPress={() => toggleSessionLogSelection(item.id)}
+												<View
 													className={`bg-bg-darker rounded-xl p-4 mb-3 border ${
 														isSelected ? 'border-[#F9C513]' : 'border-[#2C2C2E]'
 													}`}
 													style={{ borderWidth: 0.5 }}
 												>
-													<View className='flex-row items-start justify-between mb-2'>
-														<View className='flex-1 mr-2'>
-															<Text className='text-text-primary font-semibold mb-1'>
-																{item.session?.name || 'Session'}
-															</Text>
-															<View className='flex-row items-center mb-1'>
-																<Ionicons
-																	name='calendar-outline'
-																	size={12}
-																	color='#8E8E93'
-																/>
-																<Text className='text-text-secondary text-xs ml-1'>
-																	{formatDate(
-																		item.completedAt || item.session?.date
-																	)}
+													<TouchableOpacity
+														activeOpacity={isExistingRatingViewOnly ? 1 : 0.7}
+														onPress={() => {
+															if (!isExistingRatingViewOnly) {
+																toggleSessionLogSelection(item.id);
+															}
+														}}
+													>
+														<View className='flex-row items-start justify-between mb-2'>
+															<View className='flex-1 mr-2'>
+																<Text className='text-text-primary font-semibold mb-1'>
+																	{item.session?.name || 'Session'}
 																</Text>
-															</View>
-															{item.session?.startTime && (
 																<View className='flex-row items-center mb-1'>
 																	<Ionicons
-																		name='time-outline'
+																		name='calendar-outline'
 																		size={12}
 																		color='#8E8E93'
 																	/>
 																	<Text className='text-text-secondary text-xs ml-1'>
-																		{formatTimeTo12Hour(item.session.startTime)}
-																		{item.session?.endTime &&
-																			` - ${formatTimeTo12Hour(item.session.endTime)}`}
+																		{formatDate(
+																			item.completedAt || item.session?.date
+																		)}
 																	</Text>
 																</View>
-															)}
-															{item.session?.gymArea && (
-																<View className='flex-row items-center'>
+																{item.session?.startTime && (
+																	<View className='flex-row items-center mb-1'>
+																		<Ionicons
+																			name='time-outline'
+																			size={12}
+																			color='#8E8E93'
+																		/>
+																		<Text className='text-text-secondary text-xs ml-1'>
+																			{formatTimeTo12Hour(item.session.startTime)}
+																			{item.session?.endTime &&
+																				` - ${formatTimeTo12Hour(item.session.endTime)}`}
+																		</Text>
+																	</View>
+																)}
+																{item.session?.gymArea && (
+																	<View className='flex-row items-center'>
+																		<Ionicons
+																			name='location-outline'
+																			size={12}
+																			color='#8E8E93'
+																		/>
+																		<Text className='text-text-secondary text-xs ml-1'>
+																			{item.session.gymArea}
+																		</Text>
+																	</View>
+																)}
+															</View>
+															<View
+																className={`w-6 h-6 rounded-full border-2 items-center justify-center flex-shrink-0 ${
+																	isSelected
+																		? 'bg-[#F9C513] border-[#F9C513]'
+																		: 'border-[#8E8E93]'
+																}`}
+															>
+																{isSelected && (
 																	<Ionicons
-																		name='location-outline'
-																		size={12}
-																		color='#8E8E93'
+																		name='checkmark'
+																		size={16}
+																		color='#1C1C1E'
 																	/>
-																	<Text className='text-text-secondary text-xs ml-1'>
-																		{item.session.gymArea}
-																	</Text>
-																</View>
-															)}
+																)}
+															</View>
 														</View>
-														<View
-															className={`w-6 h-6 rounded-full border-2 items-center justify-center flex-shrink-0 ${
-																isSelected
-																	? 'bg-[#F9C513] border-[#F9C513]'
-																	: 'border-[#8E8E93]'
-															}`}
-														>
-															{isSelected && (
-																<Ionicons
-																	name='checkmark'
-																	size={16}
-																	color='#1C1C1E'
-																/>
-															)}
-														</View>
-													</View>
-													{item.progressImages && (
+													</TouchableOpacity>
+													{item.progressImages ? (
 														<TouchableOpacity
 															onPress={() => {
 																setSelectedImages(item.progressImages);
 																setShowImageModal(true);
 															}}
 															className='flex-row items-center mt-2'
+															hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+															accessibilityRole='button'
+															accessibilityLabel='View progress photos'
 														>
 															<Ionicons
 																name='images'
@@ -603,76 +803,134 @@ const CoachProgress = () => {
 																View Progress Photos
 															</Text>
 														</TouchableOpacity>
-													)}
-												</TouchableOpacity>
+													) : null}
+												</View>
 											);
 										}}
 									/>
 								</View>
 							)}
 
-							{/* Rating Input */}
-							<View className='mb-6'>
-								<Text className='text-text-primary font-semibold mb-2'>
-									Rating (1-10) <Text className='text-red-500'>*</Text>
-								</Text>
-								<TextInput
-									className='bg-bg-darker rounded-lg px-4 py-3 text-text-primary text-lg border border-[#F9C513]'
-									style={{ borderWidth: 0.5, paddingRight: 14 }}
-									placeholder='Enter rating (1-10)'
-									placeholderTextColor='#8E8E93'
-									value={rating}
-									onChangeText={setRating}
-									keyboardType='number-pad'
-								/>
-							</View>
+							{showRatingVerdictSections ? (
+								<>
+									{/* Rating Input */}
+									<View className='mb-6'>
+										<Text className='text-text-primary font-semibold mb-2'>
+											Rating (1-5) <Text className='text-red-500'>*</Text>
+										</Text>
+										<Text className='text-text-secondary text-sm mb-3'>
+											Tap stars to rate progress.
+										</Text>
+										<View className='flex-row flex-wrap justify-center mb-2'>
+											{Array.from({ length: 5 }).map((_, index) => {
+												const star = index + 1;
+												return (
+													<TouchableOpacity
+														key={star}
+														onPress={() => {
+															if (!isExistingRatingViewOnly) {
+																setRating(star);
+															}
+														}}
+														className='p-1'
+														accessibilityLabel={`${star} out of 5`}
+														disabled={isExistingRatingViewOnly}
+													>
+														<Ionicons
+															name={star <= rating ? 'star' : 'star-outline'}
+															size={30}
+															color='#F9C513'
+														/>
+													</TouchableOpacity>
+												);
+											})}
+										</View>
+										<Text className='text-text-secondary text-center text-xs'>
+											1 = Lowest, 5 = Highest progress
+										</Text>
+										{rating > 0 ? (
+											<Text className='text-text-primary text-center mt-2 font-semibold'>
+												{rating} out of 5
+											</Text>
+										) : null}
+									</View>
 
-							{/* Comment Input */}
-							<View className='mb-6'>
-								<Text className='text-text-primary font-semibold mb-2'>
-									Comment <Text className='text-red-500'>*</Text>
-								</Text>
-								<TextInput
-									className='bg-bg-darker rounded-lg px-4 py-3 text-text-primary border border-[#F9C513]'
-									style={{
-										borderWidth: 0.5,
-										minHeight: 100,
-										textAlignVertical: 'top',
-										paddingRight: 14,
-									}}
-									placeholder='Enter your assessment and feedback...'
-									placeholderTextColor='#8E8E93'
-									value={comment}
-									onChangeText={setComment}
-									multiline
-									numberOfLines={4}
-								/>
-							</View>
+									{/* Comment Input */}
+									<View className='mb-6'>
+										<Text className='text-text-primary font-semibold mb-2'>
+											Comment <Text className='text-red-500'>*</Text>
+										</Text>
+										<TextInput
+											className='bg-bg-darker rounded-lg px-4 py-3 text-text-primary border border-[#F9C513]'
+											style={{
+												borderWidth: 0.5,
+												minHeight: 100,
+												textAlignVertical: 'top',
+												paddingRight: 14,
+											}}
+											placeholder='Enter your assessment and feedback...'
+											placeholderTextColor='#8E8E93'
+											value={comment}
+											onChangeText={setComment}
+											editable={!isExistingRatingViewOnly}
+											selectTextOnFocus={!isExistingRatingViewOnly}
+											multiline
+											numberOfLines={4}
+										/>
+									</View>
 
-							{/* Verdict Selection */}
-							<View className='mb-6'>
-								<Text className='text-text-primary font-semibold mb-2'>
-									Final Verdict <Text className='text-red-500'>*</Text>
-								</Text>
-								<Select
-									options={verdictOptions}
-									value={verdict}
-									onChange={setVerdict}
-									placeholder='Select verdict'
-								/>
-							</View>
+									{/* Verdict Selection */}
+									<View className='mb-6'>
+										<Text className='text-text-primary font-semibold mb-2'>
+											Final Verdict <Text className='text-red-500'>*</Text>
+										</Text>
+										{isExistingRatingViewOnly ? (
+											<View
+												className='bg-bg-darker rounded-lg px-4 py-3 border border-[#F9C513]/40'
+												style={{
+													borderWidth: 0.5,
+													minHeight: 48,
+													justifyContent: 'center',
+												}}
+											>
+												<Text className='text-text-primary'>{verdictLabel}</Text>
+											</View>
+										) : (
+											<Select
+												options={verdictOptions}
+												value={verdict}
+												onChange={(v) => {
+													if (!isExistingRatingViewOnly) {
+														setVerdict(v);
+													}
+												}}
+												placeholder='Select verdict'
+											/>
+										)}
+									</View>
+								</>
+							) : null}
 
-							{/* Submit Button */}
-							<GradientButton
-								onPress={handleSubmitRating}
-								loading={creatingRating}
-								disabled={creatingRating}
-								className='mt-4'
-							>
-								{creatingRating
-									? 'Creating Rating...'
-									: 'Create Progress Rating'}
-							</GradientButton>
+							{/* Submit: no sessions in range → no create button (rating UI is hidden too). */}
+							{isExistingRatingViewOnly ? (
+								<GradientButton onPress={closeRatingModal} className='mt-4'>
+									Done
+								</GradientButton>
+							) : sessionLogs.length > 0 ? (
+								<GradientButton
+									onPress={handleSubmitRating}
+									loading={creatingRating || loadingProgressRatings}
+									disabled={
+										creatingRating ||
+										loadingProgressRatings ||
+										loadingSessionLogsForRating ||
+										selectedSessionLogs.length === 0
+									}
+									className='mt-4'
+								>
+									{creatingRating ? 'Creating Rating...' : 'Create Progress Rating'}
+								</GradientButton>
+							) : null}
 						</ScrollView>
 					</View>
 				</View>

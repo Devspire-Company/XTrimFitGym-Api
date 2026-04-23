@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -11,7 +11,7 @@ export type CoachScheduleCalendarProps = {
 	/** Days with at least one door / biometric check-in record (green check). */
 	attendanceDays: Set<string>;
 	onDayPress: (dateString: string) => void;
-	/** When false (e.g. “Upcoming” list), only dots/today ring show — no gold fill for selected. */
+	/** When false (e.g. “Upcoming” list), only dots/today ring show — no gold ring for selected. */
 	highlightSelected: boolean;
 };
 
@@ -115,33 +115,41 @@ export function CoachScheduleCalendar({
 						const isToday = key === todayKey;
 						const hasSession = sessionDays.has(key);
 						const hasAttendance = attendanceDays.has(key);
+						const showMarkers = hasSession || hasAttendance;
 						return (
 							<TouchableOpacity
 								key={key}
-								style={[
-									styles.dayCell,
-									isSel && styles.daySel,
-									isToday && !isSel && styles.dayToday,
-								]}
+								style={styles.dayCell}
 								onPress={() => onDayPress(key)}
-								activeOpacity={0.7}
+								activeOpacity={0.65}
 							>
-								<Text style={[styles.dayNum, isSel && styles.dayNumSel]}>{day}</Text>
-								<View style={styles.markersRow}>
-									{hasSession ? (
-										<View style={[styles.dot, isSel && styles.dotOnSelected]} />
-									) : (
-										<View style={styles.markerSlot} />
-									)}
-									{hasAttendance ? (
-										<Ionicons
-											name='checkmark-circle'
-											size={12}
-											color={isSel ? '#166534' : '#34C759'}
-										/>
-									) : (
-										<View style={styles.markerSlot} />
-									)}
+								<View style={styles.dayCellInner}>
+									<View
+										style={[
+											styles.dayInner,
+											isToday && !isSel && styles.dayInnerToday,
+											isSel && styles.dayInnerSelected,
+										]}
+									>
+										<Text
+											style={[styles.dayNum, isSel && styles.dayNumSel]}
+											{...(Platform.OS === 'android'
+												? { includeFontPadding: false }
+												: {})}
+										>
+											{day}
+										</Text>
+									</View>
+									{showMarkers ? (
+										<View style={styles.markersRow}>
+											{hasSession ? (
+												<View style={[styles.dot, isSel && styles.dotOnSelected]} />
+											) : null}
+											{hasAttendance ? (
+												<Ionicons name='checkmark-circle' size={11} color='#34C759' />
+											) : null}
+										</View>
+									) : null}
 								</View>
 							</TouchableOpacity>
 						);
@@ -152,72 +160,108 @@ export function CoachScheduleCalendar({
 	);
 }
 
+/** Same ring weight for every day; inner cell is a perfect square (number only). */
+const DAY_RING = 2;
+const DAY_SIZE = 44;
+
 const styles = StyleSheet.create({
 	wrap: {
-		paddingVertical: 8,
-		paddingHorizontal: 4,
+		paddingVertical: 10,
+		paddingHorizontal: 6,
 		backgroundColor: '#1C1C1E',
 	},
 	header: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
-		marginBottom: 10,
-		paddingHorizontal: 4,
+		marginBottom: 12,
+		paddingHorizontal: 2,
 	},
 	monthTitle: {
-		color: '#F5F5F5',
-		fontSize: 16,
+		color: '#F9FAFB',
+		fontSize: 17,
 		fontWeight: '700',
+		letterSpacing: 0.2,
 	},
 	weekRow: {
 		flexDirection: 'row',
-		marginBottom: 6,
+		marginBottom: 8,
 	},
 	weekLabel: {
 		flex: 1,
 		textAlign: 'center',
-		color: '#F9C513',
+		color: 'rgba(249, 197, 19, 0.88)',
 		fontSize: 11,
-		fontWeight: '600',
+		fontWeight: '700',
+		letterSpacing: 0.3,
 	},
 	week: {
 		flexDirection: 'row',
 	},
 	dayCell: {
 		flex: 1,
-		minHeight: 40,
+		minHeight: DAY_SIZE + 18,
 		alignItems: 'center',
 		justifyContent: 'center',
-		borderRadius: 8,
-		paddingVertical: 4,
+		paddingVertical: 2,
 	},
-	daySel: {
-		backgroundColor: '#F9C513',
+	dayCellInner: {
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
-	dayToday: {
-		borderWidth: 1,
+	/** Rounded square: date only — no markers inside (avoids empty “blocks” under the number). */
+	dayInner: {
+		width: DAY_SIZE,
+		height: DAY_SIZE,
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderRadius: 12,
+		borderWidth: DAY_RING,
+		borderColor: 'transparent',
+		backgroundColor: 'transparent',
+	},
+	dayInnerToday: {
+		borderWidth: DAY_RING,
+		borderColor: 'rgba(249, 197, 19, 0.55)',
+		backgroundColor: 'rgba(255, 255, 255, 0.04)',
+	},
+	dayInnerSelected: {
+		borderWidth: DAY_RING,
 		borderColor: '#F9C513',
+		backgroundColor: 'rgba(249, 197, 19, 0.14)',
+		...Platform.select({
+			ios: {
+				shadowColor: '#F9C513',
+				shadowOffset: { width: 0, height: 0 },
+				shadowOpacity: 0.22,
+				shadowRadius: 6,
+			},
+			android: {
+				// Avoid elevation: it layers the View and often draws a dark slab behind Text.
+				elevation: 0,
+			},
+		}),
 	},
 	dayNum: {
 		color: '#E5E7EB',
-		fontSize: 14,
-		fontWeight: '500',
+		fontSize: 15,
+		fontWeight: '600',
+		backgroundColor: 'transparent',
+		textAlign: 'center',
+		overflow: 'hidden',
 	},
 	dayNumSel: {
-		color: '#111827',
+		color: '#FEFCE8',
 		fontWeight: '700',
+		backgroundColor: 'transparent',
 	},
+	/** Below the square, only when session or check-in exists for that day. */
 	markersRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'center',
 		gap: 3,
-		marginTop: 2,
-		minHeight: 14,
-	},
-	markerSlot: {
-		width: 12,
+		marginTop: 4,
 		height: 12,
 	},
 	dot: {
@@ -227,6 +271,6 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F9C513',
 	},
 	dotOnSelected: {
-		backgroundColor: '#92400E',
+		backgroundColor: '#A16207',
 	},
 });

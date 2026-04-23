@@ -51,8 +51,6 @@ function ClerkDevPairingLogger({ publishableKey }: { publishableKey: string }) {
 	return null;
 }
 
-// Explicitly provide SafeAreaProvider so NativeWind can properly detect and hijack it
-// This fixes the "Cannot read property 'displayName' of undefined" error
 export default function RootLayout() {
 	if (!clerkPublishableKey?.trim()) {
 		return (

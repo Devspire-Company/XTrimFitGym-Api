@@ -1,8 +1,10 @@
 import { PremiumLoadingContent } from '@/components/AuthProcessingScreen';
 import TabHeader from '@/components/TabHeader';
+import type { GetEquipmentsQuery } from '@/graphql/generated/types';
 import { GET_EQUIPMENTS_QUERY } from '@/graphql/queries';
 import { useQuery } from '@apollo/client/react';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useState } from 'react';
 import {
 	Dimensions,
@@ -28,6 +30,10 @@ export type EquipmentRow = {
 	notes?: string | null;
 	sortOrder: number;
 	status: EquipmentStatusValue;
+	quantity: number;
+	maintenanceStartedAt?: string | null;
+	isArchived?: boolean | null;
+	archivedAt?: string | null;
 	createdAt?: string | null;
 	updatedAt?: string | null;
 };
@@ -51,6 +57,15 @@ function statusLabel(s: EquipmentStatusValue): string {
 	}
 }
 
+function statusLabelCompact(s: EquipmentStatusValue): string {
+	switch (s) {
+		case 'UNDERMAINTENANCE':
+			return 'Maintenance';
+		default:
+			return statusLabel(s);
+	}
+}
+
 function statusColor(s: EquipmentStatusValue): string {
 	switch (s) {
 		case 'DAMAGED':
@@ -69,11 +84,50 @@ function normalizeStatus(raw: unknown): EquipmentStatusValue {
 	return 'AVAILABLE';
 }
 
+function formatDate(value: string | null | undefined): string {
+	if (!value) return 'N/A';
+	const parsed = new Date(value);
+	if (!Number.isFinite(parsed.getTime())) return 'N/A';
+	return parsed.toLocaleDateString('en-PH', {
+		timeZone: 'Asia/Manila',
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+	});
+}
+
+function isArchivedEquipmentRow(row: Partial<EquipmentRow> & Record<string, unknown>): boolean {
+	const flag = row.isArchived ?? row.archived ?? row.is_archive;
+	if (typeof flag === 'boolean' && flag) return true;
+	const archivedAt = row.archivedAt ?? row.archived_at;
+	if (typeof archivedAt === 'string' && archivedAt.trim()) return true;
+	if (typeof row.notes === 'string' && row.notes.trim()) {
+		const rawNotes = row.notes.trim().toLowerCase();
+		let decodedNotes = rawNotes;
+		try {
+			decodedNotes = decodeURIComponent(rawNotes);
+		} catch {
+			// Keep raw notes if decoding fails.
+		}
+		return (
+			rawNotes.includes('__archived__') ||
+			decodedNotes.includes('__archived__') ||
+			rawNotes.includes('_archived_|') ||
+			decodedNotes.includes('_archived_|') ||
+			rawNotes.includes('archived|') ||
+			decodedNotes.includes('archived|') ||
+			rawNotes.includes('archived:') ||
+			decodedNotes.includes('archived:')
+		);
+	}
+	return false;
+}
+
 type Props = { showTabHeader?: boolean };
 
 export function EquipmentBrowse({ showTabHeader = true }: Props) {
 	const [refreshing, setRefreshing] = useState(false);
-	const { data, loading, error, refetch } = useQuery(GET_EQUIPMENTS_QUERY, {
+	const { data, loading, error, refetch } = useQuery<GetEquipmentsQuery>(GET_EQUIPMENTS_QUERY, {
 		fetchPolicy: 'cache-and-network',
 	});
 
@@ -85,7 +139,8 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 			setRefreshing(false);
 		}
 	}, [refetch]);
-	const rawList = (data?.getEquipments ?? []) as Partial<EquipmentRow>[];
+	const rawList = (data?.getEquipments ?? []) as (Partial<EquipmentRow> &
+		Record<string, unknown>)[];
 	const list: EquipmentRow[] = rawList.map((row) => ({
 		id: String(row.id),
 		name: String(row.name),
@@ -94,9 +149,13 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 		notes: row.notes ?? null,
 		sortOrder: typeof row.sortOrder === 'number' ? row.sortOrder : 0,
 		status: normalizeStatus(row.status),
+		quantity: typeof row.quantity === 'number' && row.quantity >= 0 ? row.quantity : 0,
+		maintenanceStartedAt: typeof row.maintenanceStartedAt === 'string' ? row.maintenanceStartedAt : null,
+		isArchived: typeof row.isArchived === 'boolean' ? row.isArchived : null,
+		archivedAt: typeof row.archivedAt === 'string' ? row.archivedAt : null,
 		createdAt: row.createdAt ?? null,
 		updatedAt: row.updatedAt ?? null,
-	}));
+	})).filter((row, index) => !isArchivedEquipmentRow(rawList[index]));
 	const [detail, setDetail] = useState<EquipmentRow | null>(null);
 
 	return (
@@ -156,13 +215,36 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 								resizeMode="cover"
 							/>
 							<View style={[StyleSheet.absoluteFillObject, { justifyContent: 'flex-end' }]} pointerEvents="none">
+								<ExpoLinearGradient
+									colors={['rgba(13,13,13,0.05)', 'rgba(13,13,13,0.84)']}
+									start={{ x: 0.5, y: 0 }}
+									end={{ x: 0.5, y: 1 }}
+									style={StyleSheet.absoluteFillObject}
+								/>
 								<View style={styles.label}>
-									<Text style={[styles.statusPill, { color: statusColor(item.status) }]}>
-										{statusLabel(item.status)}
-									</Text>
-									<Text style={styles.labelText} numberOfLines={2}>
-										{item.name}
-									</Text>
+									<View style={styles.labelTopRow}>
+										<Text style={styles.labelText} numberOfLines={2} ellipsizeMode="tail">
+											{item.name}
+										</Text>
+									</View>
+									<View style={styles.statusRow}>
+										<View style={styles.statusPillWrap}>
+											<Text style={[styles.statusPill, { color: statusColor(item.status) }]}>
+												{statusLabelCompact(item.status)}
+											</Text>
+										</View>
+									</View>
+									<View style={styles.stockRow}>
+										<Text style={styles.stockMeta}>Qty {item.quantity}</Text>
+										<Text
+											style={[
+												styles.stockMeta,
+												item.quantity > 0 ? styles.stockIn : styles.stockOut,
+											]}
+										>
+											{item.quantity > 0 ? 'In stock' : 'Out of stock'}
+										</Text>
+									</View>
 								</View>
 							</View>
 						</TouchableOpacity>
@@ -189,9 +271,25 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 									/>
 								</View>
 								<Text style={styles.detailName}>{detail.name}</Text>
-								<Text style={[styles.detailStatus, { color: statusColor(detail.status), marginBottom: 14 }]}>
-									{statusLabel(detail.status)}
-								</Text>
+								<View style={styles.detailStatusRow}>
+									<View style={styles.detailStatusPill}>
+										<Text style={[styles.detailStatus, { color: statusColor(detail.status) }]}>
+											{statusLabel(detail.status)}
+										</Text>
+									</View>
+									<Text style={[styles.detailBody, styles.detailQty]}>
+										Qty {detail.quantity}
+									</Text>
+								</View>
+								{detail.status === 'UNDERMAINTENANCE' ? (
+									<Text style={[styles.detailBody, { marginBottom: 14 }]}>
+										Under maintenance since: {formatDate(detail.maintenanceStartedAt)}
+									</Text>
+								) : (
+									<Text style={[styles.detailBody, { marginBottom: 14 }]}>
+										Availability: {detail.quantity > 0 ? 'In stock' : 'Out of stock'}
+									</Text>
+								)}
 								<Text style={styles.detailMeta}>Description</Text>
 								<Text style={[styles.detailBody, { marginBottom: 14 }]}>
 									{detail.description?.trim() ? detail.description : '—'}
@@ -230,7 +328,12 @@ const styles = StyleSheet.create({
 		borderRadius: 16,
 		overflow: 'hidden',
 		borderWidth: 1,
-		borderColor: 'rgba(44, 44, 46, 0.8)',
+		borderColor: 'rgba(249, 197, 19, 0.24)',
+		shadowColor: '#000',
+		shadowOpacity: 0.3,
+		shadowRadius: 10,
+		shadowOffset: { width: 0, height: 6 },
+		elevation: 6,
 	},
 	image: {
 		backgroundColor: '#1A1A2E',
@@ -241,24 +344,66 @@ const styles = StyleSheet.create({
 		right: 0,
 		bottom: 0,
 		paddingHorizontal: 12,
-		paddingVertical: 12,
-		backgroundColor: 'rgba(13, 13, 13, 0.88)',
+		paddingVertical: 8,
+		minHeight: 82,
+		backgroundColor: 'rgba(13, 13, 13, 0.74)',
 		borderTopWidth: 1,
 		borderTopColor: 'rgba(249, 197, 19, 0.2)',
 	},
+	labelTopRow: {
+		minHeight: 30,
+		justifyContent: 'flex-start',
+	},
+	statusRow: {
+		marginTop: 4,
+		minHeight: 20,
+		alignItems: 'flex-start',
+		justifyContent: 'center',
+	},
+	statusPillWrap: {
+		borderWidth: 1,
+		borderColor: 'rgba(255,255,255,0.2)',
+		borderRadius: 999,
+		paddingHorizontal: 7,
+		paddingVertical: 2,
+		backgroundColor: 'rgba(255,255,255,0.05)',
+	},
 	statusPill: {
-		fontSize: 11,
+		fontSize: 9,
 		fontWeight: '700',
 		textTransform: 'uppercase',
-		letterSpacing: 0.5,
-		marginBottom: 4,
+		letterSpacing: 0.45,
 	},
 	labelText: {
 		color: '#fff',
-		fontSize: 13,
-		fontWeight: '600',
+		fontSize: 14,
+		fontWeight: '700',
 		letterSpacing: 0.2,
-		lineHeight: 18,
+		lineHeight: 16,
+	},
+	stockRow: {
+		marginTop: 5,
+		minHeight: 16,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+	},
+	stockMeta: {
+		color: '#D1D5DB',
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	stockIn: {
+		color: '#34D399',
+	},
+	stockOut: {
+		color: '#F87171',
+	},
+	stockText: {
+		color: '#D1D5DB',
+		fontSize: 11,
+		fontWeight: '600',
+		marginTop: 2,
 	},
 	modalBackdrop: {
 		flex: 1,
@@ -308,7 +453,25 @@ const styles = StyleSheet.create({
 		color: '#fff',
 		fontSize: 22,
 		fontWeight: '700',
+		marginBottom: 10,
+	},
+	detailStatusRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
 		marginBottom: 12,
+	},
+	detailStatusPill: {
+		borderWidth: 1,
+		borderColor: 'rgba(255,255,255,0.16)',
+		borderRadius: 999,
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		backgroundColor: 'rgba(255,255,255,0.05)',
+	},
+	detailQty: {
+		fontWeight: '700',
+		color: '#E2E8F0',
 	},
 	detailMeta: {
 		color: '#8E8E93',
@@ -324,7 +487,9 @@ const styles = StyleSheet.create({
 		lineHeight: 22,
 	},
 	detailStatus: {
-		fontSize: 16,
+		fontSize: 12,
 		fontWeight: '700',
+		textTransform: 'uppercase',
+		letterSpacing: 0.6,
 	},
 });

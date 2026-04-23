@@ -51,7 +51,6 @@ export function WaiverSignaturePad({
 
 	const handleBegin = () => {
 		if (disabled) return;
-		// Android: focused TextInput above the pad often steals the first touches from the WebView.
 		Keyboard.dismiss();
 		onDrawingChange?.(true);
 	};
@@ -93,7 +92,6 @@ export function WaiverSignaturePad({
 					nestedScrollEnabled
 					androidLayerType='software'
 					webviewProps={{
-						// Helps Android deliver touches to the WebView when nested in a ScrollView.
 						nestedScrollEnabled: true,
 						overScrollMode: 'never',
 					}}

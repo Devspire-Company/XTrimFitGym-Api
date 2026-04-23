@@ -5,18 +5,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useMemberMembershipModal } from '@/contexts/MemberMembershipModalContext';
 import { memberHasActiveGymMembership } from '@/utils/memberMembership';
 import { GetSessionLogsQuery } from '@/graphql/generated/types';
+import { CREATE_COACH_RATING_MUTATION } from '@/graphql/mutations';
 import {
 	GET_SESSION_LOGS_QUERY,
 	GET_COACH_RATING_BY_SESSION_LOG_QUERY,
 	GET_PROGRESS_RATINGS_QUERY,
 } from '@/graphql/queries';
+import { progressRatingIncludesSessionLog } from '@/utils/progress-rating-match';
 import { formatTimeTo12Hour } from '@/utils/time-utils';
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
 	Dimensions,
 	Image,
@@ -24,11 +26,13 @@ import {
 	RefreshControl,
 	ScrollView,
 	Text,
+	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
+const MIN_COACH_RATING_COMMENT_LENGTH = 25;
 
 function formatKgDisplay(value: number | null | undefined): string | null {
 	if (value == null) return null;
@@ -65,7 +69,7 @@ const MemberSessionLogs = () => {
 		useCallback(() => {
 			if (!hasMembership) {
 				openMembershipRequired();
-				router.replace('/(member)/workouts');
+				router.navigate('/(member)/workouts');
 			}
 		}, [hasMembership, openMembershipRequired, router])
 	);
@@ -74,6 +78,11 @@ const MemberSessionLogs = () => {
 	const [selectedLog, setSelectedLog] = useState<any>(null);
 	const [showImagesModal, setShowImagesModal] = useState(false);
 	const [showDetailsModal, setShowDetailsModal] = useState(false);
+	const [pendingCoachRating, setPendingCoachRating] = useState(0);
+	const [pendingCoachComment, setPendingCoachComment] = useState('');
+	const [pendingCoachCommentError, setPendingCoachCommentError] = useState('');
+	const [ratingSubmitError, setRatingSubmitError] = useState('');
+	const [optimisticCoachRating, setOptimisticCoachRating] = useState<any>(null);
 
 	const apiKey =
 		(Constants?.expoConfig as any)?.extra?.exerciseDbApiKey ??
@@ -89,7 +98,6 @@ const MemberSessionLogs = () => {
 		[apiKey]
 	);
 
-	// Parse workoutType JSON string to get exercises
 	const parseWorkoutExercises = useCallback((workoutType: string | null | undefined): WorkoutExercise[] => {
 		if (!workoutType) return [];
 		try {
@@ -124,7 +132,7 @@ const MemberSessionLogs = () => {
 	const sessionLogIdForDetails =
 		showDetailsModal && selectedLog?.id ? selectedLog.id : '';
 
-	const { data: detailsCoachRatingData } = useQuery<any>(
+	const { data: detailsCoachRatingData, refetch: refetchDetailsCoachRating } = useQuery<any>(
 		GET_COACH_RATING_BY_SESSION_LOG_QUERY,
 		{
 			variables: { sessionLogId: sessionLogIdForDetails },
@@ -144,14 +152,125 @@ const MemberSessionLogs = () => {
 	const detailsRecapRatings = useMemo(() => {
 		if (!selectedLog?.id) return [];
 		const list = detailsProgressRatingsData?.getProgressRatings || [];
-		return list.filter((r: any) => (r.sessionLogIds || []).includes(selectedLog.id));
+		return list.filter((r: any) => progressRatingIncludesSessionLog(r, selectedLog.id));
 	}, [detailsProgressRatingsData, selectedLog?.id]);
 
 	const detailsMemberCoachRating = useMemo(() => {
 		const r = detailsCoachRatingData?.getCoachRatingBySessionLog;
-		if (!r || !selectedLog?.id) return null;
-		return r.sessionLogId === selectedLog.id ? r : null;
-	}, [detailsCoachRatingData, selectedLog?.id]);
+		if (!r) return null;
+		return r;
+	}, [detailsCoachRatingData]);
+
+	useEffect(() => {
+		setPendingCoachRating(0);
+		setPendingCoachComment('');
+		setPendingCoachCommentError('');
+		setRatingSubmitError('');
+		setOptimisticCoachRating(null);
+	}, [selectedLog?.id]);
+
+	const [createCoachRating, { loading: creatingCoachRating }] = useMutation(
+		CREATE_COACH_RATING_MUTATION,
+		{
+			onCompleted: async (data) => {
+				const created = data?.createCoachRating;
+				if (created && selectedLog?.id) {
+					setOptimisticCoachRating({
+						id: created.id,
+						sessionLogId: created.sessionLogId || selectedLog.id,
+						rating: created.rating,
+						comment: created.comment,
+						createdAt: created.createdAt,
+						coach:
+							selectedLog?.session?.coach ||
+							selectedLog?.coach ||
+							null,
+					});
+				}
+				setPendingCoachRating(0);
+				setPendingCoachComment('');
+				setPendingCoachCommentError('');
+				setRatingSubmitError('');
+				await Promise.all([refetchDetailsCoachRating(), refetch()]);
+			},
+			onError: async (error) => {
+				const msg = error.message || 'Failed to submit feedback.';
+				if (msg.toLowerCase().includes('already submitted')) {
+					setOptimisticCoachRating((prev: any) => {
+						if (prev) return prev;
+						return {
+							id: `existing-${selectedLog?.id || 'rating'}`,
+							sessionLogId: selectedLog?.id || '',
+							rating: pendingCoachRating || 0,
+							comment:
+								pendingCoachComment.trim() ||
+								'Rating already submitted for this session.',
+							createdAt: new Date().toISOString(),
+							coach: selectedLog?.session?.coach || selectedLog?.coach || null,
+						};
+					});
+					setPendingCoachCommentError('');
+					setRatingSubmitError('');
+					await refetchDetailsCoachRating();
+					return;
+				}
+				setRatingSubmitError(msg);
+			},
+		}
+	);
+
+	const submitCoachRatingForDetails = useCallback(() => {
+		if (!selectedLog?.id) {
+			setRatingSubmitError('Missing session information.');
+			return;
+		}
+
+		const coachIdCandidates = [
+			selectedLog.coachId,
+			selectedLog.coach?.id,
+			selectedLog.coach?._id,
+			selectedLog.session?.coachId,
+			selectedLog.session?.coach?.id,
+			selectedLog.session?.coach?._id,
+		]
+			.map((v) => (v == null ? '' : String(v).trim()))
+			.filter((v) => v.length > 0);
+		const coachId = coachIdCandidates[0] || '';
+		if (!coachId) {
+			setRatingSubmitError('Coach not found for this session.');
+			return;
+		}
+
+		if (pendingCoachRating === 0) {
+			setRatingSubmitError('Please tap 1-5 stars.');
+			return;
+		}
+
+		const trimmed = pendingCoachComment.trim();
+		if (trimmed.length < MIN_COACH_RATING_COMMENT_LENGTH) {
+			setPendingCoachCommentError(
+				`Please write at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters.`
+			);
+			setRatingSubmitError(
+				`Tell us why (at least ${MIN_COACH_RATING_COMMENT_LENGTH} characters).`
+			);
+			return;
+		}
+
+		setRatingSubmitError('');
+		createCoachRating({
+			variables: {
+				input: {
+					coachId,
+					sessionLogId: selectedLog.id,
+					rating: pendingCoachRating,
+					comment: trimmed,
+				},
+			},
+		});
+	}, [createCoachRating, pendingCoachComment, pendingCoachRating, selectedLog]);
+
+	const visibleMemberCoachRating = detailsMemberCoachRating || optimisticCoachRating;
 
 	const onRefresh = async () => {
 		setRefreshing(true);
@@ -211,12 +330,10 @@ const MemberSessionLogs = () => {
 			groups[dateKey].push(log);
 		});
 
-		// Sort dates in descending order (most recent first)
 		const sortedDates = Object.keys(groups).sort((a, b) => {
 			return new Date(b).getTime() - new Date(a).getTime();
 		});
 
-		// Sort logs within each date group by completedAt (most recent first)
 		sortedDates.forEach((date) => {
 			groups[date].sort((a, b) => {
 				const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
@@ -600,16 +717,19 @@ const MemberSessionLogs = () => {
 										<Text className='text-lg font-semibold text-text-primary mb-3'>
 											Your feedback to coach
 										</Text>
+										<Text className='text-text-secondary text-sm mb-3 -mt-1'>
+											One rating per session. Submitted ratings are view-only.
+										</Text>
 										<View
 											className='bg-bg-darker rounded-xl p-4 border border-[#F9C513]'
 											style={{ borderWidth: 0.5 }}
 										>
-											{detailsMemberCoachRating ? (
+											{visibleMemberCoachRating ? (
 												<View>
-													{detailsMemberCoachRating.coach ? (
+													{visibleMemberCoachRating.coach ? (
 														<Text className='text-text-secondary text-sm mb-2'>
-															{detailsMemberCoachRating.coach.firstName}{' '}
-															{detailsMemberCoachRating.coach.lastName}
+															{visibleMemberCoachRating.coach.firstName}{' '}
+															{visibleMemberCoachRating.coach.lastName}
 														</Text>
 													) : null}
 													<View className='flex-row items-center mb-2'>
@@ -617,7 +737,7 @@ const MemberSessionLogs = () => {
 															<Ionicons
 																key={index}
 																name={
-																	index < (detailsMemberCoachRating.rating || 0)
+																	index < (visibleMemberCoachRating.rating || 0)
 																		? 'star'
 																		: 'star-outline'
 																}
@@ -626,24 +746,120 @@ const MemberSessionLogs = () => {
 															/>
 														))}
 														<Text className='text-text-primary font-semibold ml-2'>
-															{detailsMemberCoachRating.rating}/5
+															{visibleMemberCoachRating.rating}/5
 														</Text>
 													</View>
-													{detailsMemberCoachRating.comment ? (
+													{visibleMemberCoachRating.comment ? (
 														<View className='mt-2'>
 															<Text className='text-text-secondary text-xs mb-1'>
-																Your comment
+																Why you rated this way
 															</Text>
 															<Text className='text-text-primary text-sm'>
-																{detailsMemberCoachRating.comment}
+																{visibleMemberCoachRating.comment}
 															</Text>
 														</View>
 													) : null}
 												</View>
 											) : (
-												<Text className='text-text-secondary text-sm'>
-													No coach rating submitted for this session yet.
-												</Text>
+												<View>
+													<Text className='text-text-secondary text-sm mb-3'>
+														No coach rating yet. Add your feedback below.
+													</Text>
+													<Text className='text-text-primary font-semibold mb-2'>
+														Stars <Text className='text-red-500'>*</Text>
+													</Text>
+													<View className='flex-row justify-center gap-2 mb-2'>
+														{[1, 2, 3, 4, 5].map((star) => (
+															<TouchableOpacity
+																key={star}
+																onPress={() => {
+																	setPendingCoachRating(star);
+																	setRatingSubmitError('');
+																}}
+																className='p-1'
+																accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}
+															>
+																<Ionicons
+																	name={star <= pendingCoachRating ? 'star' : 'star-outline'}
+																	size={28}
+																	color='#F9C513'
+																/>
+															</TouchableOpacity>
+														))}
+													</View>
+													<Text className='text-text-secondary text-center text-xs mb-3'>
+														1 = Lowest, 5 = Highest satisfaction
+													</Text>
+													<Text className='text-text-primary font-semibold mb-2'>
+														Why this rating? <Text className='text-red-500'>*</Text>
+													</Text>
+													<TextInput
+														className={`bg-bg-primary rounded-lg p-3 text-text-primary text-sm border ${
+															pendingCoachCommentError
+																? 'border-red-500'
+																: 'border-[#F9C513]/50'
+														}`}
+														style={{ borderWidth: 0.5, minHeight: 90, textAlignVertical: 'top' }}
+														placeholder='Tell us why'
+														placeholderTextColor='#8E8E93'
+														value={pendingCoachComment}
+														onChangeText={(t) => {
+															setPendingCoachComment(t);
+															setPendingCoachCommentError('');
+															setRatingSubmitError('');
+														}}
+														multiline
+														numberOfLines={4}
+													/>
+													<View className='flex-row justify-between items-start mt-1 mb-3'>
+														{pendingCoachCommentError ? (
+															<Text className='text-red-500 text-xs flex-1 mr-2'>
+																{pendingCoachCommentError}
+															</Text>
+														) : (
+															<View className='flex-1 mr-2' />
+														)}
+														<Text
+															className={`text-xs ${
+																pendingCoachComment.trim().length >=
+																MIN_COACH_RATING_COMMENT_LENGTH
+																	? 'text-[#34C759]'
+																	: 'text-text-secondary'
+															}`}
+														>
+															{pendingCoachComment.trim().length}/
+															{MIN_COACH_RATING_COMMENT_LENGTH}
+														</Text>
+													</View>
+													{ratingSubmitError ? (
+														<Text className='text-red-500 text-xs mb-3'>
+															{ratingSubmitError}
+														</Text>
+													) : null}
+													<TouchableOpacity
+														className='bg-[#F9C513] rounded-lg p-3 items-center'
+														onPress={submitCoachRatingForDetails}
+														disabled={
+															creatingCoachRating ||
+															pendingCoachRating === 0 ||
+															pendingCoachComment.trim().length <
+																MIN_COACH_RATING_COMMENT_LENGTH
+														}
+														style={{
+															opacity:
+																creatingCoachRating ||
+																pendingCoachRating === 0 ||
+																pendingCoachComment.trim().length <
+																	MIN_COACH_RATING_COMMENT_LENGTH
+																	? 0.5
+																	: 1,
+														}}
+													>
+														<Text className='text-black font-semibold'>
+															{creatingCoachRating ? 'Submitting...' : 'Submit feedback'}
+														</Text>
+													</TouchableOpacity>
+												</View>
 											)}
 										</View>
 									</View>
@@ -676,7 +892,7 @@ const MemberSessionLogs = () => {
 														style={{ borderWidth: 0.5 }}
 													>
 														<View className='flex-row justify-between items-start mb-2'>
-															<View className='flex-1'>
+															<View className='flex-1 pr-2'>
 																<Text className='text-text-primary font-semibold text-base mb-1'>
 																	{startDate.toLocaleDateString()} —{' '}
 																	{endDate.toLocaleDateString()}
@@ -688,21 +904,26 @@ const MemberSessionLogs = () => {
 																	</Text>
 																) : null}
 															</View>
-															<View
-																className='px-3 py-1 rounded-full'
-																style={{ backgroundColor: vColors[vk] || '#8E8E93' }}
-															>
-																<Text className='text-white text-xs font-semibold'>
-																	{vLabels[vk] || rating.verdict}
+															<View className='items-end'>
+																<Text className='text-text-secondary text-xs mb-1'>
+																	Final verdict
 																</Text>
+																<View
+																	className='px-3 py-1 rounded-full'
+																	style={{ backgroundColor: vColors[vk] || '#8E8E93' }}
+																>
+																	<Text className='text-white text-xs font-semibold'>
+																		{vLabels[vk] || rating.verdict}
+																	</Text>
+																</View>
 															</View>
 														</View>
 														<View className='flex-row items-center mb-2'>
 															<Text className='text-text-secondary text-sm mr-2'>
-																Rating:
+																Coach rating:
 															</Text>
 															<View className='flex-row items-center'>
-																{Array.from({ length: 10 }).map((_, index) => (
+																{Array.from({ length: 5 }).map((_, index) => (
 																	<Ionicons
 																		key={index}
 																		name={
@@ -713,14 +934,14 @@ const MemberSessionLogs = () => {
 																	/>
 																))}
 																<Text className='text-text-primary font-semibold ml-2'>
-																	{rating.rating}/10
+																	{rating.rating}/5
 																</Text>
 															</View>
 														</View>
 														{rating.comment ? (
 															<View className='mt-2'>
 																<Text className='text-text-secondary text-xs mb-1'>
-																	Coach comment
+																	Coach feedback
 																</Text>
 																<Text className='text-text-primary text-sm'>
 																	{rating.comment}

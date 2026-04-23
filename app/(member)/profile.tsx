@@ -3,6 +3,7 @@ import DatePicker from '@/components/DatePicker';
 import FixedView from '@/components/FixedView';
 import GradientButton from '@/components/GradientButton';
 import Input from '@/components/Input';
+import PhilippinePhoneInput from '@/components/PhilippinePhoneInput';
 import Select from '@/components/Select';
 import TabHeader from '@/components/TabHeader';
 import TimePicker from '@/components/TimePicker';
@@ -15,7 +16,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UPDATE_USER_MUTATION } from '@/graphql/mutations';
 import { useAppDispatch } from '@/store/hooks';
 import { setUser } from '@/store/slices/userSlice';
-import { convertGraphQLUser } from '@/utils/graphql-utils';
+import { mergeServerUserPreservingCurrentMembership } from '@/utils/graphql-utils';
+import {
+	formatPhilippinePhoneDisplay,
+	isValidPhilippineMobileNational,
+	nationalDigitsFromStoredPhone,
+} from '@/utils/philippine-phone';
 import { formatTimeRangeTo12Hour } from '@/utils/time-utils';
 import { useMutation } from '@apollo/client/react';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,8 +46,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
-// Note: UpdateUserMutation types may need to be regenerated
-// Using any for now until GraphQL codegen is run
 type UpdateUserMutation = any;
 type UpdateUserMutationVariables = any;
 
@@ -49,6 +53,8 @@ const fitnessGoalOptions = profileFitnessGoalOptions;
 
 const MemberProfile = () => {
 	const { user } = useAuth();
+	const userRef = useRef(user);
+	userRef.current = user;
 
 	const physiqueDisplayLabel = useMemo(() => {
 		const v = user?.membershipDetails?.physiqueGoalType;
@@ -57,7 +63,6 @@ const MemberProfile = () => {
 		return match?.label ?? v;
 	}, [user?.membershipDetails?.physiqueGoalType]);
 
-	/** Legacy DB value "General" is no longer offered; keep it selectable only while still selected so users can migrate. */
 	const bodyTypeSelectOptions = useMemo(() => {
 		if (physiqueGoalType === 'General') {
 			return [{ label: 'General', value: 'General' }, ...bodyTypeOptions];
@@ -72,8 +77,8 @@ const MemberProfile = () => {
 	const [firstName, setFirstName] = useState(user?.firstName || '');
 	const [middleName, setMiddleName] = useState(user?.middleName || '');
 	const [lastName, setLastName] = useState(user?.lastName || '');
-	const [phoneNumber, setPhoneNumber] = useState(
-		user?.phoneNumber?.toString() || ''
+	const [phoneNumber, setPhoneNumber] = useState(() =>
+		nationalDigitsFromStoredPhone(user?.phoneNumber)
 	);
 	const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(
 		user?.dateOfBirth ? new Date(user.dateOfBirth) : undefined
@@ -165,24 +170,30 @@ const MemberProfile = () => {
 		}
 	}, [user]);
 
+	useEffect(() => {
+		if (!user || isEditing) return;
+		setPhoneNumber(nationalDigitsFromStoredPhone(user.phoneNumber));
+	}, [user?.id, user?.phoneNumber, isEditing]);
+
 	const [updateUserMutation, { loading }] = useMutation<
 		UpdateUserMutation,
 		UpdateUserMutationVariables
 	>(UPDATE_USER_MUTATION, {
 		onCompleted: (data) => {
 			if (data.updateUser) {
-				// Convert GraphQL User to Redux User format and update entire user object
-				const updatedUser = convertGraphQLUser(data.updateUser);
+				const updatedUser = mergeServerUserPreservingCurrentMembership(
+					userRef.current,
+					data.updateUser
+				);
 				dispatch(setUser(updatedUser));
 				setIsEditing(false);
 				setIsEditingCredentials(false);
 				setAlertModal({
 					visible: true,
-					title: 'Success',
-					message: 'Profile updated successfully!',
+					title: 'Edit Profile Successfully',
+					message: 'Your profile details were saved.',
 					variant: 'success',
 				});
-				// Clear password fields
 				setPassword('');
 				setCurrentPassword('');
 			}
@@ -198,7 +209,10 @@ const MemberProfile = () => {
 			{
 				onCompleted: (data) => {
 					if (data.updateUser) {
-						const updatedUser = convertGraphQLUser(data.updateUser);
+						const updatedUser = mergeServerUserPreservingCurrentMembership(
+							userRef.current,
+							data.updateUser
+						);
 						dispatch(setUser(updatedUser));
 						setGuardianFullName('');
 						setGuardianRelationship('');
@@ -346,8 +360,9 @@ const MemberProfile = () => {
 
 		if (!phoneNumber.trim()) {
 			newErrors.phoneNumber = 'Phone number is required';
-		} else if (!/^\d{10,15}$/.test(phoneNumber.replace(/\D/g, ''))) {
-			newErrors.phoneNumber = 'Please enter a valid phone number';
+		} else if (!isValidPhilippineMobileNational(phoneNumber)) {
+			newErrors.phoneNumber =
+				'Enter 10 digits after +63 (Philippine mobile, e.g. 9XX XXX XXXX — no leading 0)';
 		}
 
 		if (!dateOfBirth) {
@@ -404,7 +419,6 @@ const MemberProfile = () => {
 	const handleSave = () => {
 		if (!validateForm() || !user?.id) return;
 
-		// Build membershipDetails object, preserving existing fields
 		const membershipDetailsInput: any = {
 			// Update editable fields
 			physiqueGoalType: normalizePhysiqueGoalTypeForApi(physiqueGoalType),
@@ -413,10 +427,9 @@ const MemberProfile = () => {
 					? [`${workOutTimeStart.getHours()}-${workOutTimeEnd.getHours()}`]
 					: user?.membershipDetails?.workOutTime || [],
 			fitnessGoal: fitnessGoal,
-			hasEnteredDetails: user?.membershipDetails?.hasEnteredDetails ?? true, // Preserve onboarding status
+			hasEnteredDetails: user?.membershipDetails?.hasEnteredDetails ?? true,
 		};
 
-		// Only include membershipId and coachesIds if they exist (preserve them)
 		if (user?.membershipDetails?.membershipId) {
 			membershipDetailsInput.membershipId = user.membershipDetails.membershipId;
 		}
@@ -469,7 +482,7 @@ const MemberProfile = () => {
 		setFirstName(user?.firstName || '');
 		setMiddleName(user?.middleName || '');
 		setLastName(user?.lastName || '');
-		setPhoneNumber(user?.phoneNumber?.toString() || '');
+		setPhoneNumber(nationalDigitsFromStoredPhone(user?.phoneNumber));
 		setDateOfBirth(user?.dateOfBirth ? new Date(user.dateOfBirth) : undefined);
 		const workoutTime = parseWorkoutTime(
 			user?.membershipDetails?.workOutTime as (string | null)[] | undefined
@@ -718,15 +731,13 @@ const MemberProfile = () => {
 							error={errors.lastName}
 						/>
 
-						<Input
+						<PhilippinePhoneInput
 							label='Phone Number'
-							placeholder='Enter your phone number'
 							value={phoneNumber}
-							onChangeText={(text) => {
-								setPhoneNumber(text);
+							onChangeText={(digits) => {
+								setPhoneNumber(digits);
 								setErrors({ ...errors, phoneNumber: '' });
 							}}
-							keyboardType='phone-pad'
 							error={errors.phoneNumber}
 						/>
 
@@ -881,7 +892,7 @@ const MemberProfile = () => {
 							<View className='mb-3'>
 								<Text className='text-text-secondary text-sm mb-1'>Phone</Text>
 								<Text className='text-text-primary font-medium'>
-									{user?.phoneNumber || 'Not provided'}
+									{formatPhilippinePhoneDisplay(user?.phoneNumber) ?? 'Not provided'}
 								</Text>
 							</View>
 							<View className='mb-3'>

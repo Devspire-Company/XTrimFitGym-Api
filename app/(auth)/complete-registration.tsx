@@ -27,7 +27,6 @@ import {
 	View,
 } from 'react-native';
 
-/** Finishes Mongo member row when Clerk is signed in but `me` is null. */
 export default function CompleteRegistration() {
 	const router = useRouter();
 	const dispatch = useAppDispatch();
@@ -132,12 +131,13 @@ export default function CompleteRegistration() {
 	return (
 		<FixedView className='flex-1 bg-bg-darker'>
 			<KeyboardAvoidingView
-				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+				behavior={Platform.OS === 'ios' ? 'padding' : undefined}
 				className='flex-1'
 			>
 				<ScrollView
-					contentContainerClassName='flex-grow justify-center px-5 py-8'
+					contentContainerClassName='flex-grow px-5 pt-8 pb-28'
 					keyboardShouldPersistTaps='handled'
+					keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
 				>
 					<View className='items-center mb-6'>
 						<Image
@@ -209,7 +209,6 @@ export default function CompleteRegistration() {
 								try {
 									await signOut();
 								} catch {
-									// Continue redirect flow even if Clerk sign-out fails.
 								}
 							}
 							router.replace('/(auth)/login');
@@ -227,7 +226,6 @@ export default function CompleteRegistration() {
 								try {
 									await signOut();
 								} catch {
-									// Continue redirect flow even if Clerk sign-out fails.
 								}
 							}
 							router.replace('/(auth)/login');

@@ -47,7 +47,7 @@ export function MemberMembershipModalProvider({
 				title='Membership required'
 				message='Avail a gym membership to unlock the dashboard, schedule, progress, coaches, attendance, and session logs. You can keep using Workouts anytime.'
 				variant='neutral'
-				confirmLabel='View membership'
+				confirmLabel='View'
 				cancelLabel='Not now'
 				onConfirm={onConfirm}
 				onCancel={onCancel}

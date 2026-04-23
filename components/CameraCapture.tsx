@@ -202,7 +202,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 			if (photo?.uri) {
 				let finalUri = photo.uri;
 
-				// In ID-guide mode, crop to exactly what is inside the guide border.
 				if (
 					idCardFrameGuide &&
 					idFrameLayout &&

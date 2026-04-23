@@ -139,7 +139,7 @@ const Second = () => {
 			physiqueGoalType,
 			workOutTime: timeRange,
 		});
-		router.push('/(auth)/(onboarding)/third');
+		router.push('/(auth)/(onboarding)/fourth');
 	};
 
 	const endMinMinutes = workOutTimeStart

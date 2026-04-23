@@ -15,7 +15,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 	const { isAuthenticated, isLoading, user, onboardingStatus } = useAuth();
 	const segments = useSegments();
 
-	// Show loading screen while checking auth
 	if (isLoading) {
 		return (
 			<View className='flex-1 justify-center items-center'>
@@ -25,12 +24,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 		);
 	}
 
-	// Redirect to auth if not authenticated
 	if (!isAuthenticated) {
 		return <Redirect href='/(auth)/login' />;
 	}
 
-	// Redirect to onboarding if not completed (but allow access to onboarding routes)
 	const isInOnboarding = segments.some(
 		(segment) =>
 			segment === '(onboarding)' ||

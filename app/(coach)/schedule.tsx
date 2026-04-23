@@ -97,7 +97,6 @@ const gymAreas = [
 	{ label: 'Free Weights Area', value: 'Free Weights Area' },
 ];
 
-/** Send session calendar day without local-midnight → UTC day-shift (API uses new Date(iso)). */
 function sessionCalendarDateToIso(d: Date): string {
 	const y = d.getFullYear();
 	const m = d.getMonth();
@@ -163,7 +162,6 @@ const CoachSchedule = () => {
 	const [rosterMoreInvited, setRosterMoreInvited] = useState(false);
 	const [rosterMoreInviteList, setRosterMoreInviteList] = useState(false);
 	const [rosterConfirmedSearch, setRosterConfirmedSearch] = useState('');
-	/** `${clientId}:accept` | `${clientId}:reject` while coach join response is in flight */
 	const [pendingCoachJoinKey, setPendingCoachJoinKey] = useState<string | null>(null);
 	const [removeRosterMember, setRemoveRosterMember] = useState<{
 		id: string;
@@ -383,7 +381,6 @@ const CoachSchedule = () => {
 		}
 	);
 
-	// Query all session logs to check which sessions have progress images
 	const { data: allSessionLogsData } = useQuery(GET_COACH_SESSION_LOGS_QUERY, {
 		variables: { coachId: user?.id || '' },
 		fetchPolicy: 'cache-and-network',
@@ -404,14 +401,13 @@ const CoachSchedule = () => {
 							endDate: attendanceRange.endDate,
 						}
 					: undefined,
-				pagination: { limit: 500, offset: 0 },
+				pagination: { limit: 2500, offset: 0 },
 			},
 			skip: !user?.id || !attendanceId,
 			fetchPolicy: 'cache-and-network',
 		}
 	);
 
-	// Create a Set of session IDs that have progress images
 	const sessionsWithProgressImages = useMemo(() => {
 		const sessionIds = new Set<string>();
 		if (allSessionLogsData?.getCoachSessionLogs) {
@@ -705,7 +701,6 @@ const CoachSchedule = () => {
 		return getGymMinutesBoundsForWeekday(new Date(date).getDay());
 	}, [date]);
 
-	/** Minute bounds for start/end pickers: client preferred window ∩ gym hours for session day. */
 	const sessionTimeBounds = useMemo(() => {
 		if (isTemplate || isGroupClass) return gymBoundsForSession;
 
@@ -757,7 +752,6 @@ const CoachSchedule = () => {
 		[sessionTimeBounds]
 	);
 
-	// Explain listed times + suggest defaults inside allowed window
 	useEffect(() => {
 		if (isTemplate || isGroupClass) {
 			setPreferredTimeLabel(null);
@@ -831,7 +825,6 @@ const CoachSchedule = () => {
 		setErrors,
 	]);
 
-	// Keep chosen times inside allowed quarter-hour slots when bounds or clients change
 	useEffect(() => {
 		const { min, max } = sessionTimeBounds;
 		const step = 15;
@@ -921,7 +914,6 @@ const CoachSchedule = () => {
 		return Object.keys(newErrors).length === 0;
 	};
 
-	// Helper function to convert Date to 12-hour format string
 	const formatTimeToString = (time: Date | undefined): string => {
 		if (!time) return '';
 		const hours = time.getHours();
@@ -943,13 +935,11 @@ const CoachSchedule = () => {
 		};
 
 		if (selectedTemplateId) {
-			// Ensure goal is selected and belongs to one of the selected clients
 			if (!selectedGoalId) {
 				showAlert('Error', 'Please select a goal for one of the selected clients');
 				return;
 			}
 
-			// Verify the selected goal belongs to one of the selected clients
 			const selectedGoal = myGoals.find((g: any) => g.id === selectedGoalId);
 			if (!selectedGoal) {
 				showAlert('Error', 'Selected goal not found');
@@ -986,7 +976,6 @@ const CoachSchedule = () => {
 				return;
 			}
 
-			// Prepare workout data for template with validation
 			let workoutData: string | undefined = undefined;
 			if (selectedWorkouts.length > 0) {
 				try {
@@ -1030,7 +1019,6 @@ const CoachSchedule = () => {
 			return;
 		}
 
-		// Prepare workout data with validation
 		let workoutData: string | undefined = undefined;
 		if (selectedWorkouts.length > 0) {
 			try {
@@ -1221,23 +1209,16 @@ const CoachSchedule = () => {
 	const unassignedGoals = goals.filter((goal: any) => !goal.coachId);
 	const myGoals = goals.filter((goal: any) => goal.coachId === user?.id);
 
-	// Get goals for selected clients - only show goals where coach is assigned (myGoals)
-	// and that belong to the selected clients
 	const availableGoals = useMemo(() => {
 		if (selectedClients.length === 0) {
-			// If no clients selected, show all assigned goals
 			return myGoals;
 		}
 
-		// Normalize selected client IDs to strings for comparison
 		const normalizedSelectedClients = selectedClients.map((id: string) =>
 			String(id)
 		);
 
-		// Filter goals to only show those for selected clients where coach is assigned
 		return myGoals.filter((goal: any) => {
-			// Get the client ID from the goal - handle both clientId field and client object
-			// The GraphQL query returns both clientId and client.id, so check both
 			let goalClientId: string | null = null;
 
 			if (goal.clientId) {
@@ -1247,18 +1228,14 @@ const CoachSchedule = () => {
 			}
 
 			if (!goalClientId) {
-				// If we can't find the client ID, skip this goal
 				return false;
 			}
 
-			// Check if this goal's client is in the selected clients list
 			return normalizedSelectedClients.includes(goalClientId);
 		});
 	}, [selectedClients, myGoals]);
 
-	// Auto-manage selected goal based on selected clients
 	useEffect(() => {
-		// Only for regular session creation (not templates / schedule-from-template / group class)
 		if (isTemplate || selectedTemplateId || isGroupClass) return;
 
 		// No clients selected: clear goal
@@ -1270,7 +1247,6 @@ const CoachSchedule = () => {
 			return;
 		}
 
-		// If there's exactly one goal for the selected clients, auto-pick it
 		if (availableGoals.length === 1) {
 			const onlyGoalId = String(availableGoals[0].id);
 			if (String(selectedGoalId) !== onlyGoalId) {
@@ -1280,7 +1256,6 @@ const CoachSchedule = () => {
 			return;
 		}
 
-		// If current selectedGoalId is no longer valid for the current clients, clear it
 		if (
 			selectedGoalId &&
 			!availableGoals.some((g: any) => String(g.id) === String(selectedGoalId))
@@ -1372,25 +1347,22 @@ const CoachSchedule = () => {
 
 				{/* Calendar + sessions */}
 				<View className='mb-4'>
-					<Text className='text-xl font-semibold text-text-primary mb-2'>
+					<Text className='text-xl font-semibold text-text-primary mb-3'>
 						Calendar
 					</Text>
-					<Text className='text-text-secondary text-sm mb-3'>
-						Gold dot: coaching session. Green check: your gym check-in. Tap a day for
-						check-in times and that day&apos;s sessions.
-					</Text>
-					<View className='flex-row gap-2 mb-3'>
+					<View
+						className='mb-3 flex-row rounded-2xl border border-[#F9C513]/25 bg-bg-darker p-1'
+						style={{ borderWidth: 1 }}
+					>
 						<TouchableOpacity
 							onPress={() => setScheduleListUpcoming(false)}
-							className={`flex-1 py-2.5 rounded-xl border items-center justify-center ${
-								!scheduleListUpcoming
-									? 'bg-[#F9C513] border-[#F9C513]'
-									: 'bg-bg-primary border-[#F9C513]/35'
+							activeOpacity={0.85}
+							className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
+								!scheduleListUpcoming ? 'bg-[#F9C513]' : ''
 							}`}
-							style={{ borderWidth: 0.5 }}
 						>
 							<Text
-								className={`text-sm font-semibold ${
+								className={`text-sm font-bold ${
 									!scheduleListUpcoming ? 'text-[#111827]' : 'text-text-secondary'
 								}`}
 							>
@@ -1399,15 +1371,13 @@ const CoachSchedule = () => {
 						</TouchableOpacity>
 						<TouchableOpacity
 							onPress={() => setScheduleListUpcoming(true)}
-							className={`flex-1 py-2.5 rounded-xl border items-center justify-center ${
-								scheduleListUpcoming
-									? 'bg-[#F9C513] border-[#F9C513]'
-									: 'bg-bg-primary border-[#F9C513]/35'
+							activeOpacity={0.85}
+							className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
+								scheduleListUpcoming ? 'bg-[#F9C513]' : ''
 							}`}
-							style={{ borderWidth: 0.5 }}
 						>
 							<Text
-								className={`text-sm font-semibold ${
+								className={`text-sm font-bold ${
 									scheduleListUpcoming ? 'text-[#111827]' : 'text-text-secondary'
 								}`}
 							>
@@ -1416,8 +1386,8 @@ const CoachSchedule = () => {
 						</TouchableOpacity>
 					</View>
 					<View
-						className='bg-bg-primary rounded-xl border border-[#F9C513]/40 overflow-hidden mb-4'
-						style={{ borderWidth: 0.5 }}
+						className='mb-4 overflow-hidden rounded-2xl border border-[#F9C513]/35 bg-bg-primary'
+						style={{ borderWidth: 1 }}
 					>
 						<CoachScheduleCalendar
 							selectedDay={selectedScheduleDay}
@@ -1430,11 +1400,16 @@ const CoachSchedule = () => {
 							}}
 						/>
 					</View>
-					<Text className='text-lg font-semibold text-text-primary mb-3'>
-						{scheduleListUpcoming
-							? 'Upcoming sessions'
-							: `Sessions — ${formatCalendarDayLabel(selectedScheduleDay)}`}
-					</Text>
+					<View className='mb-3'>
+						<Text className='text-[10px] font-bold uppercase tracking-wider text-text-secondary'>
+							{scheduleListUpcoming ? 'List view' : 'Selected day'}
+						</Text>
+						<Text className='text-xl font-bold text-text-primary'>
+							{scheduleListUpcoming
+								? 'Upcoming sessions'
+								: formatCalendarDayLabel(selectedScheduleDay)}
+						</Text>
+					</View>
 					{!scheduleListUpcoming ? (
 						<ScheduleDayAttendancePanel
 							dayKey={selectedScheduleDay}
@@ -1826,7 +1801,6 @@ const CoachSchedule = () => {
 															setSelectedClients(
 																selectedClients.filter((id) => id !== client.id)
 															);
-															// Clear goal if it was for this client
 															if (selectedGoalId) {
 																const goal = myGoals.find((g: any) => {
 																	const goalClientId = String(
@@ -1963,7 +1937,6 @@ const CoachSchedule = () => {
 											placeholder='Select end time'
 										/>
 									</View>
-									{/* Workout selection before time so coach can base duration on plan */}
 									<View className='mb-4 mt-2'>
 										<Text className='text-text-primary font-semibold mb-2'>
 											Workout Exercises
@@ -1971,10 +1944,8 @@ const CoachSchedule = () => {
 										<TouchableOpacity
 											onPress={() => {
 												console.log('Opening workout modal');
-												// Remember that create modal was open and close it
 												setWasCreateModalOpen(showCreateModal);
 												setShowCreateModal(false);
-												// Small delay to ensure modal closes before opening new one
 												setTimeout(() => {
 													setShowWorkoutModal(true);
 												}, 300);
@@ -2277,7 +2248,6 @@ const CoachSchedule = () => {
 										error={errors.gymArea}
 									/>
 
-									{/* Workout selection before time so coach can base duration on plan */}
 									<View className='mb-4 mt-2'>
 										<Text className='text-text-primary font-semibold mb-2'>
 											Workout Exercises
@@ -2285,10 +2255,8 @@ const CoachSchedule = () => {
 										<TouchableOpacity
 											onPress={() => {
 												console.log('Opening workout modal');
-												// Remember that create modal was open and close it
 												setWasCreateModalOpen(showCreateModal);
 												setShowCreateModal(false);
-												// Small delay to ensure modal closes before opening new one
 												setTimeout(() => {
 													setShowWorkoutModal(true);
 												}, 300);
@@ -2620,7 +2588,6 @@ const CoachSchedule = () => {
 				statusBarTranslucent={true}
 				onRequestClose={() => {
 					setShowWorkoutModal(false);
-					// Reopen create modal if it was open before
 					if (wasCreateModalOpen) {
 						setTimeout(() => {
 							setShowCreateModal(true);
@@ -2642,7 +2609,6 @@ const CoachSchedule = () => {
 								<TouchableOpacity
 									onPress={() => {
 										setShowWorkoutModal(false);
-										// Reopen create modal if it was open before
 										if (wasCreateModalOpen) {
 											setTimeout(() => {
 												setShowCreateModal(true);
@@ -2863,7 +2829,6 @@ const CoachSchedule = () => {
 							<GradientButton
 								onPress={() => {
 									setShowWorkoutModal(false);
-									// Reopen create modal if it was open before
 									if (wasCreateModalOpen) {
 										setTimeout(() => {
 											setShowCreateModal(true);

@@ -113,7 +113,15 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 						<Text className="text-text-primary font-bold text-xl text-center">
 							{title}
 						</Text>
-						<Text className="text-text-secondary text-center mt-2 text-sm">
+						<Text
+							className={`text-center mt-2 text-sm ${
+								variant === 'danger'
+									? 'text-red-300'
+									: variant === 'warning'
+										? 'text-amber-200'
+										: 'text-text-secondary'
+							}`}
+						>
 							{message}
 						</Text>
 					</View>

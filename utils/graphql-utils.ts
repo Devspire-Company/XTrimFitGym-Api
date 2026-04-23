@@ -1,4 +1,5 @@
 import { User } from '@/graphql/generated/types';
+import { memberHasActiveGymMembership } from '@/utils/memberMembership';
 
 /**
  * Converts a GraphQL User object to a format suitable for Redux storage
@@ -53,4 +54,25 @@ export const convertGraphQLUser = (graphqlUser: User): User => {
 			: undefined,
 	};
 };
+
+/**
+ * `updateUser` sometimes omits `currentMembership` even when the member still has an active gym
+ * subscription. Replacing Redux with that payload briefly clears membership and can trigger
+ * `MemberMeSyncAndWelcome`'s false→true welcome modal after profile edits.
+ */
+export function mergeServerUserPreservingCurrentMembership(
+	previous: User | null | undefined,
+	incoming: User
+): User {
+	const merged: User = { ...incoming };
+	if (
+		previous &&
+		memberHasActiveGymMembership(previous) &&
+		!incoming.currentMembership &&
+		previous.currentMembership
+	) {
+		merged.currentMembership = previous.currentMembership;
+	}
+	return convertGraphQLUser(merged);
+}
 

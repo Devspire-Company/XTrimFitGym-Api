@@ -57,7 +57,6 @@ const MemberSubscription = () => {
 		variant: 'danger' | 'neutral' | 'success';
 	}>({ visible: false, title: '', message: '', variant: 'neutral' });
 
-	// Fetch available membership plans
 	const {
 		data: membershipsData,
 		loading: membershipsLoading,
@@ -67,7 +66,6 @@ const MemberSubscription = () => {
 		fetchPolicy: 'cache-and-network',
 	});
 
-	// Fetch current active subscription
 	const {
 		data: currentMembershipData,
 		loading: currentLoading,
@@ -76,14 +74,13 @@ const MemberSubscription = () => {
 		fetchPolicy: 'cache-and-network',
 	});
 
-	// Fetch subscription requests
 	const {
 		data: requestsData,
 		loading: requestsLoading,
 		refetch: refetchRequests,
 	} = useQuery(GET_MY_SUBSCRIPTION_REQUESTS_QUERY, {
 		fetchPolicy: 'cache-and-network',
-		pollInterval: 5000, // Poll every 5 seconds to check for approval
+		pollInterval: 5000,
 	});
 
 	const [createSubscriptionRequest, { loading: requesting }] = useMutation(
@@ -122,7 +119,6 @@ const MemberSubscription = () => {
 	);
 
 	const rawMemberships = membershipsData?.getMemberships || [];
-	// Sort so "Most popular" (PROMO) appears first
 	const memberships = [...rawMemberships].sort((a: any, b: any) => {
 		const aPopular = a.name?.toUpperCase().includes('PROMO') ? 1 : 0;
 		const bPopular = b.name?.toUpperCase().includes('PROMO') ? 1 : 0;
@@ -131,7 +127,6 @@ const MemberSubscription = () => {
 	const currentSubscription = currentMembershipData?.getCurrentMembership;
 	const subscriptionRequests = requestsData?.getMySubscriptionRequests || [];
 
-	// Get pending request for a specific membership
 	const getPendingRequest = (membershipId: string) => {
 		return subscriptionRequests.find(
 			(req: any) =>
@@ -183,7 +178,6 @@ const MemberSubscription = () => {
 		});
 	};
 
-	// Refetch data when screen is mounted
 	useEffect(() => {
 		refetchMemberships();
 		refetchCurrent();
@@ -204,13 +198,11 @@ const MemberSubscription = () => {
 		}
 	};
 
-	// Check if membership was just approved (request was approved and we now have a subscription)
 	React.useEffect(() => {
 		const approvedRequest = subscriptionRequests.find(
 			(req: any) => req.status === 'APPROVED' && req.approvedAt
 		);
 		if (approvedRequest && !currentSubscription) {
-			// Request was approved, refetch current membership
 			refetchCurrent();
 		}
 	}, [subscriptionRequests, currentSubscription, refetchCurrent]);
@@ -446,8 +438,6 @@ const MemberSubscription = () => {
 								</Text>
 								{memberships
 									.filter((m: any) => {
-										// Filter out the currently subscribed plan
-										// Check both possible field names for membership ID
 										const currentMembershipId =
 											currentSubscription.membership?.id ||
 											currentSubscription.membershipId;

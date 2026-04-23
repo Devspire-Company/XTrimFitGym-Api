@@ -1,4 +1,5 @@
 import { PremiumLoadingContent } from '@/components/AuthProcessingScreen';
+import ConfirmModal from '@/components/ConfirmModal';
 import FixedView from '@/components/FixedView';
 import { PostOnboardingWelcomeModal } from '@/components/PostOnboardingWelcomeModal';
 import TabHeader from '@/components/TabHeader';
@@ -35,6 +36,8 @@ const IMAGE_RESOLUTION = '360';
 const ALL_CATEGORY = 'all';
 
 type OnboardingWelcomeKind = 'active' | 'counter' | 'limited';
+const MINOR_ONBOARDING_NOTICE_MESSAGE =
+	"We've detected that you are under 18 years old, please proceed to the gym's counter with your parent to fill out the waiver form";
 
 const MemberWorkouts = () => {
 	const router = useRouter();
@@ -52,6 +55,8 @@ const MemberWorkouts = () => {
 	const [postOnboardingWelcomeKind, setPostOnboardingWelcomeKind] = useState<
 		OnboardingWelcomeKind | undefined
 	>(() => welcomeKind);
+	const [minorOnboardingNoticeVisible, setMinorOnboardingNoticeVisible] =
+		useState(false);
 
 	useEffect(() => {
 		if (welcomeKind) {
@@ -78,9 +83,25 @@ const MemberWorkouts = () => {
 		};
 	}, [welcomeKind]);
 
+	useEffect(() => {
+		let cancelled = false;
+		void (async () => {
+			try {
+				const value = await storage.getItem('onboarding_minor_notice');
+				if (cancelled || value !== 'true') return;
+				setMinorOnboardingNoticeVisible(true);
+				await storage.removeItem('onboarding_minor_notice');
+			} catch {
+				/* noop */
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	const dismissPostOnboardingWelcome = () => {
 		setPostOnboardingWelcomeVisible(false);
-		router.replace('/(member)/workouts');
 	};
 
 	const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -101,7 +122,6 @@ const MemberWorkouts = () => {
 	const [isTimerRunning, setIsTimerRunning] = useState(false);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [timerDuration, setTimerDuration] = useState(DEFAULT_TIMER_SECONDS);
-	/** True after Start until Reset or the round finishes at 0 — blocks changing preset while paused. */
 	const [durationPickerLocked, setDurationPickerLocked] = useState(false);
 	const [hasCompletedCurrentRound, setHasCompletedCurrentRound] =
 		useState(false);
@@ -113,8 +133,6 @@ const MemberWorkouts = () => {
 	const canFetch = useMemo(() => !!apiKey, [apiKey]);
 
 	const playSound = useCallback(async (type: 'start' | 'end') => {
-		// TODO: Once expo-av is installed, implement real audio playback.
-		// This placeholder keeps the logic in-place without adding a hard dependency.
 		return Promise.resolve();
 	}, []);
 
@@ -196,7 +214,6 @@ const MemberWorkouts = () => {
 			setAllExercises(data);
 			return data;
 		} catch {
-			// If this fails, fall back to current category data only
 			return exercises;
 		} finally {
 			setIsGlobalSearchLoading(false);
@@ -238,7 +255,6 @@ const MemberWorkouts = () => {
 				const normalizedCategories = categoriesData.map((c) => c.toLowerCase());
 				setCategories(normalizedCategories);
 
-				// Start with all workouts by default so we always hit a valid endpoint
 				setSelectedCategory(ALL_CATEGORY);
 				await fetchExercisesByCategory(ALL_CATEGORY);
 			} catch (err: any) {
@@ -675,9 +691,20 @@ const MemberWorkouts = () => {
 			{postOnboardingWelcomeKind ? (
 				<PostOnboardingWelcomeModal
 					visible={postOnboardingWelcomeVisible}
+					kind={postOnboardingWelcomeKind}
 					onDismiss={dismissPostOnboardingWelcome}
 				/>
 			) : null}
+			<ConfirmModal
+				visible={minorOnboardingNoticeVisible && !postOnboardingWelcomeVisible}
+				title='Important reminder'
+				message={MINOR_ONBOARDING_NOTICE_MESSAGE}
+				variant='danger'
+				confirmLabel='OK'
+				onConfirm={() => setMinorOnboardingNoticeVisible(false)}
+				onCancel={() => setMinorOnboardingNoticeVisible(false)}
+				hideCancel
+			/>
 			</View>
 		</FixedView>
 	);
@@ -757,7 +784,6 @@ const styles = StyleSheet.create({
 		width: '100%',
 		alignSelf: 'stretch',
 	},
-	/** Full width so horizontal chips are not squeezed (was clipping e.g. “Cardio” → “Cardi”). */
 	categoriesList: {
 		width: '100%',
 		flexGrow: 0,
@@ -778,7 +804,6 @@ const styles = StyleSheet.create({
 		flexShrink: 0,
 		flexGrow: 0,
 	},
-	/** Slightly wider than default so “Cardio” reads fully; tighter than before. */
 	categoryChipCardio: {
 		minWidth: 80,
 		paddingHorizontal: 14,
