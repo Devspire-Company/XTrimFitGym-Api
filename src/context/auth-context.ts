@@ -211,6 +211,17 @@ async function resolveAuthFromBearer(token: string | undefined): Promise<{
 	}
 }
 
+export async function getAuthUserFromHttpRequest(
+	req: Request
+): Promise<{ id: string; role: RoleType } | null> {
+	const tokenFromCookie = req.cookies?.token;
+	const authHeader = req.headers.authorization || req.headers.Authorization;
+	const tokenFromHeader = authHeader?.toString().replace(/^Bearer\s+/i, '');
+	const token = tokenFromHeader || tokenFromCookie;
+	const { user } = await resolveAuthFromBearer(token);
+	return user;
+}
+
 const authContext = async ({
 	req,
 	res,
