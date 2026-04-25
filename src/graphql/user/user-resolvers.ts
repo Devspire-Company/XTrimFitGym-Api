@@ -221,13 +221,43 @@ const userResolvers: Resolvers = {
 		},
 		getUsers: async (_, { role, includeDisabled }, context) => {
 			const viewer = context.auth.user;
-			if (!viewer || viewer.role !== 'admin') {
-				throw new Error('Unauthorized: Only admins can view all users');
+			if (!viewer) {
+				throw new Error('Unauthorized: Please log in');
 			}
+
 			const query: Record<string, unknown> = role ? { role } : {};
 			if (!includeDisabled) {
 				query.isDisabled = { $ne: true };
 			}
+
+			if (viewer.role === 'coach') {
+				const coach = await User.findById(viewer.id)
+					.select('coachDetails.clients_ids')
+					.lean();
+				if (!coach) {
+					throw new Error('Unauthorized: Coach account not found');
+				}
+
+				const clientIds =
+					coach.coachDetails?.clients_ids?.map((id: mongoose.Types.ObjectId) =>
+						id.toString()
+					) || [];
+				if (clientIds.length === 0) {
+					return [];
+				}
+
+				// Coaches can only view their assigned member clients.
+				if (role && role !== 'member') {
+					return [];
+				}
+				query.role = 'member';
+				query._id = {
+					$in: clientIds.map((id) => new mongoose.Types.ObjectId(id)),
+				};
+			} else if (viewer.role !== 'admin') {
+				throw new Error('Unauthorized: Only admins and coaches can view users');
+			}
+
 			const users = await User.find(query).lean();
 			return users.map((user) => mapUserToGraphQL(user as any));
 		},

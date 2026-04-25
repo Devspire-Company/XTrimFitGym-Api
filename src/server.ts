@@ -19,20 +19,29 @@ const server = new ApolloServer({ schema });
 const app = express();
 const httpServer = createServer(app);
 
-const allowedOrigins = (
+const explicitAllowedOrigins = (
 	process.env.CORS_ORIGIN?.split(',')
 		.map((origin) => origin.trim())
 		.filter(Boolean) ?? []
 );
 
-if (allowedOrigins.length === 0 && process.env.NODE_ENV !== 'production') {
-	allowedOrigins.push(
-		'http://localhost:3000',
-		'http://localhost:5173',
-		'http://localhost:8081',
-		'exp://localhost:8081'
-	);
-}
+const defaultAllowedOrigins = [
+	'http://localhost:3000',
+	'http://localhost:5173',
+	'http://localhost:8081',
+	'exp://localhost:8081',
+	'https://xtrimfitgym.website',
+	'https://www.xtrimfitgym.website',
+];
+
+const allowedOrigins = [
+	...new Set(
+		(explicitAllowedOrigins.length > 0
+			? explicitAllowedOrigins
+			: defaultAllowedOrigins
+		).map((origin) => origin.trim())
+	),
+];
 
 // CORS configuration
 app.use(
