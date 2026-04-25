@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
+import { getAuthUserFromHttpRequest } from '../context/auth-context.js';
 
 const router = express.Router();
 
@@ -27,6 +28,19 @@ const upload = multer({
 		fileSize: 10 * 1024 * 1024, // 10MB limit
 	},
 });
+
+const requireAuthenticatedUser: express.RequestHandler = async (req, res, next) => {
+	try {
+		const user = await getAuthUserFromHttpRequest(req);
+		if (!user) {
+			return res.status(401).json({ error: 'Unauthorized' });
+		}
+		next();
+	} catch (error) {
+		console.error('Upload auth check failed:', error);
+		return res.status(401).json({ error: 'Unauthorized' });
+	}
+};
 
 // Helper function to upload buffer to Cloudinary
 const uploadToCloudinary = (
@@ -58,7 +72,7 @@ const uploadToCloudinary = (
 };
 
 // Upload single image
-router.post('/image', upload.single('image'), async (req, res) => {
+router.post('/image', requireAuthenticatedUser, upload.single('image'), async (req, res) => {
 	try {
 		if (!hasCloudinaryConfig()) {
 			console.error('Upload failed: Cloudinary env (CLOUDINARY_CLOUD_NAME, API_KEY, API_SECRET) not set');
@@ -80,7 +94,7 @@ router.post('/image', upload.single('image'), async (req, res) => {
 });
 
 // Upload multiple images
-router.post('/images', upload.array('images', 4), async (req, res) => {
+router.post('/images', requireAuthenticatedUser, upload.array('images', 4), async (req, res) => {
 	try {
 		if (!hasCloudinaryConfig()) {
 			console.error('Upload failed: Cloudinary env not set');

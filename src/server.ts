@@ -19,11 +19,30 @@ const server = new ApolloServer({ schema });
 const app = express();
 const httpServer = createServer(app);
 
+const allowedOrigins = (
+	process.env.CORS_ORIGIN?.split(',')
+		.map((origin) => origin.trim())
+		.filter(Boolean) ?? []
+);
+
+if (allowedOrigins.length === 0 && process.env.NODE_ENV !== 'production') {
+	allowedOrigins.push(
+		'http://localhost:3000',
+		'http://localhost:5173',
+		'http://localhost:8081',
+		'exp://localhost:8081'
+	);
+}
+
 // CORS configuration
 app.use(
 	cors({
-		origin: true, // Allow all origins in development
-		credentials: true, // Allow cookies
+		origin: (origin, callback) => {
+			if (!origin) return callback(null, true);
+			if (allowedOrigins.includes(origin)) return callback(null, true);
+			return callback(new Error('CORS blocked for this origin'));
+		},
+		credentials: true,
 		methods: ['GET', 'POST', 'OPTIONS'],
 		allowedHeaders: ['Content-Type', 'Authorization'],
 	}),

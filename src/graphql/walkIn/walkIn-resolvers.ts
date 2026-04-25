@@ -89,6 +89,7 @@ const mapClient = (doc: IWalkInClient & { _id: mongoose.Types.ObjectId }) => ({
 		? doc.minorWaiverGuardianName
 		: null,
 	minorWaiverAcceptedAt: doc.minorWaiverAcceptedAt?.toISOString?.() ?? null,
+	linkedUserId: doc.linkedUserId?.toString() ?? null,
 	createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
 	updatedAt: doc.updatedAt?.toISOString() ?? new Date().toISOString(),
 });

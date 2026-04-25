@@ -19,6 +19,8 @@ export interface IWalkInClient {
 	ageYears?: number;
 	minorWaiverGuardianName?: string;
 	minorWaiverAcceptedAt?: Date;
+	/** Registered app member (try-out / no membership) linked for admin walk-in search. */
+	linkedUserId?: mongoose.Types.ObjectId;
 	createdByAdminId?: mongoose.Types.ObjectId;
 	createdAt?: Date;
 	updatedAt?: Date;
@@ -40,6 +42,12 @@ const walkInClientSchema = new Schema(
 		ageYears: { type: Number, min: 0, max: 120 },
 		minorWaiverGuardianName: { type: String, trim: true },
 		minorWaiverAcceptedAt: { type: Date },
+		linkedUserId: {
+			type: Schema.Types.ObjectId,
+			ref: 'User',
+			sparse: true,
+			unique: true,
+		},
 		createdByAdminId: {
 			type: Schema.Types.ObjectId,
 			ref: 'User',

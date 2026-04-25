@@ -67,7 +67,7 @@ export default {
 			}
 
 			const userRole = authUser.role;
-			let userAttendanceId: string | undefined;
+				let userAttendanceId: string | undefined;
 
 			// If not admin, fetch the full user to match by name or cardNo
 			if (userRole !== 'admin') {
@@ -80,41 +80,21 @@ export default {
 
 				userAttendanceId = fullUser.attendanceId?.toString();
 
-				// Build user's full name in various possible formats to match personName in MySQL
-				const firstName = fullUser.firstName || '';
-				const middleName = fullUser.middleName || '';
-				const lastName = fullUser.lastName || '';
-
-				// Try different name combinations that might match personName in MySQL
-				const possibleNames = [
-					`${firstName} ${lastName}`.trim(), // "John Doe"
-					`${firstName} ${middleName} ${lastName}`.trim(), // "John Middle Doe"
-					`${lastName}, ${firstName}`.trim(), // "Doe, John"
-					firstName, // Just first name
-					lastName, // Just last name
-				].filter((name) => name.length > 0);
-
 				// Initialize filter if needed
 				filter = filter || {};
 
-				// Try to match by cardNo first if available, otherwise use personName
-				if (userAttendanceId) {
-					// Check if cardNo filter was provided and validate it
-					if (filter.cardNo && filter.cardNo !== userAttendanceId) {
-						throw new Error(
-							'Unauthorized: You can only view your own attendance records',
-						);
-					}
-					// Try cardNo first, but if it's empty in MySQL, fall back to personName
-					filter.cardNo = userAttendanceId;
+				if (!userAttendanceId) {
+					throw new Error(
+						'Unauthorized: Your account is missing attendance ID and cannot query attendance logs'
+					);
 				}
-
-				// Also add personName filter as a fallback (will use OR logic if cardNo doesn't match)
-				// We'll handle this in the WHERE clause to try cardNo first, then personName
-				if (possibleNames.length > 0) {
-					// Store possible names for later use in WHERE clause
-					(filter as any).possiblePersonNames = possibleNames;
+				// Strictly lock non-admin access to their own card number only.
+				if (filter.cardNo && filter.cardNo !== userAttendanceId) {
+					throw new Error(
+						'Unauthorized: You can only view your own attendance records',
+					);
 				}
+				filter.cardNo = userAttendanceId;
 			}
 
 			// Ensure MySQL connection is available
@@ -154,58 +134,9 @@ export default {
 					params.push(filter.deviceName);
 				}
 
-				// Handle cardNo and personName matching for non-admin users
-				if ((filter as any)?.possiblePersonNames && filter?.cardNo) {
-					// For non-admin users: try cardNo first, but if cardNo is NULL/empty, match by personName
-					// Use OR to match either by cardNo OR by any of the possible personName variations
-					const personNameConditions: string[] = [];
-					const personNameParams: any[] = [];
-
-					(filter as any).possiblePersonNames.forEach((name: string) => {
-						personNameConditions.push('personName LIKE ?');
-						personNameParams.push(`%${name}%`);
-					});
-
-					if (personNameConditions.length > 0) {
-						// Match by cardNo (string or numeric, so leading zeros / padding match iVMS) OR personName
-						conditions.push(`(
-							(
-								cardNo IS NOT NULL AND cardNo != '' AND (
-									CAST(cardNo AS CHAR) = CAST(? AS CHAR)
-									OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
-								)
-							)
-							OR (${personNameConditions.join(' OR ')})
-						)`);
-						params.push(filter.cardNo, filter.cardNo, ...personNameParams);
-					} else {
-						conditions.push(`(
-							cardNo IS NOT NULL AND cardNo != '' AND (
-								CAST(cardNo AS CHAR) = CAST(? AS CHAR)
-								OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
-							)
-						)`);
-						params.push(filter.cardNo, filter.cardNo);
-					}
-				} else if (filter?.cardNo) {
-					conditions.push(`(
-						cardNo IS NOT NULL AND cardNo != '' AND (
-							CAST(cardNo AS CHAR) = CAST(? AS CHAR)
-							OR (cardNo REGEXP '^[0-9]+$' AND CAST(? AS UNSIGNED) = CAST(cardNo AS UNSIGNED))
-						)
-					)`);
-					params.push(filter.cardNo, filter.cardNo);
-				} else if ((filter as any)?.possiblePersonNames && userRole !== 'admin') {
-					const personNameConditions: string[] = [];
-					const personNameParams: any[] = [];
-					(filter as any).possiblePersonNames.forEach((name: string) => {
-						personNameConditions.push('personName LIKE ?');
-						personNameParams.push(`%${name}%`);
-					});
-					if (personNameConditions.length > 0) {
-						conditions.push(`(${personNameConditions.join(' OR ')})`);
-						params.push(...personNameParams);
-					}
+				if (filter?.cardNo) {
+					conditions.push('CAST(cardNo AS CHAR) = CAST(? AS CHAR)');
+					params.push(filter.cardNo);
 				}
 
 				const whereClause =
@@ -276,31 +207,57 @@ export default {
 			const connection = await ensureMySQLConnection();
 
 			try {
-				const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-					'SELECT * FROM attendance ORDER BY authDateTime DESC LIMIT 1',
-					[],
-				);
-
-				if (rows.length === 0) {
-					return null;
+				const numericId = /^\d+$/.test(id) ? Number(id) : null;
+				if (numericId != null) {
+					const [rows] = await connection.execute<mysql.RowDataPacket[]>(
+						'SELECT * FROM attendance WHERE id = ? LIMIT 1',
+						[numericId],
+					);
+					if (rows.length > 0) {
+						const row = rows[0];
+						const authDateTime = row.authDateTime
+							? new Date(row.authDateTime).toISOString()
+							: '';
+						const personName = row.personName || '';
+						return {
+							id: generateAttendanceId(row.id, authDateTime, personName),
+							authDateTime,
+							authDate: row.authDate ? row.authDate.toString() : '',
+							authTime: row.authTime ? row.authTime.toString() : '',
+							direction: row.direction || 'IN',
+							deviceName: row.deviceName || '',
+							deviceSerNum: row.deviceSerNum || '',
+							personName,
+							cardNo: row.cardNo ?? null,
+						};
+					}
 				}
 
-				const row = rows[0];
-				const authDateTime = row.authDateTime
-					? new Date(row.authDateTime).toISOString()
-					: '';
-				const personName = row.personName || '';
-				return {
-					id: generateAttendanceId(row.id, authDateTime, personName),
-					authDateTime,
-					authDate: row.authDate ? row.authDate.toString() : '',
-					authTime: row.authTime ? row.authTime.toString() : '',
-					direction: row.direction || 'IN',
-					deviceName: row.deviceName || '',
-					deviceSerNum: row.deviceSerNum || '',
-					personName,
-					cardNo: row.cardNo ?? null,
-				};
+				const [recentRows] = await connection.execute<mysql.RowDataPacket[]>(
+					'SELECT * FROM attendance ORDER BY authDateTime DESC, id DESC LIMIT 5000',
+					[],
+				);
+				for (const row of recentRows) {
+					const authDateTime = row.authDateTime
+						? new Date(row.authDateTime).toISOString()
+						: '';
+					const personName = row.personName || '';
+					const generatedId = generateAttendanceId(row.id, authDateTime, personName);
+					if (generatedId === id) {
+						return {
+							id: generatedId,
+							authDateTime,
+							authDate: row.authDate ? row.authDate.toString() : '',
+							authTime: row.authTime ? row.authTime.toString() : '',
+							direction: row.direction || 'IN',
+							deviceName: row.deviceName || '',
+							deviceSerNum: row.deviceSerNum || '',
+							personName,
+							cardNo: row.cardNo ?? null,
+						};
+					}
+				}
+				return null;
 			} catch (error) {
 				console.error('Error fetching attendance record:', error);
 				throw new Error('Failed to fetch attendance record');

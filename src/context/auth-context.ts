@@ -246,10 +246,11 @@ const authContext = async ({
 			clerkSub,
 			logIn: (args: { id: string; role: RoleType }) => {
 				const t = jwt.sign(args, process.env.JWT_SIKRIT!);
+				const isProd = process.env.NODE_ENV === 'production';
 				res.cookie('token', t, {
 					httpOnly: true,
-					secure: false,
-					sameSite: 'lax',
+					secure: isProd,
+					sameSite: isProd ? 'none' : 'lax',
 					expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
 					path: '/',
 				});

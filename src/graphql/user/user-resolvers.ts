@@ -208,11 +208,22 @@ const userResolvers: Resolvers = {
 			return mapUserToGraphQL(user as any);
 		},
 		getUser: async (_, { id }, context) => {
+			const viewer = context.auth.user;
+			if (!viewer) {
+				throw new Error('Unauthorized: Please log in');
+			}
+			if (viewer.role !== 'admin' && viewer.id !== id) {
+				throw new Error('Unauthorized: You can only view your own profile');
+			}
 			const user = await User.findById(id).lean();
 			if (!user) return null;
 			return mapUserToGraphQL(user as any);
 		},
 		getUsers: async (_, { role, includeDisabled }, context) => {
+			const viewer = context.auth.user;
+			if (!viewer || viewer.role !== 'admin') {
+				throw new Error('Unauthorized: Only admins can view all users');
+			}
 			const query: Record<string, unknown> = role ? { role } : {};
 			if (!includeDisabled) {
 				query.isDisabled = { $ne: true };
