@@ -1,4 +1,5 @@
 import Equipment from '../../database/models/equipment/equipment-schema.js';
+import Session from '../../database/models/session/session-schema.js';
 import { IAuthContext } from '../../context/auth-context.js';
 import mongoose from 'mongoose';
 
@@ -29,7 +30,46 @@ const parseIsoDateOrNull = (raw: unknown): Date | null | undefined => {
 	return parsed;
 };
 
-const mapEquipmentToGraphQL = (doc: any) => ({
+const parseTimeToMinutes = (raw: string): number => {
+	const value = String(raw || '').trim().toUpperCase();
+	const m = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+	if (!m) return 0;
+	let hours = parseInt(m[1], 10);
+	const minutes = parseInt(m[2], 10);
+	if (m[3] === 'AM' && hours === 12) hours = 0;
+	if (m[3] === 'PM' && hours !== 12) hours += 12;
+	return hours * 60 + minutes;
+};
+
+const overlaps = (startA: number, endA: number, startB: number, endB: number) =>
+	startA < endB && startB < endA;
+
+const mapEquipmentToGraphQL = (
+	doc: any,
+	opts?: { checkStartMinutes?: number; checkEndMinutes?: number; usages?: any[]; windowLabel?: string }
+) => {
+	const relevantUsages = (opts?.usages || []).filter(
+		(row) => row.equipmentId === doc._id.toString()
+	);
+	let reservedQuantityInWindow = 0;
+	if (
+		typeof opts?.checkStartMinutes === 'number' &&
+		typeof opts?.checkEndMinutes === 'number'
+	) {
+		for (const slot of relevantUsages) {
+			if (
+				overlaps(
+					opts.checkStartMinutes,
+					opts.checkEndMinutes,
+					slot.startMinutes,
+					slot.endMinutes
+				)
+			) {
+				reservedQuantityInWindow += Math.max(1, Number(slot.quantity || 1));
+			}
+		}
+	}
+	return ({
 	id: doc._id.toString(),
 	name: doc.name,
 	imageUrl: doc.imageUrl,
@@ -52,7 +92,19 @@ const mapEquipmentToGraphQL = (doc: any) => ({
 	})),
 	createdAt: doc.createdAt?.toISOString() ?? null,
 	updatedAt: doc.updatedAt?.toISOString() ?? null,
+	isReservedInWindow: reservedQuantityInWindow > 0,
+	reservedQuantityInWindow,
+	reservationWindowLabel: opts?.windowLabel ?? null,
+	upcomingUsages: relevantUsages.slice(0, 5).map((slot) => ({
+		sessionId: slot.sessionId,
+		sessionName: slot.sessionName,
+		date: slot.date,
+		startTime: slot.startTime,
+		endTime: slot.endTime || null,
+		quantity: Math.max(1, Number(slot.quantity || 1)),
+	})),
 });
+};
 
 const requireAdmin = (context: Context) => {
 	if (context.auth.user?.role !== 'admin') {
@@ -64,14 +116,78 @@ export default {
 	Query: {
 		getEquipments: async (
 			_: any,
-			{ includeArchived }: { includeArchived?: boolean },
+			{
+				includeArchived,
+				checkDate,
+				checkStartTime,
+				checkEndTime,
+			}: {
+				includeArchived?: boolean;
+				checkDate?: string;
+				checkStartTime?: string;
+				checkEndTime?: string;
+			},
 			_context: Context
 		) => {
 			const query = includeArchived ? {} : { isArchived: { $ne: true } };
 			const list = await Equipment.find(query)
 				.sort({ sortOrder: 1, createdAt: 1 })
 				.lean();
-			return list.map(mapEquipmentToGraphQL);
+			let checkStartMinutes: number | undefined;
+			let checkEndMinutes: number | undefined;
+			let windowLabel: string | undefined;
+			const hasCustomWindow = !!(checkDate && checkStartTime);
+			if (hasCustomWindow) {
+				checkStartMinutes = parseTimeToMinutes(String(checkStartTime));
+				checkEndMinutes = parseTimeToMinutes(
+					String(checkEndTime || checkStartTime)
+				);
+				if (checkEndMinutes <= checkStartMinutes) {
+					checkEndMinutes = checkStartMinutes + 60;
+				}
+				windowLabel = `${checkDate} ${checkStartTime}${checkEndTime ? ` - ${checkEndTime}` : ''}`;
+			} else {
+				const now = new Date();
+				checkStartMinutes = now.getHours() * 60 + now.getMinutes();
+				checkEndMinutes = checkStartMinutes + 1;
+				windowLabel = `${now.toISOString()} (current minute)`;
+				checkDate = now.toISOString();
+			}
+			const baseDate = new Date(String(checkDate));
+			const dayStart = new Date(baseDate);
+			dayStart.setHours(0, 0, 0, 0);
+			const dayEnd = new Date(dayStart);
+			dayEnd.setDate(dayEnd.getDate() + 1);
+			const daySessions = await Session.find({
+				status: 'scheduled',
+				date: { $gte: dayStart, $lt: dayEnd },
+				equipmentReservations: { $exists: true, $ne: [] },
+			})
+				.select('name date startTime endTime equipmentReservations')
+				.lean();
+			const usages = (daySessions as any[]).flatMap((session) =>
+				(session.equipmentReservations || []).map((slot: any) => ({
+					sessionId: session._id.toString(),
+					sessionName: session.name || 'Session',
+					date: session.date?.toISOString?.() || new Date(session.date).toISOString(),
+					equipmentId: slot.equipment_id?.toString?.() || String(slot.equipment_id || ''),
+					startTime: slot.reservedStartTime || session.startTime,
+					endTime: slot.reservedEndTime || session.endTime || null,
+					startMinutes: parseTimeToMinutes(slot.reservedStartTime || session.startTime),
+					endMinutes: parseTimeToMinutes(
+						slot.reservedEndTime || session.endTime || slot.reservedStartTime || session.startTime
+					),
+					quantity: Math.max(1, Number(slot.quantity || 1)),
+				}))
+			);
+			return list.map((doc) =>
+				mapEquipmentToGraphQL(doc, {
+					checkStartMinutes,
+					checkEndMinutes,
+					usages,
+					windowLabel,
+				})
+			);
 		},
 
 		getEquipment: async (_: any, { id }: { id: string }, _context: Context) => {

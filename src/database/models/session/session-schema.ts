@@ -14,6 +14,13 @@ export interface IClassEnrollment {
 	createdAt?: Date;
 }
 
+export interface ISessionEquipmentReservation {
+	equipment_id: mongoose.Types.ObjectId;
+	quantity?: number;
+	reservedStartTime?: string;
+	reservedEndTime?: string;
+}
+
 export interface ISession {
 	_id?: mongoose.Types.ObjectId;
 	coach_id: mongoose.Types.ObjectId;
@@ -33,6 +40,7 @@ export interface ISession {
 	sessionKind?: SessionKindType;
 	maxParticipants?: number;
 	enrollments?: IClassEnrollment[];
+	equipmentReservations?: ISessionEquipmentReservation[];
 	createdAt?: Date;
 	updatedAt?: Date;
 }
@@ -52,6 +60,28 @@ const classEnrollmentSchema = new Schema(
 		createdAt: {
 			type: Date,
 			default: Date.now,
+		},
+	},
+	{ _id: false }
+);
+
+const sessionEquipmentReservationSchema = new Schema(
+	{
+		equipment_id: {
+			type: mongoose.SchemaTypes.ObjectId,
+			ref: 'Equipment',
+			required: true,
+		},
+		quantity: {
+			type: Number,
+			min: 1,
+			default: 1,
+		},
+		reservedStartTime: {
+			type: String,
+		},
+		reservedEndTime: {
+			type: String,
 		},
 	},
 	{ _id: false }
@@ -126,6 +156,10 @@ const sessionSchema = new Schema(
 		},
 		enrollments: {
 			type: [classEnrollmentSchema],
+			default: [],
+		},
+		equipmentReservations: {
+			type: [sessionEquipmentReservationSchema],
 			default: [],
 		},
 	},

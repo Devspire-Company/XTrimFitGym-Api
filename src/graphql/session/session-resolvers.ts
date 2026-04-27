@@ -22,6 +22,39 @@ async function fetchSessionDocument(sessionId: string) {
 		.lean();
 }
 
+function normalizeEquipmentReservationsInput(input: any): Array<{
+	equipment_id: mongoose.Types.ObjectId;
+	quantity: number;
+	reservedStartTime?: string;
+	reservedEndTime?: string;
+}> {
+	if (!Array.isArray(input) || input.length === 0) return [];
+	return input
+		.map((row: any) => {
+			const equipmentId = String(row?.equipmentId || '');
+			if (!equipmentId || !mongoose.Types.ObjectId.isValid(equipmentId)) return null;
+			const quantity = Math.max(1, Number(row?.quantity || 1));
+			const reservedStartTime = row?.reservedStartTime
+				? String(row.reservedStartTime).trim()
+				: undefined;
+			const reservedEndTime = row?.reservedEndTime
+				? String(row.reservedEndTime).trim()
+				: undefined;
+			return {
+				equipment_id: new mongoose.Types.ObjectId(equipmentId),
+				quantity,
+				...(reservedStartTime ? { reservedStartTime } : {}),
+				...(reservedEndTime ? { reservedEndTime } : {}),
+			};
+		})
+		.filter(Boolean) as Array<{
+		equipment_id: mongoose.Types.ObjectId;
+		quantity: number;
+		reservedStartTime?: string;
+		reservedEndTime?: string;
+	}>;
+}
+
 function mapEnrollmentToGraphQL(e: any) {
 	const rawCid = e.client_id;
 	const clientId =
@@ -218,6 +251,12 @@ const mapSessionToGraphQL = (session: any) => {
 	const sessionKind =
 		session.sessionKind === 'group_class' ? 'group_class' : 'personal';
 	const enrollments = (session.enrollments || []).map(mapEnrollmentToGraphQL);
+	const equipmentReservations = (session.equipmentReservations || []).map((row: any) => ({
+		equipmentId: row.equipment_id?.toString?.() || String(row.equipment_id || ''),
+		quantity: Math.max(1, Number(row.quantity || 1)),
+		reservedStartTime: row.reservedStartTime || null,
+		reservedEndTime: row.reservedEndTime || null,
+	}));
 
 	return {
 		id: session._id.toString(),
@@ -246,6 +285,7 @@ const mapSessionToGraphQL = (session: any) => {
 				? session.maxParticipants
 				: null,
 		enrollments,
+		equipmentReservations,
 		createdAt: session.createdAt?.toISOString(),
 		updatedAt: session.updatedAt?.toISOString(),
 	};
@@ -922,6 +962,9 @@ export default {
 							createdAt: new Date(),
 						}))
 					: [];
+			const normalizedEquipmentReservations = normalizeEquipmentReservationsInput(
+				input.equipmentReservations
+			);
 
 			const session = new Session({
 				coach_id: new mongoose.Types.ObjectId(effectiveCoachId),
@@ -951,6 +994,7 @@ export default {
 					? (input.maxParticipants ?? 20)
 					: undefined,
 				enrollments,
+				equipmentReservations: normalizedEquipmentReservations,
 			});
 
 			await session.save();
@@ -1101,6 +1145,9 @@ export default {
 				input.workoutType !== undefined && input.workoutType !== null
 					? input.workoutType
 					: templateSession.workoutType || null;
+			const normalizedEquipmentReservations = normalizeEquipmentReservationsInput(
+				input.equipmentReservations
+			);
 
 			const session = new Session({
 				coach_id: new mongoose.Types.ObjectId(userIdString),
@@ -1123,6 +1170,7 @@ export default {
 				status: 'scheduled',
 				sessionKind: 'personal',
 				enrollments: [],
+				equipmentReservations: normalizedEquipmentReservations,
 			});
 
 			await session.save();
@@ -1243,6 +1291,11 @@ export default {
 					);
 				}
 				updateData.maxParticipants = input.maxParticipants;
+			}
+			if (input.equipmentReservations !== undefined) {
+				updateData.equipmentReservations = normalizeEquipmentReservationsInput(
+					input.equipmentReservations
+				);
 			}
 
 			if (input.startTime || input.endTime) {

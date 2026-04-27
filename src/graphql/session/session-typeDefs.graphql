@@ -21,8 +21,16 @@ type Session {
 	sessionKind: SessionKind!
 	maxParticipants: Int
 	enrollments: [ClassEnrollment!]!
+	equipmentReservations: [SessionEquipmentReservation!]!
 	createdAt: String
 	updatedAt: String
+}
+
+type SessionEquipmentReservation {
+	equipmentId: ID!
+	quantity: Int!
+	reservedStartTime: String
+	reservedEndTime: String
 }
 
 enum SessionKind {
@@ -69,6 +77,7 @@ input CreateSessionInput {
 	sessionKind: SessionKind # Defaults to personal
 	maxParticipants: Int # Required for group_class (defaults to 20)
 	invitedClientIds: [ID!] # Optional invites when creating a group_class
+	equipmentReservations: [SessionEquipmentReservationInput!]
 }
 
 input UpdateSessionInput {
@@ -81,6 +90,14 @@ input UpdateSessionInput {
 	note: String
 	status: SessionStatus
 	maxParticipants: Int
+	equipmentReservations: [SessionEquipmentReservationInput!]
+}
+
+input SessionEquipmentReservationInput {
+	equipmentId: ID!
+	quantity: Int
+	reservedStartTime: String
+	reservedEndTime: String
 }
 
 # Progress Images type
@@ -192,5 +209,6 @@ input CreateSessionFromTemplateInput {
 	endTime: String # End time for this instance
 	goalId: ID # Link to goal
 	workoutType: String # Optional workout exercises data (overrides template workoutType)
+	equipmentReservations: [SessionEquipmentReservationInput!]
 }
 

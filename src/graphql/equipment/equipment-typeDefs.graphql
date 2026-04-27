@@ -22,6 +22,19 @@ type Equipment {
 	lifecycleLogs: [EquipmentLifecycleLog!]!
 	createdAt: String
 	updatedAt: String
+	isReservedInWindow: Boolean!
+	reservedQuantityInWindow: Int!
+	reservationWindowLabel: String
+	upcomingUsages: [EquipmentUsageSlot!]!
+}
+
+type EquipmentUsageSlot {
+	sessionId: ID!
+	sessionName: String!
+	date: String!
+	startTime: String!
+	endTime: String
+	quantity: Int!
 }
 
 type EquipmentLifecycleLog {
@@ -64,7 +77,12 @@ input AdjustEquipmentStockInput {
 
 extend type Query {
 	# Get all equipment (public / any authenticated user for app)
-	getEquipments(includeArchived: Boolean): [Equipment!]!
+	getEquipments(
+		includeArchived: Boolean
+		checkDate: String
+		checkStartTime: String
+		checkEndTime: String
+	): [Equipment!]!
 	# Get single equipment by ID
 	getEquipment(id: ID!): Equipment
 }
