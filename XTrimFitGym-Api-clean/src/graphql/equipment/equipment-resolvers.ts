@@ -59,7 +59,18 @@ const getYmdInManila = (dateInput: string | Date | null | undefined): string => 
 	if (!dateInput) return '';
 	const parsed = dateInput instanceof Date ? dateInput : new Date(dateInput);
 	if (!Number.isFinite(parsed.getTime())) return '';
-	return parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+	const parts = new Intl.DateTimeFormat('en-US', {
+		timeZone: 'Asia/Manila',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+	}).formatToParts(parsed);
+	const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+	const year = get('year');
+	const month = get('month');
+	const day = get('day');
+	if (!year || !month || !day) return '';
+	return `${year}-${month}-${day}`;
 };
 
 const mapEquipmentToGraphQL = (
