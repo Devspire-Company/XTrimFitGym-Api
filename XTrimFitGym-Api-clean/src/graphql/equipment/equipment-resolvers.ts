@@ -87,14 +87,20 @@ const mapEquipmentToGraphQL = (
 	const relevantUsages = (opts?.usages || []).filter(
 		(row) => row.equipmentId === doc._id.toString()
 	);
+	const nowCtx = (() => {
+		if (opts?.currentDateYmd && typeof opts?.currentMinutes === 'number') {
+			return { ymd: opts.currentDateYmd, minutes: opts.currentMinutes };
+		}
+		return getManilaNowParts();
+	})();
 	const upcomingRelevantUsages = relevantUsages
 		.filter((slot) => {
-			if (!opts?.currentDateYmd || typeof opts.currentMinutes !== 'number') return true;
+			if (!nowCtx.ymd || typeof nowCtx.minutes !== 'number') return true;
 			const usageDateYmd = getYmdInManila(slot.date);
 			if (!usageDateYmd) return false;
-			if (usageDateYmd > opts.currentDateYmd) return true;
-			if (usageDateYmd < opts.currentDateYmd) return false;
-			return Number(slot.endMinutes || 0) > opts.currentMinutes;
+			if (usageDateYmd > nowCtx.ymd) return true;
+			if (usageDateYmd < nowCtx.ymd) return false;
+			return Number(slot.endMinutes || 0) > nowCtx.minutes;
 		})
 		.sort((a, b) => {
 			const dayA = getYmdInManila(a.date);
