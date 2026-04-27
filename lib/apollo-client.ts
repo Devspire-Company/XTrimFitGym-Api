@@ -104,7 +104,7 @@ const getApiUrl = () => {
 export const API_URL = getApiUrl();
 console.log('✅ [Apollo Client] GraphQL endpoint:', API_URL);
 
-const GRAPHQL_FETCH_TIMEOUT_MS = 75_000;
+const GRAPHQL_FETCH_TIMEOUT_MS = 45_000;
 
 function fetchWithTimeout(
 	input: RequestInfo | URL,
@@ -138,7 +138,7 @@ const httpLink = createHttpLink({
 	fetch: fetchWithTimeout,
 });
 
-const CLERK_TOKEN_WAIT_MS = 20_000;
+const CLERK_TOKEN_WAIT_MS = 6_000;
 
 const authLink = setContext(async (_, { headers }) => {
 	try {
@@ -149,7 +149,9 @@ const authLink = setContext(async (_, { headers }) => {
 			),
 		]);
 		const stored = await storage.getItem('auth_token');
-		const token = clerkToken || stored;
+		// Prefer app-stored token first (supports dev coach fallback JWT flow),
+		// then fallback to Clerk session token.
+		const token = stored || clerkToken;
 
 		if (token) {
 			return {

@@ -13,6 +13,7 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 
 const SLOW_SYNC_HINT_MS = 12_000;
+const FORCE_SYNC_TIMEOUT_MS = 45_000;
 
 export default function Index() {
 	const dispatch = useDispatch();
@@ -20,12 +21,14 @@ export default function Index() {
 		| import('@/graphql/generated/types').User
 		| null;
 	const { onboardingStatus } = useAuth();
-	const { isLoaded: clerkLoaded, isSignedIn } = useClerkAuth();
+	const { isLoaded: clerkLoaded, isSignedIn, signOut } = useClerkAuth();
 
 	const [showSlowSyncHint, setShowSlowSyncHint] = useState(false);
 	const [profileHydrateError, setProfileHydrateError] = useState<string | null>(null);
 	const [meNullAuthFlow, setMeNullAuthFlow] = useState<'login' | 'signup' | null>(null);
+	const [syncTimedOut, setSyncTimedOut] = useState(false);
 	const slowHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const forceSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const needMe = clerkLoaded && isSignedIn && !reduxUser;
 
@@ -99,17 +102,30 @@ export default function Index() {
 	useEffect(() => {
 		if (!needMe || reduxUser) {
 			setShowSlowSyncHint(false);
+			setSyncTimedOut(false);
 			if (slowHintTimer.current) {
 				clearTimeout(slowHintTimer.current);
 				slowHintTimer.current = null;
 			}
+			if (forceSyncTimeoutRef.current) {
+				clearTimeout(forceSyncTimeoutRef.current);
+				forceSyncTimeoutRef.current = null;
+			}
 			return;
 		}
 		slowHintTimer.current = setTimeout(() => setShowSlowSyncHint(true), SLOW_SYNC_HINT_MS);
+		forceSyncTimeoutRef.current = setTimeout(
+			() => setSyncTimedOut(true),
+			FORCE_SYNC_TIMEOUT_MS,
+		);
 		return () => {
 			if (slowHintTimer.current) {
 				clearTimeout(slowHintTimer.current);
 				slowHintTimer.current = null;
+			}
+			if (forceSyncTimeoutRef.current) {
+				clearTimeout(forceSyncTimeoutRef.current);
+				forceSyncTimeoutRef.current = null;
 			}
 		};
 	}, [needMe, reduxUser]);
@@ -150,7 +166,7 @@ export default function Index() {
 				</FixedView>
 			);
 		}
-		if (meLoading || (needMe && data === undefined && !error)) {
+		if (!syncTimedOut && (meLoading || (needMe && data === undefined && !error))) {
 			return (
 				<FixedView className='flex-1 bg-bg-darker'>
 					<View className='flex-1 justify-center items-center px-6'>
@@ -167,6 +183,7 @@ export default function Index() {
 						{showSlowSyncHint ? (
 							<TouchableOpacity
 								onPress={() => {
+									setSyncTimedOut(false);
 									restartSlowSyncHintTimer();
 									void refetch();
 								}}
@@ -193,6 +210,7 @@ export default function Index() {
 						</Text>
 						<TouchableOpacity
 							onPress={() => {
+								setSyncTimedOut(false);
 								restartSlowSyncHintTimer();
 								void refetch();
 							}}
@@ -215,7 +233,48 @@ export default function Index() {
 					</FixedView>
 				);
 			}
-			return <Redirect href='/(auth)/complete-registration' />;
+			if (meNullAuthFlow === 'signup') {
+				return <Redirect href='/(auth)/complete-registration' />;
+			}
+			return (
+				<FixedView className='flex-1 bg-bg-darker'>
+					<View className='flex-1 justify-center items-center px-6'>
+						<Text className='text-base text-red-400 text-center'>
+							Signed in, but your profile could not be loaded.
+						</Text>
+						<Text className='mt-3 text-sm text-text-secondary text-center'>
+							This is usually an API auth mismatch (Clerk publishable key vs server secret key)
+							or a temporary API issue.
+						</Text>
+						<TouchableOpacity
+							onPress={() => {
+								setSyncTimedOut(false);
+								restartSlowSyncHintTimer();
+								void refetch();
+							}}
+							className='mt-6 py-3 px-6 rounded-xl bg-[#F9C513]/20 border border-[#F9C513]'
+							style={{ borderWidth: 0.5 }}
+						>
+							<Text className='text-[#F9C513] font-semibold text-center'>Retry sync</Text>
+						</TouchableOpacity>
+						<TouchableOpacity
+							onPress={() => {
+								void (async () => {
+									try {
+										await signOut();
+									} catch {
+										// noop
+									}
+								})();
+							}}
+							className='mt-3 py-3 px-6 rounded-xl bg-bg-primary border border-[#F9C513]/40'
+							style={{ borderWidth: 0.5 }}
+						>
+							<Text className='text-text-primary font-semibold text-center'>Sign out</Text>
+						</TouchableOpacity>
+					</View>
+				</FixedView>
+			);
 		}
 		return (
 			<FixedView className='flex-1 bg-bg-darker'>
