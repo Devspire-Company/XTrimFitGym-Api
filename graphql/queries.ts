@@ -96,6 +96,12 @@ export const GET_COACH_SESSIONS_QUERY = gql`
 					email
 				}
 			}
+			equipmentReservations {
+				equipmentId
+				quantity
+				reservedStartTime
+				reservedEndTime
+			}
 			createdAt
 		}
 	}
@@ -156,6 +162,12 @@ export const GET_CLIENT_SESSIONS_QUERY = gql`
 				clientId
 				status
 				createdAt
+			}
+			equipmentReservations {
+				equipmentId
+				quantity
+				reservedStartTime
+				reservedEndTime
 			}
 			createdAt
 		}
@@ -385,6 +397,12 @@ export const GET_SESSION_TEMPLATES_QUERY = gql`
 				goalType
 			}
 			isTemplate
+			equipmentReservations {
+				equipmentId
+				quantity
+				reservedStartTime
+				reservedEndTime
+			}
 			createdAt
 		}
 	}
@@ -900,8 +918,12 @@ export const GET_ATTENDANCE_RECORDS_QUERY = gql`
 `;
 
 export const GET_EQUIPMENTS_QUERY = gql`
-	query GetEquipments {
-		getEquipments {
+	query GetEquipments($checkDate: String, $checkStartTime: String, $checkEndTime: String) {
+		getEquipments(
+			checkDate: $checkDate
+			checkStartTime: $checkStartTime
+			checkEndTime: $checkEndTime
+		) {
 			id
 			name
 			imageUrl
@@ -915,6 +937,17 @@ export const GET_EQUIPMENTS_QUERY = gql`
 			archivedAt
 			createdAt
 			updatedAt
+			isReservedInWindow
+			reservedQuantityInWindow
+			reservationWindowLabel
+			upcomingUsages {
+				sessionId
+				sessionName
+				date
+				startTime
+				endTime
+				quantity
+			}
 		}
 	}
 `;

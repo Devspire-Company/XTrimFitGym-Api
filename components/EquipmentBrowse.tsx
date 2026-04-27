@@ -36,6 +36,17 @@ export type EquipmentRow = {
 	archivedAt?: string | null;
 	createdAt?: string | null;
 	updatedAt?: string | null;
+	isReservedInWindow?: boolean | null;
+	reservedQuantityInWindow?: number | null;
+	reservationWindowLabel?: string | null;
+	upcomingUsages?: Array<{
+		sessionId: string;
+		sessionName: string;
+		date: string;
+		startTime: string;
+		endTime?: string | null;
+		quantity: number;
+	}> | null;
 };
 
 const { width, height: windowHeight } = Dimensions.get('window');
@@ -155,6 +166,19 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 		archivedAt: typeof row.archivedAt === 'string' ? row.archivedAt : null,
 		createdAt: row.createdAt ?? null,
 		updatedAt: row.updatedAt ?? null,
+		isReservedInWindow:
+			typeof row.isReservedInWindow === 'boolean' ? row.isReservedInWindow : null,
+		reservedQuantityInWindow:
+			typeof row.reservedQuantityInWindow === 'number'
+				? row.reservedQuantityInWindow
+				: null,
+		reservationWindowLabel:
+			typeof row.reservationWindowLabel === 'string'
+				? row.reservationWindowLabel
+				: null,
+		upcomingUsages: Array.isArray(row.upcomingUsages)
+			? (row.upcomingUsages as any[])
+			: [],
 	})).filter((row, index) => !isArchivedEquipmentRow(rawList[index]));
 	const [detail, setDetail] = useState<EquipmentRow | null>(null);
 
@@ -233,6 +257,13 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 												{statusLabelCompact(item.status)}
 											</Text>
 										</View>
+										{item.isReservedInWindow ? (
+											<View style={[styles.statusPillWrap, { marginLeft: 6 }]}>
+												<Text style={[styles.statusPill, { color: '#F97316' }]}>
+													In use now
+												</Text>
+											</View>
+										) : null}
 									</View>
 									<View style={styles.stockRow}>
 										<Text style={styles.stockMeta}>Qty {item.quantity}</Text>
@@ -287,9 +318,30 @@ export function EquipmentBrowse({ showTabHeader = true }: Props) {
 									</Text>
 								) : (
 									<Text style={[styles.detailBody, { marginBottom: 14 }]}>
-										Availability: {detail.quantity > 0 ? 'In stock' : 'Out of stock'}
+										Availability:{' '}
+										{detail.isReservedInWindow
+											? 'In use right now'
+											: detail.quantity > 0
+												? 'In stock'
+												: 'Out of stock'}
 									</Text>
 								)}
+								{detail.isReservedInWindow ? (
+									<Text style={[styles.detailBody, { marginBottom: 14 }]}>
+										Reserved qty now: {detail.reservedQuantityInWindow || 0}
+									</Text>
+								) : null}
+								{(detail.upcomingUsages || []).length > 0 ? (
+									<View style={{ marginBottom: 14 }}>
+										<Text style={styles.detailMeta}>Upcoming usage</Text>
+										{(detail.upcomingUsages || []).slice(0, 3).map((slot) => (
+											<Text key={`${slot.sessionId}-${slot.startTime}`} style={styles.detailBody}>
+												{slot.sessionName}: {slot.startTime}
+												{slot.endTime ? ` - ${slot.endTime}` : ''} (qty {slot.quantity})
+											</Text>
+										))}
+									</View>
+								) : null}
 								<Text style={styles.detailMeta}>Description</Text>
 								<Text style={[styles.detailBody, { marginBottom: 14 }]}>
 									{detail.description?.trim() ? detail.description : '—'}

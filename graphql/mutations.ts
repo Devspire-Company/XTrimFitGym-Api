@@ -194,6 +194,12 @@ export const CREATE_SESSION_MUTATION = gql`
 					email
 				}
 			}
+			equipmentReservations {
+				equipmentId
+				quantity
+				reservedStartTime
+				reservedEndTime
+			}
 			createdAt
 		}
 	}
@@ -342,6 +348,12 @@ export const CREATE_SESSION_FROM_TEMPLATE_MUTATION = gql`
 				id
 				title
 				goalType
+			}
+			equipmentReservations {
+				equipmentId
+				quantity
+				reservedStartTime
+				reservedEndTime
 			}
 			createdAt
 		}
