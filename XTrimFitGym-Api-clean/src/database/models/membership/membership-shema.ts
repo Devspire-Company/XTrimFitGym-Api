@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 export type MembershipStatusType = 'Active' | 'Inactive' | 'Coming soon';
-export type DurationTypeType = 'Monthly' | 'Yearly' | 'Quarterly' | 'Daily';
+export type DurationTypeType = 'Monthly' | 'Yearly' | 'Quarterly' | 'Daily' | 'Minutes';
 export interface IMembership {
 	status: MembershipStatusType;
 	durationType: DurationTypeType;
@@ -34,7 +34,7 @@ const membershipSchema = new Schema(
 		},
 		durationType: {
 			type: String,
-			enum: ['Monthly', 'Yearly', 'Quarterly', 'Daily'],
+			enum: ['Monthly', 'Yearly', 'Quarterly', 'Daily', 'Minutes'],
 			required: true,
 		},
 		monthDuration: {

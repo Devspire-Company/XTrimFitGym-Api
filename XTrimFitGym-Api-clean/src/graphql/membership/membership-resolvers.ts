@@ -12,6 +12,7 @@ import {
 import { pubsub, EVENTS } from '../pubsub.js';
 import {
 	isDailyDurationType,
+	isMinuteDurationType,
 	resolveSubscriptionLength,
 	resolveTransactionMonthDuration,
 } from '../../database/utils/membership-expiry.js';
@@ -24,6 +25,10 @@ const mapMembershipToGraphQL = (membership: any) => {
 	if (isDailyDurationType(membership.durationType)) {
 		if (!monthDuration || monthDuration < 1) {
 			monthDuration = 1;
+		}
+	} else if (isMinuteDurationType(membership.durationType)) {
+		if (!monthDuration || monthDuration < 1) {
+			monthDuration = 5;
 		}
 	} else if (!monthDuration || monthDuration < 1) {
 		const durationType = membership.durationType?.toLowerCase() || 'monthly';

@@ -25,6 +25,8 @@ enum DurationType {
 	QUARTERLY
 	"""Fixed calendar-day promos (plan `monthDuration` = number of days)."""
 	DAILY
+	"""Short promo plans in minutes (plan `monthDuration` = number of minutes)."""
+	MINUTES
 }
 
 # Membership transaction (user's subscription)
