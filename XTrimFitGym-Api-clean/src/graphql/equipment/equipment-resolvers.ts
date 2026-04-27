@@ -160,10 +160,15 @@ export default {
 				.populate('coach_id', 'firstName lastName')
 				.lean();
 			const usages = (daySessions as any[]).flatMap((session) =>
-				(session.equipmentReservations || []).map((slot: any) => ({
+				(session.equipmentReservations || []).map((slot: any) => {
+					const coachName = formatCoachName(session.coach_id);
+					const sessionName = coachName
+						? `${session.name || 'Session'} (Coach: ${coachName})`
+						: session.name || 'Session';
+					return ({
 					sessionId: session._id.toString(),
-					sessionName: session.name || 'Session',
-					coachName: formatCoachName(session.coach_id),
+					sessionName,
+					coachName,
 					date: session.date?.toISOString?.() || new Date(session.date).toISOString(),
 					equipmentId: slot.equipment_id?.toString?.() || String(slot.equipment_id || ''),
 					startTime: slot.reservedStartTime || session.startTime,
@@ -173,7 +178,8 @@ export default {
 						slot.reservedEndTime || session.endTime || slot.reservedStartTime || session.startTime
 					),
 					quantity: Math.max(1, Number(slot.quantity || 1)),
-				}))
+				});
+				})
 			);
 			return list.map((doc) =>
 				mapEquipmentToGraphQL(doc, {
