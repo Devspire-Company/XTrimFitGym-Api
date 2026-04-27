@@ -1,0 +1,91 @@
+# Equipment types (gym equipment catalog, managed by admin)
+enum EquipmentStatus {
+	AVAILABLE
+	DAMAGED
+	UNDERMAINTENANCE
+}
+
+type Equipment {
+	id: ID!
+	name: String!
+	imageUrl: String!
+	description: String
+	notes: String
+	acquiredAt: String
+	sortOrder: Int!
+	quantity: Int!
+	maintenanceStartedAt: String
+	status: EquipmentStatus!
+	isArchived: Boolean!
+	archivedAt: String
+	archiveReason: String
+	lifecycleLogs: [EquipmentLifecycleLog!]!
+	createdAt: String
+	updatedAt: String
+	isReservedInWindow: Boolean!
+	reservedQuantityInWindow: Int!
+	reservationWindowLabel: String
+	upcomingUsages: [EquipmentUsageSlot!]!
+}
+
+type EquipmentUsageSlot {
+	sessionId: ID!
+	sessionName: String!
+	date: String!
+	startTime: String!
+	endTime: String
+	quantity: Int!
+}
+
+type EquipmentLifecycleLog {
+	action: String!
+	notes: String
+	status: EquipmentStatus
+	changedAt: String!
+	changedById: ID
+}
+
+input CreateEquipmentInput {
+	name: String!
+	imageUrl: String!
+	description: String
+	notes: String
+	acquiredAt: String
+	sortOrder: Int
+	quantity: Int
+	status: EquipmentStatus
+}
+
+input UpdateEquipmentInput {
+	name: String
+	imageUrl: String
+	description: String
+	notes: String
+	acquiredAt: String
+	sortOrder: Int
+	quantity: Int
+	status: EquipmentStatus
+}
+
+extend type Query {
+	# Get all equipment (public / any authenticated user for app)
+	getEquipments(
+		includeArchived: Boolean
+		checkDate: String
+		checkStartTime: String
+		checkEndTime: String
+	): [Equipment!]!
+	# Get single equipment by ID
+	getEquipment(id: ID!): Equipment
+}
+
+extend type Mutation {
+	# Create equipment (admin only)
+	createEquipment(input: CreateEquipmentInput!): Equipment!
+	# Update equipment (admin only)
+	updateEquipment(id: ID!, input: UpdateEquipmentInput!): Equipment!
+	# Delete equipment (admin only)
+	deleteEquipment(id: ID!): Boolean!
+	archiveEquipment(id: ID!, reason: String!): Equipment!
+	unarchiveEquipment(id: ID!): Equipment!
+}

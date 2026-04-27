@@ -1,0 +1,140 @@
+enum WalkInGender {
+	MALE
+	FEMALE
+	NON_BINARY
+	PREFER_NOT_TO_SAY
+}
+
+type WalkInClient {
+	id: ID!
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+	"""Age in whole years (admin-entered)."""
+	ageYears: Int
+	"""Parent/guardian name on file when under 18 with waiver."""
+	minorWaiverGuardianName: String
+	"""When the guardian liability waiver was recorded (ISO)."""
+	minorWaiverAcceptedAt: String
+	createdAt: String!
+	updatedAt: String!
+}
+
+type WalkInAttendanceLog {
+	id: ID!
+	walkInClient: WalkInClient!
+	timedInAt: String!
+	localDate: String!
+	"""Walk-in fee (PHP) recorded at time-in."""
+	payment: Float!
+	createdAt: String!
+}
+
+type WalkInPaymentSettings {
+	"""Default PHP amount applied to each new time-in (admin-configurable)."""
+	defaultPaymentPesos: Float!
+}
+
+type WalkInLogsConnection {
+	logs: [WalkInAttendanceLog!]!
+	totalCount: Int!
+}
+
+type WalkInAccountRow {
+	client: WalkInClient!
+	"""Total number of time-in attendance records for this walk-in profile."""
+	timeInCount: Int!
+}
+
+type WalkInAccountsOverview {
+	"""Total walk-in profiles in the system."""
+	totalWalkInAccounts: Int!
+	"""Total time-in log rows across all walk-ins."""
+	totalTimeInRecords: Int!
+	rows: [WalkInAccountRow!]!
+}
+
+type WalkInStats {
+	totalWalkInAccounts: Int!
+	totalTimeInRecords: Int!
+}
+
+input CreateWalkInClientInput {
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+	ageYears: Int!
+	"""Required when ageYears is under 18: admin confirms guardian waiver on file."""
+	minorWaiverAcknowledged: Boolean
+	"""Parent/guardian full name when under 18."""
+	minorWaiverGuardianName: String
+}
+
+input UpdateWalkInClientInput {
+	firstName: String!
+	middleName: String
+	lastName: String!
+	phoneNumber: String
+	email: String
+	gender: WalkInGender!
+	notes: String
+	ageYears: Int!
+	minorWaiverAcknowledged: Boolean
+	minorWaiverGuardianName: String
+}
+
+input WalkInLogsFilter {
+	"""YYYY-MM-DD (Asia/Manila calendar date)"""
+	date: String!
+}
+
+input WalkInPagination {
+	limit: Int
+	offset: Int
+}
+
+type CreateWalkInClientResult {
+	client: WalkInClient!
+	log: WalkInAttendanceLog
+}
+
+extend type Query {
+	"""Search by name/phone/email, or pass an empty query to list all walk-ins (admin, paginated)."""
+	searchWalkInClients(query: String, limit: Int, offset: Int): [WalkInClient!]!
+	"""System-wide walk-in profile and time-in counts (admin)."""
+	walkInStats: WalkInStats!
+	walkInAttendanceLogs(
+		filter: WalkInLogsFilter!
+		pagination: WalkInPagination
+	): WalkInLogsConnection!
+	"""All time-in logs for one walk-in client (newest first)."""
+	walkInLogsByClient(
+		walkInClientId: ID!
+		pagination: WalkInPagination
+	): WalkInLogsConnection!
+	"""All walk-in profiles with per-profile time-in counts (paginated, newest updated first)."""
+	walkInAccountsOverview(pagination: WalkInPagination): WalkInAccountsOverview!
+	"""Default walk-in time-in fee in PHP (admin)."""
+	walkInPaymentSettings: WalkInPaymentSettings!
+}
+
+extend type Mutation {
+	createWalkInClient(
+		input: CreateWalkInClientInput!
+		timeInNow: Boolean!
+	): CreateWalkInClientResult!
+	updateWalkInClient(
+		walkInClientId: ID!
+		input: UpdateWalkInClientInput!
+	): WalkInClient!
+	walkInTimeIn(walkInClientId: ID!, at: String): WalkInAttendanceLog!
+	updateWalkInPaymentSettings(paymentPesos: Float!): WalkInPaymentSettings!
+}

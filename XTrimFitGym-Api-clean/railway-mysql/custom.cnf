@@ -1,0 +1,8 @@
+# iVMS-4200 compatibility: disable SSL (client does not support it)
+[mysqld]
+skip-ssl
+
+# Keep connection alive longer so IVMS does not hit server-side timeout between scans.
+# Prevents server closing the connection before second scan insert (stable connection).
+wait_timeout = 86400
+interactive_timeout = 86400

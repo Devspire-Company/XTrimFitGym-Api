@@ -1,0 +1,144 @@
+# Membership types
+type Membership {
+	id: ID!
+	name: String!
+	monthlyPrice: Float!
+	description: String
+	features: [String!]!
+	status: MembershipStatus!
+	statusEffectiveAt: String
+	durationType: DurationType!
+	monthDuration: Int!
+	createdAt: String
+	updatedAt: String
+}
+
+enum MembershipStatus {
+	ACTIVE
+	INACTIVE
+	COMING_SOON
+}
+
+enum DurationType {
+	MONTHLY
+	YEARLY
+	QUARTERLY
+	"""Fixed calendar-day promos (plan `monthDuration` = number of days)."""
+	DAILY
+}
+
+# Membership transaction (user's subscription)
+type MembershipTransaction {
+	id: ID!
+	clientId: ID!
+	client: User # Populated client details
+	membershipId: ID!
+	membership: Membership # Populated membership details
+	priceAtPurchase: Float!
+	startedAt: String!
+	expiresAt: String!
+	"""Total months for this subscription from startedAt (matches expiry; may differ from plan default)."""
+	monthDuration: Int!
+	"""When set, subscription length is day-based from startedAt (promo / daily plans)."""
+	dayDuration: Int
+	status: TransactionStatus!
+	canceledReason: String
+	canceledAt: String
+	canceledById: ID
+	lastAdjustedReason: String
+	lastAdjustedAt: String
+	lastAdjustedById: ID
+	createdAt: String
+	updatedAt: String
+}
+
+enum TransactionStatus {
+	ACTIVE
+	CANCELED
+	EXPIRED
+}
+
+# Update User type to include membership transaction
+extend type User {
+	currentMembership: MembershipTransaction
+}
+
+# Update MemberDetails to include membership transaction
+extend type MemberDetails {
+	membershipTransaction: MembershipTransaction
+}
+
+input CreateMembershipInput {
+	name: String!
+	monthlyPrice: Float!
+	description: String
+	features: [String!]!
+	status: MembershipStatus!
+	statusEffectiveAt: String
+	durationType: DurationType!
+	monthDuration: Int!
+}
+
+input PurchaseMembershipInput {
+	membershipId: ID!
+}
+
+input UpdateMembershipInput {
+	name: String
+	monthlyPrice: Float
+	description: String
+	features: [String!]
+	status: MembershipStatus
+	statusEffectiveAt: String
+	durationType: DurationType
+	monthDuration: Int
+}
+
+input UpdateMembershipTransactionDurationInput {
+	transactionId: ID!
+	"""New total months from the transaction's startedAt (recalculates expiresAt). Omit when using dayDuration."""
+	monthDuration: Int
+	"""New total calendar days from startedAt (recalculates expiresAt). Omit when using monthDuration."""
+	dayDuration: Int
+	"""Optional ISO 8601 start datetime. When set, replaces the transaction startedAt and recalculates expiresAt from it (walk-ins / legacy corrections). Omit to keep the existing start date."""
+	startedAt: String
+	"""Required audit reason for changing length/start date."""
+	reason: String!
+}
+
+# Extend Query type
+extend type Query {
+	# Get all available memberships
+	getMemberships(status: MembershipStatus): [Membership!]!
+	# Get membership by ID
+	getMembership(id: ID!): Membership
+	# Get user's current membership transaction
+	getCurrentMembership: MembershipTransaction
+	# Get membership transaction by ID
+	getMembershipTransaction(id: ID!): MembershipTransaction
+}
+
+# Extend Mutation type
+extend type Mutation {
+	# Create a new membership plan (admin only)
+	createMembership(input: CreateMembershipInput!): Membership!
+	# Update a membership plan (admin only)
+	updateMembership(id: ID!, input: UpdateMembershipInput!): Membership!
+	# Delete a membership plan (admin only)
+	deleteMembership(id: ID!): Boolean!
+	# Purchase/upgrade membership
+	purchaseMembership(input: PurchaseMembershipInput!): MembershipTransaction!
+	# Cancel membership
+	cancelMembership(transactionId: ID!, reason: String!): Boolean!
+	# Adjust active subscription length (admin only); recalculates expiresAt from startedAt (optionally overridden)
+	updateMembershipTransactionDuration(
+		input: UpdateMembershipTransactionDurationInput!
+	): MembershipTransaction!
+}
+
+# Extend Subscription type
+extend type Subscription {
+	# Subscribe to membership updates
+	membershipsUpdated: [Membership!]!
+}
+

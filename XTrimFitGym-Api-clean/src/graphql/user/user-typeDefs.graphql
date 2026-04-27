@@ -1,0 +1,178 @@
+enum RoleType {
+	admin
+	coach
+	member
+}
+
+type MemberDetails {
+	membershipId: ID
+	physiqueGoalType: String!
+	fitnessGoal: [String!]
+	workOutTime: [String]
+	coachesIds: [ID]
+	hasEnteredDetails: Boolean
+	"""Member completed gym/facility biometric enrollment (mobile + web)."""
+	facilityBiometricEnrollmentComplete: Boolean
+}
+
+type CoachDetails {
+	clientsIds: [ID]
+	sessionsIds: [ID]
+	specialization: [String!]
+	ratings: Float
+	yearsOfExperience: Int
+	moreDetails: String
+	teachingDate: [String]
+	teachingTime: [String]
+	clientLimit: Int
+}
+
+# Main User type
+type LoginHistoryEntry {
+	ipAddress: String
+	userAgent: String
+	loginAt: String
+}
+
+type User {
+	id: ID!
+	firstName: String!
+	middleName: String
+	lastName: String!
+	email: String!
+	role: RoleType!
+	phoneNumber: String
+	dateOfBirth: String
+	gender: String!
+	heardFrom: [String]
+	agreedToTermsAndConditions: Boolean
+	agreedToPrivacyPolicy: Boolean
+	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
+	attendanceId: Int
+	membershipDetails: MemberDetails
+	coachDetails: CoachDetails
+	loginHistory: [LoginHistoryEntry]
+	isDisabled: Boolean!
+	disabledAt: String
+	disableReason: String
+	createdAt: String
+	updatedAt: String
+}
+
+# Input types for mutations
+input MemberDetailsInput {
+	membershipId: ID
+	physiqueGoalType: String!
+	fitnessGoal: [String!]
+	workOutTime: [String]
+	coachesIds: [ID]
+	hasEnteredDetails: Boolean
+	facilityBiometricEnrollmentComplete: Boolean
+}
+
+input CoachDetailsInput {
+	clientsIds: [ID]
+	sessionsIds: [ID]
+	specialization: [String!]
+	ratings: Float
+	yearsOfExperience: Int
+	moreDetails: String
+	teachingDate: [String]
+	teachingTime: [String]
+	clientLimit: Int
+}
+
+input CreateUserInput {
+	firstName: String!
+	middleName: String
+	lastName: String!
+	email: String!
+	"""
+	Password is optional for Clerk-based admin creation (backend generates one).
+	Legacy email/password auth still uses this field.
+	"""
+	password: String
+	role: RoleType!
+	phoneNumber: String
+	dateOfBirth: String
+	gender: String
+	heardFrom: [String]
+	agreedToTermsAndConditions: Boolean
+	agreedToPrivacyPolicy: Boolean
+	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
+	membershipDetails: MemberDetailsInput
+	coachDetails: CoachDetailsInput
+	currentPassword: String
+	"""
+	Development-only fallback email verification code used when Clerk email quota is exceeded.
+	"""
+	devVerificationCode: String
+}
+
+input UpdateUserInput {
+	firstName: String
+	middleName: String
+	lastName: String
+	email: String
+	password: String
+	currentPassword: String
+	phoneNumber: String
+	dateOfBirth: String
+	gender: String
+	heardFrom: [String]
+	agreedToTermsAndConditions: Boolean
+	agreedToPrivacyPolicy: Boolean
+	agreedToLiabilityWaiver: Boolean
+	guardianIdVerificationPhotoUrl: String
+	minorLiabilityWaiverPrintedName: String
+	minorLiabilityWaiverSignatureUrl: String
+	membershipDetails: MemberDetailsInput
+	coachDetails: CoachDetailsInput
+}
+
+# Queries
+type Query {
+	"""Current user from Authorization (JWT or Clerk session token)."""
+	me: User
+	getUser(id: ID!): User
+	getUsers(role: RoleType, includeDisabled: Boolean): [User]
+}
+
+# Login input
+input LoginInput {
+	email: String!
+	password: String!
+}
+
+# Auth response
+type AuthResponse {
+	user: User!
+	token: String!
+}
+
+# Mutations
+type Mutation {
+	login(input: LoginInput!): AuthResponse!
+	createUser(input: CreateUserInput!): AuthResponse!
+	updateUser(id: ID!, input: UpdateUserInput!): User
+	deleteUser(id: ID!): Boolean
+	disableUser(id: ID!, reason: String!): User
+	enableUser(id: ID!): User
+	removeClient(clientId: ID!): Boolean!
+	requestDevEmailVerificationCode(email: String!): Boolean!
+	requestDevCoachSignInCode(email: String!): Boolean!
+	devCoachSignIn(email: String!, code: String!): AuthResponse!
+}
+
+# Subscriptions
+type Subscription {
+	# Base subscription type - extended in other modules
+	# This field is required as GraphQL doesn't allow empty types
+	_empty: Boolean
+}

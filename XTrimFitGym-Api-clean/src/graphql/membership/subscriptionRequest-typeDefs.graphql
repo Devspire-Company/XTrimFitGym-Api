@@ -1,0 +1,70 @@
+# Subscription Request types
+type SubscriptionRequest {
+	id: ID!
+	memberId: ID!
+	member: User # Populated member details
+	membershipId: ID!
+	membership: Membership # Populated membership details
+	status: SubscriptionRequestStatus!
+	requestedAt: String!
+	approvedAt: String
+	approvedBy: User
+	rejectedAt: String
+	rejectedBy: User
+	createdAt: String
+	updatedAt: String
+}
+
+enum SubscriptionRequestStatus {
+	PENDING
+	APPROVED
+	REJECTED
+}
+
+input CreateSubscriptionRequestInput {
+	membershipId: ID!
+}
+
+input ApproveSubscriptionRequestInput {
+	requestId: ID!
+}
+
+input RejectSubscriptionRequestInput {
+	requestId: ID!
+}
+
+input DirectSubscribeInput {
+	memberId: ID!
+	membershipId: ID!
+	"""Override plan length: months from startedAt for monthly/quarterly/yearly plans; **calendar days** for DAILY plans. Defaults to the plan's monthDuration."""
+	monthDuration: Int
+	"""When the subscription started (e.g. legacy walk-in). Defaults to now. ISO-8601 string."""
+	startedAt: String
+}
+
+# Extend Query type
+extend type Query {
+	# Get all pending subscription requests (admin only)
+	getPendingSubscriptionRequests: [SubscriptionRequest!]!
+	# Get all subscription requests (admin only)
+	getAllSubscriptionRequests: [SubscriptionRequest!]!
+	# Get subscription request by ID
+	getSubscriptionRequest(id: ID!): SubscriptionRequest
+	# Get member's subscription requests
+	getMySubscriptionRequests: [SubscriptionRequest!]!
+}
+
+# Extend Mutation type
+extend type Mutation {
+	# Create a subscription request (member)
+	createSubscriptionRequest(input: CreateSubscriptionRequestInput!): SubscriptionRequest!
+	# Approve a subscription request (admin)
+	approveSubscriptionRequest(input: ApproveSubscriptionRequestInput!): MembershipTransaction!
+	# Reject a subscription request (admin)
+	rejectSubscriptionRequest(input: RejectSubscriptionRequestInput!): Boolean!
+	# Delete a subscription request (admin)
+	deleteSubscriptionRequest(id: ID!): Boolean!
+	# Directly subscribe a member (admin)
+	directSubscribeMember(input: DirectSubscribeInput!): MembershipTransaction!
+}
+

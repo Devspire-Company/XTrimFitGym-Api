@@ -1,0 +1,29 @@
+enum NotificationType {
+	INACTIVITY
+	MEMBERSHIP_EXPIRING
+	SESSION_SCHEDULED
+}
+
+type Notification {
+	id: ID!
+	recipientId: ID!
+	recipientRole: RoleType!
+	type: NotificationType!
+	title: String!
+	message: String!
+	dedupeKey: String!
+	metadataJson: String
+	isRead: Boolean!
+	readAt: String
+	createdAt: String
+	updatedAt: String
+}
+
+extend type Query {
+	getMyNotifications(limit: Int, offset: Int, unreadOnly: Boolean): [Notification!]!
+}
+
+extend type Mutation {
+	markNotificationRead(id: ID!): Notification!
+	markAllMyNotificationsRead: Boolean!
+}
