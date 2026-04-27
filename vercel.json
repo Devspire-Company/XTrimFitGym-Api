@@ -1,0 +1,7 @@
+{
+	"version": 2,
+	"installCommand": "cd \"WEB ADMIN\" && npm install",
+	"buildCommand": "cd \"WEB ADMIN\" && npm run build",
+	"outputDirectory": "WEB ADMIN/dist",
+	"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
