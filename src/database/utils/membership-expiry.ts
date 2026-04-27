@@ -6,6 +6,10 @@ export function isDailyDurationType(durationType?: string | null): boolean {
 	return (durationType || '').toLowerCase() === 'daily';
 }
 
+export function isMinuteDurationType(durationType?: string | null): boolean {
+	return (durationType || '').toLowerCase() === 'minutes';
+}
+
 export function addMonthsPreserveDay(start: Date, months: number): Date {
 	const d = new Date(start.getTime());
 	d.setMonth(d.getMonth() + months);
@@ -15,6 +19,12 @@ export function addMonthsPreserveDay(start: Date, months: number): Date {
 export function addCalendarDays(start: Date, days: number): Date {
 	const d = new Date(start.getTime());
 	d.setDate(d.getDate() + days);
+	return d;
+}
+
+export function addMinutes(start: Date, minutes: number): Date {
+	const d = new Date(start.getTime());
+	d.setMinutes(d.getMinutes() + minutes);
 	return d;
 }
 
@@ -37,7 +47,10 @@ export function planMonthDuration(membership: {
 	monthDuration?: number | null;
 	durationType?: string | null;
 }): number {
-	if (isDailyDurationType(membership.durationType)) {
+	if (
+		isDailyDurationType(membership.durationType) ||
+		isMinuteDurationType(membership.durationType)
+	) {
 		return 1;
 	}
 	let months = membership.monthDuration;
@@ -60,6 +73,16 @@ export function planDayLengthFromDailyMembership(membership: {
 	const d = membership.monthDuration;
 	if (d != null && d >= 1) return d;
 	return 1;
+}
+
+export function planMinuteLengthFromMembership(membership: {
+	monthDuration?: number | null;
+	durationType?: string | null;
+}): number {
+	if (!isMinuteDurationType(membership.durationType)) return 0;
+	const mins = membership.monthDuration;
+	if (mins != null && mins >= 1) return mins;
+	return 5;
 }
 
 export type SubscriptionLengthResult = {
@@ -87,6 +110,18 @@ export function resolveSubscriptionLength(
 	}
 ): SubscriptionLengthResult {
 	const extra = Math.max(0, opts?.extraDays ?? 0);
+
+	if (!opts?.forceMonthBased && isMinuteDurationType(membership.durationType)) {
+		let minutes =
+			opts?.lengthDays != null && opts.lengthDays >= 1
+				? opts.lengthDays
+				: opts?.lengthMonths != null && opts.lengthMonths >= 1
+					? opts.lengthMonths
+					: planMinuteLengthFromMembership(membership);
+		if (minutes < 1) minutes = 1;
+		const expiresAt = addMinutes(startedAt, minutes);
+		return { expiresAt, monthDuration: 0, dayDuration: null };
+	}
 
 	if (!opts?.forceMonthBased && isDailyDurationType(membership.durationType)) {
 		const fromPlan = planDayLengthFromDailyMembership(membership);
