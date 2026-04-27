@@ -33,13 +33,64 @@ const parseTimeToMinutes = (raw: string): number => {
 const overlaps = (startA: number, endA: number, startB: number, endB: number) =>
 	startA < endB && startB < endA;
 
+const getManilaNowParts = () => {
+	const parts = new Intl.DateTimeFormat('en-CA', {
+		timeZone: 'Asia/Manila',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		hour12: false,
+	}).formatToParts(new Date());
+	const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+	const year = get('year');
+	const month = get('month');
+	const day = get('day');
+	const hour = Number(get('hour') || '0');
+	const minute = Number(get('minute') || '0');
+	return {
+		ymd: `${year}-${month}-${day}`,
+		minutes: hour * 60 + minute,
+	};
+};
+
+const getYmdInManila = (dateInput: string | Date | null | undefined): string => {
+	if (!dateInput) return '';
+	const parsed = dateInput instanceof Date ? dateInput : new Date(dateInput);
+	if (!Number.isFinite(parsed.getTime())) return '';
+	return parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+};
+
 const mapEquipmentToGraphQL = (
 	doc: any,
-	opts?: { checkStartMinutes?: number; checkEndMinutes?: number; usages?: any[]; windowLabel?: string }
+	opts?: {
+		checkStartMinutes?: number;
+		checkEndMinutes?: number;
+		usages?: any[];
+		windowLabel?: string;
+		currentDateYmd?: string;
+		currentMinutes?: number;
+	}
 ) => {
 	const relevantUsages = (opts?.usages || []).filter(
 		(row) => row.equipmentId === doc._id.toString()
 	);
+	const upcomingRelevantUsages = relevantUsages
+		.filter((slot) => {
+			if (!opts?.currentDateYmd || typeof opts.currentMinutes !== 'number') return true;
+			const usageDateYmd = getYmdInManila(slot.date);
+			if (!usageDateYmd) return false;
+			if (usageDateYmd > opts.currentDateYmd) return true;
+			if (usageDateYmd < opts.currentDateYmd) return false;
+			return Number(slot.endMinutes || 0) > opts.currentMinutes;
+		})
+		.sort((a, b) => {
+			const dayA = getYmdInManila(a.date);
+			const dayB = getYmdInManila(b.date);
+			if (dayA !== dayB) return dayA.localeCompare(dayB);
+			return Number(a.startMinutes || 0) - Number(b.startMinutes || 0);
+		});
 	let reservedQuantityInWindow = 0;
 	if (
 		typeof opts?.checkStartMinutes === 'number' &&
@@ -84,7 +135,7 @@ const mapEquipmentToGraphQL = (
 	isReservedInWindow: reservedQuantityInWindow > 0,
 	reservedQuantityInWindow,
 	reservationWindowLabel: opts?.windowLabel ?? null,
-	upcomingUsages: relevantUsages.slice(0, 5).map((slot) => ({
+	upcomingUsages: upcomingRelevantUsages.slice(0, 5).map((slot) => ({
 		sessionId: slot.sessionId,
 		sessionName: slot.sessionName,
 		coachName: slot.coachName || null,
@@ -150,10 +201,16 @@ export default {
 			dayStart.setHours(0, 0, 0, 0);
 			const dayEnd = new Date(dayStart);
 			dayEnd.setDate(dayEnd.getDate() + 1);
+			const sessionsStart = new Date(dayStart);
+			const sessionsEnd = new Date(dayEnd);
+			if (!hasCustomWindow) {
+				sessionsEnd.setDate(sessionsEnd.getDate() + 14);
+			}
+			const manilaNow = getManilaNowParts();
 
 			const daySessions = await Session.find({
 				status: 'scheduled',
-				date: { $gte: dayStart, $lt: dayEnd },
+				date: { $gte: sessionsStart, $lt: sessionsEnd },
 				equipmentReservations: { $exists: true, $ne: [] },
 			})
 				.select('name date startTime endTime coach_id equipmentReservations')
@@ -187,6 +244,8 @@ export default {
 					checkEndMinutes,
 					usages,
 					windowLabel,
+					currentDateYmd: manilaNow.ymd,
+					currentMinutes: manilaNow.minutes,
 				})
 			);
 		},
