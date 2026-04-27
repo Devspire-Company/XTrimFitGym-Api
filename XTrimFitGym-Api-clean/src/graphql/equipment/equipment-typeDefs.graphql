@@ -31,6 +31,7 @@ type Equipment {
 type EquipmentUsageSlot {
 	sessionId: ID!
 	sessionName: String!
+	coachName: String
 	date: String!
 	startTime: String!
 	endTime: String

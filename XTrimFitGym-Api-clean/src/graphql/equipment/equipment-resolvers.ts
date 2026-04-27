@@ -79,6 +79,7 @@ const mapEquipmentToGraphQL = (
 	upcomingUsages: relevantUsages.slice(0, 5).map((slot) => ({
 		sessionId: slot.sessionId,
 		sessionName: slot.sessionName,
+		coachName: slot.coachName || null,
 		date: slot.date,
 		startTime: slot.startTime,
 		endTime: slot.endTime || null,
@@ -147,12 +148,17 @@ export default {
 				date: { $gte: dayStart, $lt: dayEnd },
 				equipmentReservations: { $exists: true, $ne: [] },
 			})
-				.select('name date startTime endTime equipmentReservations')
+				.select('name date startTime endTime coach_id equipmentReservations')
+				.populate('coach_id', 'firstName lastName')
 				.lean();
 			const usages = (daySessions as any[]).flatMap((session) =>
 				(session.equipmentReservations || []).map((slot: any) => ({
 					sessionId: session._id.toString(),
 					sessionName: session.name || 'Session',
+					coachName: session.coach_id
+						? `${session.coach_id.firstName || ''} ${session.coach_id.lastName || ''}`.trim() ||
+						  null
+						: null,
 					date: session.date?.toISOString?.() || new Date(session.date).toISOString(),
 					equipmentId: slot.equipment_id?.toString?.() || String(slot.equipment_id || ''),
 					startTime: slot.reservedStartTime || session.startTime,
