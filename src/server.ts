@@ -60,75 +60,7 @@ app.use(
 async function startServer() {
 	await server.start();
 	await connectDb();
-
-	// Connect to MySQL for attendance monitoring
-	// Store config even if connection fails initially - it can be retried later
-	const mysqlConfig = {
-		host: process.env.MYSQLHOST || 'mysql.railway.internal',
-		port: Number(process.env.MYSQLPORT) || 3306,
-		user: process.env.MYSQLUSER || 'root',
-		password: process.env.MYSQLPASSWORD || '',
-		database: process.env.MYSQLDATABASE || 'railway',
-	};
-
-	// Store config for potential reconnection attempts
-	const { setMySQLConfig } = await import('./database/mysql/connectMysql.js');
-	setMySQLConfig(mysqlConfig);
-
-	try {
-		await connectMySQL(mysqlConfig);
-		console.log('✅ MySQL connected for attendance monitoring');
-
-		// One-line health: helps Render logs show whether iVMS data is reaching MySQL
-		try {
-			const { ensureMySQLConnection } = await import('./database/mysql/connectMysql.js');
-			const mc = await ensureMySQLConnection();
-			const [rows] = await mc.execute('SELECT COUNT(*) AS c FROM attendance');
-			const row = (rows as { c: number }[])[0];
-			const n = row != null && typeof row.c === 'number' ? row.c : Number(row?.c);
-			console.log(`📊 attendance table row count: ${Number.isFinite(n) ? n : 'unknown'}`);
-		} catch (countErr: any) {
-			console.warn(
-				'⚠️  Could not read attendance row count (table missing?):',
-				countErr?.message || countErr,
-			);
-		}
-
-		// Initialize and start attendance monitoring
-		// Don't throw if initialization fails - it might just be that the table doesn't exist yet
-		try {
-			await attendanceMonitor.initialize();
-			attendanceMonitor.startPolling();
-			console.log(
-				'✅ Attendance monitor started - listening for real-time updates',
-			);
-		} catch (initError) {
-			// If initialization fails, still start polling - it will check for table existence
-			console.warn(
-				'⚠️  Attendance monitor initialization had issues, but polling will continue',
-			);
-			console.warn(
-				'   It will automatically detect when the attendance table is created.',
-			);
-			attendanceMonitor.startPolling();
-		}
-	} catch (error: any) {
-		console.error(
-			'⚠️  Failed to connect to MySQL at startup:',
-			error?.message || error,
-		);
-		console.error(
-			'   The server will continue, but attendance features will not be available.',
-		);
-		console.error(
-			'   Connection will be retried when attendance queries are made.',
-		);
-		console.error(
-			`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`,
-		);
-	}
-
-	// Start automated notification checks (expiry + inactivity)
+	// Start automated notification checks (expiry + inactivity) once DB is ready.
 	notificationAutomationService.start();
 
 	// Middleware order matters! cookieParser must come before expressMiddleware
@@ -197,6 +129,70 @@ async function startServer() {
 		console.log(`  - iOS Simulator: http://localhost:${port}/graphql`);
 		console.log(`  - Physical devices: http://YOUR_LOCAL_IP:${port}/graphql`);
 	});
+
+	// Initialize MySQL/attendance in the background so API boot is fast.
+	// This prevents login requests from timing out while MySQL wakes up.
+	void (async () => {
+		const mysqlConfig = {
+			host: process.env.MYSQLHOST || 'mysql.railway.internal',
+			port: Number(process.env.MYSQLPORT) || 3306,
+			user: process.env.MYSQLUSER || 'root',
+			password: process.env.MYSQLPASSWORD || '',
+			database: process.env.MYSQLDATABASE || 'railway',
+		};
+
+		const { setMySQLConfig } = await import('./database/mysql/connectMysql.js');
+		setMySQLConfig(mysqlConfig);
+
+		try {
+			await connectMySQL(mysqlConfig);
+			console.log('✅ MySQL connected for attendance monitoring');
+
+			try {
+				const { ensureMySQLConnection } = await import('./database/mysql/connectMysql.js');
+				const mc = await ensureMySQLConnection();
+				const [rows] = await mc.execute('SELECT COUNT(*) AS c FROM attendance');
+				const row = (rows as { c: number }[])[0];
+				const n = row != null && typeof row.c === 'number' ? row.c : Number(row?.c);
+				console.log(`📊 attendance table row count: ${Number.isFinite(n) ? n : 'unknown'}`);
+			} catch (countErr: any) {
+				console.warn(
+					'⚠️  Could not read attendance row count (table missing?):',
+					countErr?.message || countErr,
+				);
+			}
+
+			try {
+				await attendanceMonitor.initialize();
+				attendanceMonitor.startPolling();
+				console.log(
+					'✅ Attendance monitor started - listening for real-time updates',
+				);
+			} catch (initError) {
+				console.warn(
+					'⚠️  Attendance monitor initialization had issues, but polling will continue',
+				);
+				console.warn(
+					'   It will automatically detect when the attendance table is created.',
+				);
+				attendanceMonitor.startPolling();
+			}
+		} catch (error: any) {
+			console.error(
+				'⚠️  Failed to connect to MySQL at startup:',
+				error?.message || error,
+			);
+			console.error(
+				'   The server will continue, but attendance features will not be available.',
+			);
+			console.error(
+				'   Connection will be retried when attendance queries are made.',
+			);
+			console.error(
+				`   Config: ${mysqlConfig.host}:${mysqlConfig.port}/${mysqlConfig.database}`,
+			);
+		}
+	})();
 }
 
 startServer();
