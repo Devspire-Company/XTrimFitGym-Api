@@ -5,6 +5,14 @@ import mongoose from 'mongoose';
 
 type Context = IAuthContext;
 
+const formatCoachName = (coach: any): string | null => {
+	if (!coach) return null;
+	const first = String(coach.firstName || '').trim();
+	const last = String(coach.lastName || '').trim();
+	const full = `${first} ${last}`.trim();
+	return full || null;
+};
+
 const normalizeStatus = (raw: unknown): 'AVAILABLE' | 'DAMAGED' | 'UNDERMAINTENANCE' => {
 	const s = String(raw || 'AVAILABLE').toUpperCase();
 	if (s === 'DAMAGED' || s === 'UNDERMAINTENANCE') return s;
@@ -155,10 +163,7 @@ export default {
 				(session.equipmentReservations || []).map((slot: any) => ({
 					sessionId: session._id.toString(),
 					sessionName: session.name || 'Session',
-					coachName: session.coach_id
-						? `${session.coach_id.firstName || ''} ${session.coach_id.lastName || ''}`.trim() ||
-						  null
-						: null,
+					coachName: formatCoachName(session.coach_id),
 					date: session.date?.toISOString?.() || new Date(session.date).toISOString(),
 					equipmentId: slot.equipment_id?.toString?.() || String(slot.equipment_id || ''),
 					startTime: slot.reservedStartTime || session.startTime,
